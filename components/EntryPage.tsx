@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../App';
 import { CheckCircleIcon } from './icons';
 
 const LoginPage: React.FC = () => {
   const { login } = useAppContext();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [loginState, setLoginState] = useState<'form' | 'confirming' | 'confirmed'>('form');
   const [isAdminLogin, setIsAdminLogin] = useState(false);
@@ -69,7 +71,7 @@ const LoginPage: React.FC = () => {
               </div>
 
               <button
-                onClick={() => window.location.hash = '#/assessment'}
+                onClick={() => navigate('/assessment')}
                 className="w-full py-3 px-4 bg-[var(--bg-card)] text-[var(--text-main)] font-bold rounded-lg shadow-md border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] transition-all transform hover:scale-105"
               >
                 Take Free Credibility Assessment

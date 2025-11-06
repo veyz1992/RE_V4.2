@@ -1,6 +1,7 @@
 
 
 import React, { useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Answers, ScoreBreakdown, Opportunity } from '../types';
 import { ASSESSMENT_STEPS, MAX_SCORES, INITIAL_ANSWERS } from '../constants';
 import { CheckCircleIcon, BriefcaseIcon, ShieldCheckIcon, ClipboardDocumentCheckIcon, StarIcon, TrophyIcon, LightBulbIcon } from './icons';
@@ -362,6 +363,7 @@ const PointCheckbox: React.FC<CheckboxProps> = ({ label, points, checked, onChan
 };
 
 const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers: Answers }) => void }> = ({ onComplete }) => {
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Answers>(INITIAL_ANSWERS);
   const [isScorePopupOpen, setIsScorePopupOpen] = useState(false);
@@ -392,7 +394,7 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
             setAnimationClass('animate-slide-in-from-left');
         }, 300);
     } else {
-        window.location.hash = '#/';
+        navigate('/login');
     }
   };
 

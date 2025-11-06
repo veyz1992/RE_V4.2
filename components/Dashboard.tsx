@@ -112,7 +112,7 @@ const documentsData = [
 ];
 
 
-type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
+export type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
 const VerificationStatusCard: React.FC<{ onNavigate: (view: MemberView) => void }> = ({ onNavigate }) => {
     const statusConfig = {
@@ -2496,14 +2496,18 @@ const viewTitles: Record<MemberView, string> = {
 };
 
 
-const MemberDashboard: React.FC = () => {
+const MemberDashboard: React.FC<{ initialView?: MemberView }> = ({ initialView = 'overview' }) => {
     const { currentUser, logout } = useAppContext();
-    const [activeView, setActiveView] = useState<MemberView>('overview');
+    const [activeView, setActiveView] = useState<MemberView>(initialView);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
     const userMenuRef = useRef<HTMLDivElement>(null);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isNewRequestModalOpen, setNewRequestModalOpen] = useState(false);
+
+    useEffect(() => {
+        setActiveView(initialView);
+    }, [initialView]);
 
     useEffect(() => {
         if (toast) {
