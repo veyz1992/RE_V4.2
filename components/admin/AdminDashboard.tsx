@@ -104,7 +104,7 @@ const AdminDashboard: React.FC = () => {
                 <nav className="flex-grow p-4 space-y-2">{NavItems}</nav>
                 <div className="p-4 border-t border-[var(--border-subtle)] space-y-4">
                     <ThemeToggle variant="row" />
-                    <button onClick={logout} className="flex items-center w-full px-4 py-3 rounded-lg text-left text-[var(--text-muted)] hover:bg-red-500/10 hover:text-error transition-colors">
+                    <button onClick={() => void logout()} className="flex items-center w-full px-4 py-3 rounded-lg text-left text-[var(--text-muted)] hover:bg-red-500/10 hover:text-error transition-colors">
                         <ArrowRightOnRectangleIcon className="w-6 h-6" /><span className="ml-3 font-semibold">Logout</span>
                     </button>
                 </div>
@@ -140,7 +140,7 @@ const AdminDashboard: React.FC = () => {
                                     <a href="#" className="block px-4 py-2 text-sm text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">My profile</a>
                                     <a href="#" className="block px-4 py-2 text-sm text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">Switch to Member View</a>
                                     <div className="border-t border-[var(--border-subtle)] my-1"></div>
-                                    <button onClick={logout} className="w-full text-left px-4 py-2 text-sm text-error hover:bg-error/5">Logout</button>
+                                    <button onClick={() => void logout()} className="w-full text-left px-4 py-2 text-sm text-error hover:bg-error/5">Logout</button>
                                 </div>
                             )}
                         </div>
