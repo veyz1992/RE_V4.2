@@ -378,6 +378,17 @@ export interface ScoreBreakdown {
     opportunities: Opportunity[];
 }
 
+export interface StoredAssessmentResult extends ScoreBreakdown {
+  answers: Answers;
+  id?: number | string;
+  createdAt?: string;
+  userId?: string | null;
+  emailEntered?: string | null;
+  scenario?: string | null;
+  pciRating?: string | null;
+  intendedMembershipTier?: string | null;
+}
+
 export interface PricingPackage {
     id: 'bronze' | 'silver' | 'gold';
     name: string;
