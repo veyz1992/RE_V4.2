@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { HomeIcon, UsersIcon, BriefcaseIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon, CurrencyDollarIcon, UserCircleIcon, ChevronDownIcon } from '../icons';
-import { useAuth } from '../../App';
+import { useAuth } from '@/context/AuthContext';
 import AdminOverview from './AdminOverview';
 import ClientManagement from './ClientManagement';
 import AdminSettings from './AdminSettings';
