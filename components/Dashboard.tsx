@@ -1,7 +1,14 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { HomeIcon, ListBulletIcon, UserCircleIcon, ArrowRightOnRectangleIcon, PencilSquareIcon, TrophyIcon, DocumentTextIcon, CheckCircleIcon, CreditCardIcon, UsersIcon, Cog6ToothIcon, ClockIcon, ExclamationTriangleIcon, EyeIcon, CalendarDaysIcon, PlusCircleIcon, StarIcon, NewspaperIcon, ArrowDownTrayIcon, ArrowTrendingUpIcon, ShieldCheckIcon, MagnifyingGlassIcon, ClipboardIcon, LightBulbIcon, XMarkIcon, UploadIcon, TrashIcon, ChevronDownIcon, ChartBarIcon, ChatBubbleOvalLeftEllipsisIcon, CheckIcon, BriefcaseIcon, KeyIcon, ClipboardDocumentCheckIcon } from './icons';
 import { useAuth } from '../App';
-import { ServiceRequest, Benefit, Invoice } from '../types';
+import {
+    Benefit,
+    Invoice,
+    MemberServiceRequest,
+    ServiceRequestActivityLog,
+    ServiceRequestPriority,
+    ServiceRequestStatus,
+} from '../types';
 import ConfirmationModal from './admin/ConfirmationModal';
 import MemberBlueprint from './MemberBlueprint';
 import ThemeToggle from './ThemeToggle';
@@ -178,12 +185,35 @@ interface SupabaseMemberDocument {
 interface SupabaseServiceRequest {
     id: string | number;
     profile_id?: string | null;
+    request_type?: string | null;
     service?: string | null;
     title?: string | null;
+    description?: string | null;
     status?: string | null;
     priority?: string | null;
+    admin_notes?: string | null;
+    assigned_admin_id?: string | null;
     created_at?: string | null;
     updated_at?: string | null;
+    [key: string]: unknown;
+}
+
+interface SupabaseAdminProfileRow {
+    id: string | number;
+    user_id?: string | null;
+    display_name?: string | null;
+    email?: string | null;
+    [key: string]: unknown;
+}
+
+interface SupabaseServiceRequestActivity {
+    id: string | number;
+    service_request_id?: string | number | null;
+    actor_user_id?: string | null;
+    action?: string | null;
+    description?: string | null;
+    created_at?: string | null;
+    actor_name?: string | null;
     [key: string]: unknown;
 }
 
@@ -414,26 +444,54 @@ const normalizeDocumentStatus = (status?: string | null): DocumentStatus => {
     return 'notUploaded';
 };
 
-const normalizeRequestStatus = (status?: string | null): DashboardServiceRequestStatus => {
-    const normalized = status?.toLowerCase();
-
-    if (!normalized) {
-        return 'Open';
-    }
+const normalizeServiceRequestStatus = (status?: string | null): ServiceRequestStatus => {
+    const normalized = status?.toLowerCase() ?? '';
 
     if (normalized.includes('progress')) {
-        return 'In progress';
+        return 'in_progress';
     }
 
     if (normalized.includes('complete') || normalized.includes('done')) {
-        return 'Completed';
+        return 'completed';
     }
 
     if (normalized.includes('cancel')) {
-        return 'Canceled';
+        return 'canceled';
     }
 
-    return 'Open';
+    return 'open';
+};
+
+const normalizeServiceRequestPriority = (priority?: string | null): ServiceRequestPriority => {
+    const normalized = priority?.toLowerCase() ?? '';
+
+    if (normalized.includes('high')) {
+        return 'high';
+    }
+
+    if (normalized.includes('low')) {
+        return 'low';
+    }
+
+    return 'medium';
+};
+
+const REQUEST_STATUS_LABELS: Record<ServiceRequestStatus, DashboardServiceRequestStatus> = {
+    open: 'Open',
+    in_progress: 'In progress',
+    completed: 'Completed',
+    canceled: 'Canceled',
+};
+
+const REQUEST_PRIORITY_LABELS: Record<ServiceRequestPriority, string> = {
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+};
+
+const normalizeRequestStatus = (status?: string | null): DashboardServiceRequestStatus => {
+    const normalized = normalizeServiceRequestStatus(status);
+    return REQUEST_STATUS_LABELS[normalized];
 };
 
 const ensureIcon = (iconKey?: string | null): IconComponent => {
@@ -501,14 +559,60 @@ const mapDocumentRow = (document: SupabaseMemberDocument): DashboardDocument => 
     };
 };
 
-const mapServiceRequestRow = (request: SupabaseServiceRequest): DashboardServiceRequest => ({
+const mapServiceRequestRow = (request: SupabaseServiceRequest): DashboardServiceRequest => {
+    const normalizedPriority = normalizeServiceRequestPriority(request.priority);
+
+    return {
+        id: String(request.id),
+        service: request.request_type ?? request.service ?? 'Service Request',
+        title: request.title ?? 'Untitled Request',
+        status: normalizeRequestStatus(request.status),
+        createdAt: request.created_at ?? request.updated_at ?? null,
+        priority: REQUEST_PRIORITY_LABELS[normalizedPriority],
+    };
+};
+
+const mapMemberServiceRequestRow = (request: SupabaseServiceRequest): MemberServiceRequest => ({
     id: String(request.id),
-    service: request.service ?? 'Service Request',
+    profileId: request.profile_id ?? '',
+    requestType: request.request_type ?? request.service ?? 'Service Request',
     title: request.title ?? 'Untitled Request',
-    status: normalizeRequestStatus(request.status),
-    createdAt: request.created_at ?? request.updated_at ?? null,
-    priority: request.priority ?? undefined,
+    description: request.description ?? null,
+    priority: normalizeServiceRequestPriority(request.priority),
+    status: normalizeServiceRequestStatus(request.status),
+    adminNotes: request.admin_notes ?? null,
+    assignedAdminId:
+        request.assigned_admin_id !== null && request.assigned_admin_id !== undefined
+            ? String(request.assigned_admin_id)
+            : null,
+    createdAt: request.created_at ?? new Date().toISOString(),
+    updatedAt: request.updated_at ?? null,
 });
+
+const mapServiceRequestActivityRow = (
+    activity: SupabaseServiceRequestActivity,
+): ServiceRequestActivityLog => ({
+    id: String(activity.id),
+    serviceRequestId: String(activity.service_request_id ?? ''),
+    actorUserId: activity.actor_user_id ?? null,
+    action: activity.action ?? null,
+    description: activity.description ?? null,
+    createdAt: activity.created_at ?? new Date().toISOString(),
+    actorName: activity.actor_name ?? null,
+});
+
+const STATUS_BADGE_CLASSES: Record<ServiceRequestStatus, string> = {
+    open: 'bg-gray-200 text-gray-800',
+    in_progress: 'bg-info/20 text-blue-800',
+    completed: 'bg-success/20 text-green-800',
+    canceled: 'bg-gray-200 text-gray-500',
+};
+
+const PRIORITY_BADGE_CLASSES: Record<ServiceRequestPriority, string> = {
+    low: 'bg-gray-100 text-gray-700',
+    medium: 'bg-gray-200 text-gray-800',
+    high: 'bg-error/20 text-error',
+};
 
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
@@ -735,162 +839,393 @@ const MemberOverview: React.FC<{ data: OverviewData | null; onNavigate: (view: M
     );
 };
 
-const MyRequests: React.FC<{ onNewRequest: () => void; showToast: (message: string, type: 'success' | 'error') => void; }> = ({ onNewRequest, showToast }) => {
-    const { currentUser, serviceRequests, updateServiceRequestStatus } = useAuth();
-    const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null);
-
-    const [statusFilter, setStatusFilter] = useState('All');
-    const [serviceFilter, setServiceFilter] = useState('All');
+const MyRequests: React.FC<{
+    onNewRequest: () => void;
+    showToast: (message: string, type: 'success' | 'error') => void;
+    refreshKey: number;
+}> = ({ onNewRequest, showToast, refreshKey }) => {
+    const { session } = useAuth();
+    const [requests, setRequests] = useState<MemberServiceRequest[]>([]);
+    const [activitiesByRequest, setActivitiesByRequest] = useState<Record<string, ServiceRequestActivityLog[]>>({});
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | ServiceRequestStatus>('all');
+    const [serviceFilter, setServiceFilter] = useState<string>('All');
+    const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
 
-    const userRequests = useMemo(() => 
-        serviceRequests.filter(r => r.userId === currentUser?.id),
-        [serviceRequests, currentUser]
-    );
+    const statusOptions: Array<{ value: 'all' | ServiceRequestStatus; label: string }> = [
+        { value: 'all', label: 'All statuses' },
+        { value: 'open', label: REQUEST_STATUS_LABELS.open },
+        { value: 'in_progress', label: REQUEST_STATUS_LABELS.in_progress },
+        { value: 'completed', label: REQUEST_STATUS_LABELS.completed },
+        { value: 'canceled', label: REQUEST_STATUS_LABELS.canceled },
+    ];
+
+    const serviceTypes = useMemo(() => {
+        const uniqueTypes = new Set<string>();
+        requests.forEach((request) => {
+            if (request.requestType) {
+                uniqueTypes.add(request.requestType);
+            }
+        });
+        return ['All', ...Array.from(uniqueTypes)];
+    }, [requests]);
+
+    const summaryCounts = useMemo(() => {
+        return requests.reduce(
+            (acc, request) => {
+                acc[request.status] = (acc[request.status] ?? 0) + 1;
+                return acc;
+            },
+            { open: 0, in_progress: 0, completed: 0, canceled: 0 } as Record<ServiceRequestStatus, number>,
+        );
+    }, [requests]);
 
     const filteredRequests = useMemo(() => {
-        return userRequests.filter(req => {
-            const statusMatch = statusFilter === 'All' || req.status === statusFilter;
-            const serviceMatch = serviceFilter === 'All' || req.service === serviceFilter;
-            const searchMatch = searchTerm === '' || 
-                                req.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                req.id.toLowerCase().includes(searchTerm.toLowerCase());
-            return statusMatch && serviceMatch && searchMatch;
+        const normalizedSearch = searchTerm.trim().toLowerCase();
+
+        return requests.filter((request) => {
+            const matchesSearch =
+                normalizedSearch.length === 0 ||
+                request.title.toLowerCase().includes(normalizedSearch) ||
+                request.id.toLowerCase().includes(normalizedSearch);
+
+            const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
+            const matchesService = serviceFilter === 'All' || request.requestType === serviceFilter;
+
+            return matchesSearch && matchesStatus && matchesService;
         });
-    }, [userRequests, statusFilter, serviceFilter, searchTerm]);
+    }, [requests, searchTerm, statusFilter, serviceFilter]);
 
-    const summaryCounts = useMemo(() => ({
-        Open: userRequests.filter(r => r.status === 'Open').length,
-        'In progress': userRequests.filter(r => r.status === 'In progress').length,
-        Completed: userRequests.filter(r => r.status === 'Completed').length,
-    }), [userRequests]);
+    const selectedRequest = useMemo(() => {
+        if (!selectedRequestId) {
+            return null;
+        }
 
-    const serviceIcons: { [key: string]: React.FC<{ className?: string }> } = {
-        'SEO Blog Post': NewspaperIcon,
-        'Spotlight Article': StarIcon,
-        'Website Review': MagnifyingGlassIcon,
-        'Badge Support': ShieldCheckIcon,
-        'Other': ClipboardIcon,
-        'Consultation': ChatBubbleOvalLeftEllipsisIcon,
+        return requests.find((request) => request.id === selectedRequestId) ?? null;
+    }, [requests, selectedRequestId]);
+
+    const selectedActivities = selectedRequest
+        ? activitiesByRequest[selectedRequest.id] ?? []
+        : [];
+
+    const fetchRequests = useCallback(async () => {
+        if (!session?.user?.id) {
+            setRequests([]);
+            setActivitiesByRequest({});
+            return;
+        }
+
+        setIsLoading(true);
+
+        try {
+            const { data, error: requestError } = await supabase
+                .from('service_requests')
+                .select(
+                    'id, profile_id, request_type, service, title, description, priority, status, admin_notes, assigned_admin_id, created_at, updated_at',
+                )
+                .eq('profile_id', session.user.id)
+                .order('created_at', { ascending: false });
+
+            if (requestError) {
+                throw requestError;
+            }
+
+            const rows = (data as SupabaseServiceRequest[] | null) ?? [];
+
+            const assignedAdminIds = Array.from(
+                new Set(
+                    rows
+                        .map((row) => row.assigned_admin_id)
+                        .filter((value): value is string | number => value !== null && value !== undefined),
+                ),
+            ).map((value) => String(value));
+
+            let adminProfiles: SupabaseAdminProfileRow[] = [];
+            if (assignedAdminIds.length > 0) {
+                const { data: adminData, error: adminError } = await supabase
+                    .from('admin_profiles')
+                    .select('id, user_id, display_name, email')
+                    .in('id', assignedAdminIds);
+
+                if (adminError) {
+                    console.error('Failed to load assigned admin details', adminError);
+                } else {
+                    adminProfiles = (adminData as SupabaseAdminProfileRow[] | null) ?? [];
+                }
+            }
+
+            const adminNameById = new Map<string, string>(
+                adminProfiles.map((admin) => [String(admin.id), admin.display_name ?? admin.email ?? String(admin.id)] as const),
+            );
+            const adminNameByUserId = new Map<string, string>(
+                adminProfiles
+                    .filter((admin) => Boolean(admin.user_id))
+                    .map(
+                        (admin) =>
+                            [
+                                admin.user_id as string,
+                                admin.display_name ?? admin.email ?? (admin.user_id as string),
+                            ] as const,
+                    ),
+            );
+
+            const mappedRequests = rows.map((row) => {
+                const base = mapMemberServiceRequestRow(row);
+                return {
+                    ...base,
+                    assignedAdminName: base.assignedAdminId
+                        ? adminNameById.get(String(base.assignedAdminId)) ?? null
+                        : null,
+                };
+            });
+
+            setRequests(mappedRequests);
+
+            const requestIds = rows
+                .map((row) => row.id)
+                .filter((value): value is string | number => value !== null && value !== undefined);
+
+            if (requestIds.length > 0) {
+                const { data: activityData, error: activityError } = await supabase
+                    .from('service_request_activity')
+                    .select('*')
+                    .in('service_request_id', requestIds)
+                    .order('created_at', { ascending: false });
+
+                if (activityError) {
+                    console.error('Failed to load service request activity', activityError);
+                    setActivitiesByRequest({});
+                } else {
+                    const activityRows = (activityData as SupabaseServiceRequestActivity[] | null) ?? [];
+                    const missingActorUserIds = new Set<string>();
+
+                    activityRows.forEach((row) => {
+                        const actorUserId = row.actor_user_id;
+                        if (actorUserId && !adminNameByUserId.has(actorUserId)) {
+                            missingActorUserIds.add(actorUserId);
+                        }
+                    });
+
+                    if (missingActorUserIds.size > 0) {
+                        const { data: actorData, error: actorError } = await supabase
+                            .from('admin_profiles')
+                            .select('user_id, display_name, email')
+                            .in('user_id', Array.from(missingActorUserIds));
+
+                        if (actorError) {
+                            console.error('Failed to load activity actor details', actorError);
+                        } else {
+                            const actorRows = (actorData as SupabaseAdminProfileRow[] | null) ?? [];
+                            actorRows.forEach((actor) => {
+                                if (actor.user_id) {
+                                    adminNameByUserId.set(
+                                        actor.user_id,
+                                        actor.display_name ?? actor.email ?? actor.user_id,
+                                    );
+                                }
+                            });
+                        }
+                    }
+
+                    const grouped: Record<string, ServiceRequestActivityLog[]> = {};
+
+                    activityRows.forEach((row) => {
+                        const mapped = mapServiceRequestActivityRow(row);
+                        if (!mapped.actorName && mapped.actorUserId) {
+                            const fallback = adminNameByUserId.get(mapped.actorUserId);
+                            if (fallback) {
+                                mapped.actorName = fallback;
+                            }
+                        }
+                        if (!mapped.serviceRequestId) {
+                            return;
+                        }
+                        if (!grouped[mapped.serviceRequestId]) {
+                            grouped[mapped.serviceRequestId] = [];
+                        }
+                        grouped[mapped.serviceRequestId].push(mapped);
+                    });
+
+                    setActivitiesByRequest(grouped);
+                }
+            } else {
+                setActivitiesByRequest({});
+            }
+
+            setError(null);
+        } catch (fetchError) {
+            console.error('Failed to load service requests', fetchError);
+            setError('We were unable to load your service requests. Please try again.');
+            setRequests([]);
+            setActivitiesByRequest({});
+        } finally {
+            setIsLoading(false);
+        }
+    }, [session?.user?.id]);
+
+    useEffect(() => {
+        void fetchRequests();
+    }, [fetchRequests, refreshKey]);
+
+    const handleStatusFilterChange = (value: string) => {
+        if (value === 'all' || value === 'open' || value === 'in_progress' || value === 'completed' || value === 'canceled') {
+            setStatusFilter(value);
+        }
     };
 
-    const statusColors: { [key: string]: string } = {
-        'Open': 'bg-gray-200 text-gray-800',
-        'In progress': 'bg-info/20 text-blue-800',
-        'Completed': 'bg-success/20 text-green-800',
-        'Canceled': 'bg-gray-200 text-gray-800',
-    };
-
-    const serviceTypes = ['All', ...Array.from(new Set(userRequests.map(r => r.service)))];
-    const statusTypes = ['All', 'Open', 'In progress', 'Completed', 'Canceled'];
-
-    const SummaryPill: React.FC<{ label: string; count: number; color: string; }> = ({ label, count, color }) => (
-        <div className="flex items-center gap-2">
-            <span className="text-[var(--text-muted)]">{label}:</span>
-            <span className={`px-2.5 py-1 text-sm font-bold rounded-full ${color}`}>
-                {count}
-            </span>
-        </div>
-    );
-    
-    const handleMarkAsResolved = (id: string) => {
-        updateServiceRequestStatus(id, 'Completed');
-        setSelectedRequest(null);
-        showToast('Request marked as resolved!', 'success');
+    const handleRefresh = () => {
+        void fetchRequests();
     };
 
     return (
         <>
             {selectedRequest && (
-                <RequestDetailModal 
+                <RequestDetailModal
                     request={selectedRequest}
-                    onClose={() => setSelectedRequest(null)}
-                    statusColors={statusColors}
-                    serviceIcons={serviceIcons}
-                    onMarkResolved={handleMarkAsResolved}
-                    showToast={showToast}
+                    activities={selectedActivities}
+                    onClose={() => setSelectedRequestId(null)}
                 />
             )}
             <div className="animate-fade-in space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
                         <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">My Service Requests</h1>
-                        <p className="mt-2 text-lg text-[var(--text-muted)]">Track your content, review and support requests related to your membership benefits.</p>
+                        <p className="mt-2 text-lg text-[var(--text-muted)]">Track every request you have submitted and see updates from our team in one place.</p>
                     </div>
-                    <button onClick={onNewRequest} className="py-2.5 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)] whitespace-nowrap">
-                        New Request
-                    </button>
-                </div>
-                
-                <div className="bg-[var(--bg-card)] p-3 rounded-xl shadow-md border border-[var(--border-subtle)] flex flex-wrap items-center justify-center sm:justify-start gap-x-6 gap-y-2">
-                    <SummaryPill label="Open" count={summaryCounts.Open} color="bg-gray-200 text-gray-800" />
-                    <SummaryPill label="In Progress" count={summaryCounts['In progress']} color="bg-info/20 text-blue-800" />
-                    <SummaryPill label="Completed" count={summaryCounts.Completed} color="bg-success/20 text-green-800" />
+                    <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                        <button onClick={handleRefresh} className="py-2.5 px-6 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">
+                            Refresh
+                        </button>
+                        <button onClick={onNewRequest} className="py-2.5 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)] whitespace-nowrap">
+                            New Request
+                        </button>
+                    </div>
                 </div>
 
-                <Card className="p-4">
+                <div className="bg-[var(--bg-card)] p-3 rounded-xl shadow-md border border-[var(--border-subtle)] flex flex-wrap items-center justify-center sm:justify-start gap-x-6 gap-y-2">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[var(--text-muted)]">Open:</span>
+                        <span className={`px-2.5 py-1 text-sm font-bold rounded-full ${STATUS_BADGE_CLASSES.open}`}>{summaryCounts.open}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[var(--text-muted)]">In Progress:</span>
+                        <span className={`px-2.5 py-1 text-sm font-bold rounded-full ${STATUS_BADGE_CLASSES.in_progress}`}>{summaryCounts.in_progress}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[var(--text-muted)]">Completed:</span>
+                        <span className={`px-2.5 py-1 text-sm font-bold rounded-full ${STATUS_BADGE_CLASSES.completed}`}>{summaryCounts.completed}</span>
+                    </div>
+                </div>
+
+                <Card className="p-4 space-y-4">
+                    {error && (
+                        <div className="rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">
+                            {error}
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="relative md:col-span-1">
                             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-muted)]" />
                             <input
                                 type="text"
-                                placeholder="Search by title or ID..."
+                                placeholder="Search by title or request ID..."
                                 value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
+                                onChange={(event) => setSearchTerm(event.target.value)}
                                 className="w-full pl-10 pr-4 py-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-subtle)] focus:ring-[var(--accent)] focus:border-[var(--accent)]"
                             />
                         </div>
                         <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label htmlFor="status-filter" className="sr-only">Filter by status</label>
-                                <select id="status-filter" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-subtle)] focus:ring-[var(--accent)] focus:border-[var(--accent)]">
-                                    {statusTypes.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label htmlFor="service-filter" className="sr-only">Filter by service type</label>
-                                <select id="service-filter" value={serviceFilter} onChange={e => setServiceFilter(e.target.value)} className="w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-subtle)] focus:ring-[var(--accent)] focus:border-[var(--accent)]">
-                                    {serviceTypes.map(s => <option key={s} value={s}>{s}</option>)}
-                                </select>
-                            </div>
+                            <select
+                                value={statusFilter}
+                                onChange={(event) => handleStatusFilterChange(event.target.value)}
+                                className="w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-subtle)] focus:ring-[var(--accent)] focus:border-[var(--accent)]"
+                            >
+                                {statusOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <select
+                                value={serviceFilter}
+                                onChange={(event) => setServiceFilter(event.target.value)}
+                                className="w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-subtle)] focus:ring-[var(--accent)] focus:border-[var(--accent)]"
+                            >
+                                {serviceTypes.map((service) => (
+                                    <option key={service} value={service}>
+                                        {service}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                     </div>
                 </Card>
 
-                {filteredRequests.length > 0 ? (
+                {isLoading && requests.length === 0 ? (
+                    <Card>
+                        <div className="flex items-center justify-center gap-3 py-12 text-[var(--text-muted)]">
+                            <span className="h-3 w-3 animate-pulse rounded-full bg-[var(--accent)]"></span>
+                            Loading your service requests...
+                        </div>
+                    </Card>
+                ) : filteredRequests.length > 0 ? (
                     <Card className="p-0 overflow-hidden">
-                        {/* Desktop Table */}
                         <div className="overflow-x-auto hidden md:block">
                             <table className="min-w-full">
                                 <thead className="bg-[var(--bg-subtle)]">
                                     <tr className="border-b border-[var(--border-subtle)]">
-                                        <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Date</th>
-                                        <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Service</th>
-                                        <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Request Title</th>
+                                        <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Created</th>
+                                        <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Request</th>
                                         <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Status</th>
+                                        <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Priority</th>
+                                        <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Admin Notes</th>
                                         <th className="py-3 px-4 text-right text-sm font-semibold text-[var(--text-muted)]">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[var(--border-subtle)]">
-                                    {filteredRequests.map(req => {
-                                        const Icon = serviceIcons[req.service] || ClipboardIcon;
+                                    {filteredRequests.map((request) => {
+                                        const Icon = getServiceIcon(request.requestType);
                                         return (
-                                            <tr key={req.id} onClick={() => setSelectedRequest(req)} className="cursor-pointer hover:bg-[var(--bg-subtle)]">
-                                                <td className="py-3 px-4 text-[var(--text-main)] whitespace-nowrap">{req.date}</td>
+                                            <tr
+                                                key={request.id}
+                                                className="cursor-pointer hover:bg-[var(--bg-subtle)]"
+                                                onClick={() => setSelectedRequestId(request.id)}
+                                            >
+                                                <td className="py-3 px-4 text-[var(--text-main)] whitespace-nowrap">{formatDate(request.createdAt) ?? '—'}</td>
                                                 <td className="py-3 px-4 text-[var(--text-main)]">
                                                     <div className="flex items-center gap-2">
                                                         <Icon className="w-5 h-5 text-[var(--text-muted)]" />
-                                                        <span>{req.service}</span>
+                                                        <div>
+                                                            <p className="font-semibold">{request.title}</p>
+                                                            <p className="text-xs text-[var(--text-muted)]">{request.requestType}</p>
+                                                        </div>
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-4 font-semibold text-[var(--text-main)]">{req.title}</td>
                                                 <td className="py-3 px-4">
-                                                    <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusColors[req.status]}`}>
-                                                        {req.status}
+                                                    <span className={`px-3 py-1 text-xs font-bold rounded-full ${STATUS_BADGE_CLASSES[request.status]}`}>
+                                                        {REQUEST_STATUS_LABELS[request.status]}
                                                     </span>
                                                 </td>
+                                                <td className="py-3 px-4">
+                                                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${PRIORITY_BADGE_CLASSES[request.priority]}`}>
+                                                        {REQUEST_PRIORITY_LABELS[request.priority]}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-4 text-sm text-[var(--text-muted)] max-w-xs truncate">
+                                                    {request.adminNotes ?? '—'}
+                                                </td>
                                                 <td className="py-3 px-4 text-right">
-                                                    <button onClick={() => setSelectedRequest(req)} className="p-2 text-[var(--text-muted)] hover:text-[var(--accent-dark)]"><EyeIcon className="w-5 h-5"/></button>
+                                                    <button
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            setSelectedRequestId(request.id);
+                                                        }}
+                                                        className="p-2 text-[var(--text-muted)] hover:text-[var(--accent-dark)]"
+                                                    >
+                                                        <EyeIcon className="w-5 h-5" />
+                                                    </button>
                                                 </td>
                                             </tr>
                                         );
@@ -898,25 +1233,32 @@ const MyRequests: React.FC<{ onNewRequest: () => void; showToast: (message: stri
                                 </tbody>
                             </table>
                         </div>
-                        {/* Mobile Cards */}
                         <div className="md:hidden divide-y divide-[var(--border-subtle)]">
-                            {filteredRequests.map(req => {
-                                const Icon = serviceIcons[req.service] || ClipboardIcon;
+                            {filteredRequests.map((request) => {
+                                const Icon = getServiceIcon(request.requestType);
                                 return (
-                                    <div key={req.id} className="p-4" onClick={() => setSelectedRequest(req)}>
+                                    <div key={request.id} className="p-4 space-y-3" onClick={() => setSelectedRequestId(request.id)}>
                                         <div className="flex justify-between items-start">
-                                            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-main)]">
-                                                <Icon className="w-5 h-5 text-[var(--text-muted)]" />
-                                                {req.service}
+                                            <div>
+                                                <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-main)]">
+                                                    <Icon className="w-5 h-5 text-[var(--text-muted)]" />
+                                                    {request.requestType}
+                                                </div>
+                                                <p className="mt-2 font-bold text-lg text-[var(--text-main)]">{request.title}</p>
                                             </div>
-                                            <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusColors[req.status]}`}>
-                                                {req.status}
+                                            <span className={`px-3 py-1 text-xs font-bold rounded-full ${STATUS_BADGE_CLASSES[request.status]}`}>
+                                                {REQUEST_STATUS_LABELS[request.status]}
                                             </span>
                                         </div>
-                                        <p className="mt-2 font-bold text-lg text-[var(--text-main)]">{req.title}</p>
-                                        <div className="flex justify-between items-center mt-3 text-sm text-[var(--text-muted)]">
-                                            <span>{req.id} • {req.date}</span>
-                                            <button onClick={() => setSelectedRequest(req)} className="font-semibold text-[var(--accent-dark)] hover:underline">View details →</button>
+                                        <p className="text-sm text-[var(--text-muted)]">{formatDate(request.createdAt) ?? '—'}</p>
+                                        <p className="text-sm text-[var(--text-muted)] line-clamp-2">
+                                            {request.adminNotes ?? 'No admin notes yet.'}
+                                        </p>
+                                        <div className="flex justify-between items-center text-sm text-[var(--text-muted)]">
+                                            <span className={`px-2 py-1 rounded-full ${PRIORITY_BADGE_CLASSES[request.priority]} font-semibold`}>
+                                                {REQUEST_PRIORITY_LABELS[request.priority]}
+                                            </span>
+                                            <button className="font-semibold text-[var(--accent-dark)] hover:underline">View details →</button>
                                         </div>
                                     </div>
                                 );
@@ -927,10 +1269,14 @@ const MyRequests: React.FC<{ onNewRequest: () => void; showToast: (message: stri
                     <Card>
                         <div className="text-center py-12">
                             <ClipboardIcon className="w-16 h-16 mx-auto text-gray-300" />
-                            <h3 className="mt-4 text-xl font-bold text-[var(--text-main)]">No requests found.</h3>
-                            <p className="mt-1 text-[var(--text-muted)]">{searchTerm || statusFilter !== 'All' || serviceFilter !== 'All' ? 'Try adjusting your filters.' : 'You haven\'t made any requests yet.'}</p>
+                            <h3 className="mt-4 text-xl font-bold text-[var(--text-main)]">No requests yet</h3>
+                            <p className="mt-1 text-[var(--text-muted)]">
+                                {searchTerm || statusFilter !== 'all' || serviceFilter !== 'All'
+                                    ? 'Try adjusting your filters to see more results.'
+                                    : 'Submit your first request to get help from our team.'}
+                            </p>
                             <button onClick={onNewRequest} className="mt-6 py-2.5 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)]">
-                                Create your first request
+                                Create a request
                             </button>
                         </div>
                     </Card>
@@ -3075,6 +3421,7 @@ const MemberDashboard: React.FC = () => {
     const userMenuRef = useRef<HTMLDivElement>(null);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isNewRequestModalOpen, setNewRequestModalOpen] = useState(false);
+    const [requestRefreshKey, setRequestRefreshKey] = useState(0);
     const [profile, setProfile] = useState<SupabaseProfile | null>(null);
     const [membership, setMembership] = useState<SupabaseMembership | null>(null);
     const [subscription, setSubscription] = useState<SupabaseSubscription | null>(null);
@@ -3422,7 +3769,13 @@ const MemberDashboard: React.FC = () => {
             case 'overview':
                 return <MemberOverview data={overviewData} onNavigate={setActiveView} onNewRequest={() => setNewRequestModalOpen(true)} />;
             case 'my-requests':
-                return <MyRequests onNewRequest={() => setNewRequestModalOpen(true)} showToast={showToast} />;
+                return (
+                    <MyRequests
+                        onNewRequest={() => setNewRequestModalOpen(true)}
+                        showToast={showToast}
+                        refreshKey={requestRefreshKey}
+                    />
+                );
             case 'profile':
                 return <MemberProfile showToast={showToast} />;
             case 'badge':
@@ -3467,9 +3820,10 @@ const MemberDashboard: React.FC = () => {
                 </div>
             )}
              {isNewRequestModalOpen && (
-                <NewRequestModal 
-                    onClose={() => setNewRequestModalOpen(false)} 
+                <NewRequestModal
+                    onClose={() => setNewRequestModalOpen(false)}
                     showToast={showToast}
+                    onCreated={() => setRequestRefreshKey((previous) => previous + 1)}
                 />
              )}
              {/* Mobile Sidebar Overlay */}
@@ -3550,209 +3904,312 @@ const MemberDashboard: React.FC = () => {
 // --- Modals for MyRequests ---
 
 const RequestDetailModal: React.FC<{
-    request: ServiceRequest;
+    request: MemberServiceRequest;
+    activities: ServiceRequestActivityLog[];
     onClose: () => void;
-    statusColors: { [key: string]: string };
-    serviceIcons: { [key: string]: React.FC<{ className?: string }> };
-    onMarkResolved: (id: string) => void;
-    showToast: (message: string, type: 'success' | 'error') => void;
-}> = ({ request, onClose, statusColors, serviceIcons, onMarkResolved, showToast }) => {
-    const { currentUser } = useAuth();
-    const ServiceIcon = serviceIcons[request.service] || ClipboardIcon;
-    const canResolve = request.status === 'Open' || request.status === 'In progress';
-
-    const linkedBenefit = useMemo(() => {
-        if (!currentUser?.benefits) return null;
-        const serviceToBenefitMap: { [key: string]: string } = {
-            'SEO Blog Post': 'SEO Blog Posts',
-            'Website Review': 'Quarterly Website Review',
-        };
-        const benefitTitle = serviceToBenefitMap[request.service];
-        if (!benefitTitle) return null;
-        
-        return currentUser.benefits.find(b => b.title === benefitTitle);
-    }, [currentUser?.benefits, request.service]);
+}> = ({ request, activities, onClose }) => {
+    const ServiceIcon = getServiceIcon(request.requestType);
+    const [isActivityOpen, setIsActivityOpen] = useState(true);
 
     return (
         <div className="fixed inset-0 bg-[var(--bg-overlay)] flex items-center justify-center z-50 p-4 animate-fade-in" onClick={onClose}>
-            <div className="bg-[var(--bg-card)] rounded-2xl shadow-2xl w-full max-w-2xl md:max-h-[90vh] flex flex-col h-full md:h-auto" onClick={e => e.stopPropagation()}>
-                <header className="p-6 border-b border-[var(--border-subtle)] flex justify-between items-start">
+            <div className="bg-[var(--bg-card)] rounded-2xl shadow-2xl w-full max-w-3xl md:max-h-[90vh] flex flex-col h-full md:h-auto" onClick={(event) => event.stopPropagation()}>
+                <header className="p-6 border-b border-[var(--border-subtle)] flex justify-between items-start gap-4">
                     <div>
-                        <h2 className="font-playfair text-2xl md:text-3xl font-bold text-[var(--text-main)]">{request.title}</h2>
-                        <div className="flex items-center gap-4 text-sm text-[var(--text-muted)] mt-2">
-                            <span className="flex items-center gap-1.5"><ServiceIcon className="w-4 h-4" /> {request.service}</span>
+                        <div className="flex items-center gap-3 text-sm text-[var(--text-muted)] mb-2">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--bg-subtle)] font-semibold text-[var(--text-main)]">
+                                <ServiceIcon className="w-4 h-4 text-[var(--text-muted)]" />
+                                {request.requestType}
+                            </span>
                             <span>•</span>
                             <span>{request.id}</span>
-                            <span>•</span>
-                            <span>{request.date}</span>
                         </div>
+                        <h2 className="font-playfair text-2xl md:text-3xl font-bold text-[var(--text-main)]">{request.title}</h2>
+                        <p className="text-sm text-[var(--text-muted)] mt-2">
+                            Created {formatDateTime(request.createdAt) ?? '—'}
+                            {request.updatedAt ? ` • Updated ${formatDateTime(request.updatedAt) ?? '—'}` : ''}
+                        </p>
                     </div>
-                    <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text-main)] p-1 -mt-2 -mr-2"><XMarkIcon className="w-7 h-7"/></button>
+                    <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text-main)]">
+                        <XMarkIcon className="w-7 h-7" />
+                    </button>
                 </header>
-                
-                <div className="p-6 overflow-y-auto flex-grow">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="md:col-span-2 space-y-6">
+
+                <div className="p-6 overflow-y-auto flex-grow space-y-8">
+                    <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
                             <div>
-                                <h3 className="font-semibold text-[var(--text-main)] mb-2">Description</h3>
-                                <p className="text-[var(--text-muted)] whitespace-pre-wrap">{request.description || 'No description provided.'}</p>
+                                <h3 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wide">Status</h3>
+                                <span className={`inline-flex items-center px-3 py-1 mt-2 text-xs font-bold rounded-full ${STATUS_BADGE_CLASSES[request.status]}`}>
+                                    {REQUEST_STATUS_LABELS[request.status]}
+                                </span>
                             </div>
-                            {request.attachments && request.attachments.length > 0 && (
-                                <div>
-                                    <h3 className="font-semibold text-[var(--text-main)] mb-2">Attachments</h3>
-                                    <ul className="space-y-2">
-                                        {request.attachments.map(file => (
-                                            <li key={file.name} className="flex items-center justify-between p-2 bg-[var(--bg-subtle)] rounded-lg border border-[var(--border-subtle)]">
-                                                <div className="flex items-center gap-2">
-                                                    <ArrowDownTrayIcon className="w-5 h-5 text-[var(--text-muted)]"/>
-                                                    <span className="font-medium text-[var(--text-main)]">{file.name}</span>
-                                                    <span className="text-sm text-[var(--text-muted)]">({file.size})</span>
+                            <div>
+                                <h3 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wide">Priority</h3>
+                                <span className={`inline-flex items-center px-3 py-1 mt-2 text-xs font-semibold rounded-full ${PRIORITY_BADGE_CLASSES[request.priority]}`}>
+                                    {REQUEST_PRIORITY_LABELS[request.priority]}
+                                </span>
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wide">Assigned Admin</h3>
+                                <p className="text-[var(--text-main)] font-medium mt-1">
+                                    {request.assignedAdminName ?? request.assignedAdminId ?? 'Unassigned'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <h3 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wide">Admin Notes</h3>
+                                <p className="text-[var(--text-main)] mt-2 whitespace-pre-wrap">
+                                    {request.adminNotes ?? 'No notes added yet.'}
+                                </p>
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wide">Profile ID</h3>
+                                <p className="text-[var(--text-main)] mt-2 font-mono text-sm">{request.profileId}</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section>
+                        <h3 className="font-semibold text-[var(--text-main)] mb-2">Description</h3>
+                        <p className="text-[var(--text-muted)] whitespace-pre-wrap bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-lg p-4">
+                            {request.description || 'No description was provided with this request.'}
+                        </p>
+                    </section>
+
+                    <section className="border border-[var(--border-subtle)] rounded-xl overflow-hidden">
+                        <button
+                            type="button"
+                            onClick={() => setIsActivityOpen((previous) => !previous)}
+                            className="w-full flex items-center justify-between px-4 py-3 bg-[var(--bg-subtle)] text-[var(--text-main)] font-semibold"
+                        >
+                            <span>Activity ({activities.length})</span>
+                            <ChevronDownIcon className={`w-5 h-5 transition-transform ${isActivityOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isActivityOpen && (
+                            <div className="max-h-80 overflow-y-auto">
+                                {activities.length === 0 ? (
+                                    <p className="px-4 py-6 text-sm text-[var(--text-muted)]">No updates have been recorded yet.</p>
+                                ) : (
+                                    <ul className="divide-y divide-[var(--border-subtle)]">
+                                        {activities.map((activity) => (
+                                            <li key={activity.id} className="px-4 py-3 text-sm">
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div>
+                                                        <p className="font-semibold text-[var(--text-main)]">
+                                                            {activity.description ?? activity.action ?? 'Activity recorded'}
+                                                        </p>
+                                                        {(activity.actorName || activity.actorUserId) && (
+                                                            <p className="text-xs text-[var(--text-muted)] mt-1">
+                                                                by {activity.actorName ?? activity.actorUserId}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-xs text-[var(--text-muted)]">
+                                                        {formatDateTime(activity.createdAt) ?? '—'}
+                                                    </span>
                                                 </div>
-                                                <button className="text-sm font-semibold text-[var(--accent-dark)] hover:underline">Download</button>
                                             </li>
                                         ))}
                                     </ul>
-                                </div>
-                            )}
-                            <div>
-                                <h3 className="font-semibold text-[var(--text-main)] mb-2">Add Comment</h3>
-                                <textarea rows={3} placeholder="Add an update or ask a question..." className="w-full p-2 border rounded-lg focus:ring-[var(--accent)] focus:border-[var(--accent)] bg-[var(--bg-input)]"></textarea>
-                                <div className="text-right mt-2">
-                                    <button onClick={() => showToast("Comments are for display only.", "success")} className="py-2 px-5 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-sm hover:bg-[var(--accent-light)]">Send</button>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="md:col-span-1 space-y-6">
-                             <div className="p-4 bg-[var(--bg-subtle)] rounded-lg border border-[var(--border-subtle)]">
-                                <h3 className="font-semibold text-[var(--text-main)] mb-2">Status</h3>
-                                <span className={`px-3 py-1 text-sm font-bold rounded-full ${statusColors[request.status]}`}>{request.status}</span>
-                                {linkedBenefit && (
-                                    <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]">
-                                        <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)]">Linked Benefit</h4>
-                                        <p className="text-sm font-semibold text-[var(--text-main)] mt-1">{linkedBenefit.title}</p>
-                                        <p className="text-sm text-[var(--text-muted)]">{linkedBenefit.used} of {linkedBenefit.quota} used</p>
-                                    </div>
                                 )}
                             </div>
-                            <div>
-                                <h3 className="font-semibold text-[var(--text-main)] mb-3">Timeline</h3>
-                                <ul className="space-y-4">
-                                    {request.timeline?.map((item, index) => (
-                                        <li key={index} className="flex items-start gap-3 relative">
-                                            <div className={`absolute left-2.5 top-2.5 w-0.5 h-full ${index === request.timeline!.length - 1 ? '' : 'bg-[var(--border-subtle)]'}`}></div>
-                                            <div className="w-5 h-5 bg-[var(--accent)] rounded-full z-10"></div>
-                                            <div>
-                                                <p className="font-semibold text-[var(--text-main)] text-sm">{item.event}</p>
-                                                <p className="text-xs text-[var(--text-muted)]">{item.date}</p>
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
+                        )}
+                    </section>
                 </div>
-                
-                {canResolve && (
-                    <footer className="p-4 bg-[var(--bg-subtle)] border-t border-[var(--border-subtle)] flex justify-end">
-                        <button onClick={() => onMarkResolved(request.id)} className="py-2 px-5 bg-success text-white font-bold rounded-lg shadow-sm hover:bg-green-600 flex items-center gap-2">
-                            <CheckCircleIcon className="w-5 h-5" /> Mark as resolved
-                        </button>
-                    </footer>
-                )}
             </div>
         </div>
     );
 };
 
+
 const NewRequestModal: React.FC<{
     onClose: () => void;
     showToast: (message: string, type: 'success' | 'error') => void;
-}> = ({ onClose, showToast }) => {
-    const { currentUser, addServiceRequest } = useAuth();
-    const [service, setService] = useState<ServiceRequest['service']>('SEO Blog Post');
+    onCreated: () => void;
+}> = ({ onClose, showToast, onCreated }) => {
+    const { currentUser, session } = useAuth();
+    const [requestType, setRequestType] = useState('SEO Blog Post');
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
-    const [priority, setPriority] = useState<ServiceRequest['priority']>('Normal');
-    
+    const [priority, setPriority] = useState<ServiceRequestPriority>('medium');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [formError, setFormError] = useState<string | null>(null);
+
+    const priorityLabels: Record<ServiceRequestPriority, string> = {
+        low: 'Low',
+        medium: 'Medium',
+        high: 'High',
+    };
+
+    const requestOptions = [
+        'SEO Blog Post',
+        'Spotlight Article',
+        'Website Review',
+        'Badge Support',
+        'Other',
+    ];
+
     const benefitNote = useMemo(() => {
         if (!currentUser?.benefits) return '';
-        if (service === 'SEO Blog Post') {
-            const benefit = currentUser.benefits.find(b => b.title === 'SEO Blog Posts');
-            if(benefit && benefit.quota !== undefined && benefit.used !== undefined) {
-                return `You have ${benefit.quota - benefit.used} of ${benefit.quota} SEO blog posts remaining this year.`;
+        if (requestType === 'SEO Blog Post') {
+            const benefit = currentUser.benefits.find((benefit) => benefit.title === 'SEO Blog Posts');
+            if (benefit && benefit.quota !== undefined && benefit.used !== undefined) {
+                const remaining = Math.max(benefit.quota - benefit.used, 0);
+                return `You have ${remaining} of ${benefit.quota} SEO blog posts remaining this year.`;
             }
         }
-        if (service === 'Website Review') {
+        if (requestType === 'Website Review') {
             return 'Your plan includes quarterly website reviews.';
         }
         return '';
-    }, [service, currentUser?.benefits]);
-    
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if(!title.trim() || !description.trim()) {
-            showToast('Title and description are required.', 'error');
+    }, [currentUser?.benefits, requestType]);
+
+    const handleSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
+        setFormError(null);
+
+        if (!session?.user?.id) {
+            setFormError('You need to be logged in to create a request.');
             return;
         }
-        addServiceRequest({ service, title, description, priority });
-        showToast('Request created! Our team will review it within 1–2 business days.', 'success');
-        onClose();
+
+        if (!title.trim() || !description.trim()) {
+            setFormError('Title and description are required.');
+            return;
+        }
+
+        setIsSubmitting(true);
+
+        try {
+            const { error } = await supabase
+                .from('service_requests')
+                .insert({
+                    profile_id: session.user.id,
+                    request_type: requestType,
+                    title: title.trim(),
+                    description: description.trim(),
+                    priority,
+                    status: 'open',
+                });
+
+            if (error) {
+                throw error;
+            }
+
+            showToast('Request created! Our team will review it within 1–2 business days.', 'success');
+            onCreated();
+            onClose();
+        } catch (submitError) {
+            console.error('Failed to create service request', submitError);
+            showToast('We could not submit your request. Please try again.', 'error');
+            setFormError('Unable to submit the request.');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
         <div className="fixed inset-0 bg-[var(--bg-overlay)] flex items-center justify-center z-50 p-4 animate-fade-in" onClick={onClose}>
-            <form onSubmit={handleSubmit} className="bg-[var(--bg-card)] rounded-2xl shadow-2xl w-full max-w-2xl md:max-h-[90vh] flex flex-col h-full md:h-auto" onClick={e => e.stopPropagation()}>
+            <form onSubmit={handleSubmit} className="bg-[var(--bg-card)] rounded-2xl shadow-2xl w-full max-w-2xl md:max-h-[90vh] flex flex-col h-full md:h-auto" onClick={(event) => event.stopPropagation()}>
                 <header className="p-6 border-b border-[var(--border-subtle)] flex justify-between items-center">
-                    <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">New Service Request</h2>
-                    <button type="button" onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text-main)]"><XMarkIcon className="w-7 h-7"/></button>
+                    <div>
+                        <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">New Service Request</h2>
+                        <p className="text-sm text-[var(--text-muted)] mt-1">Fill out the details below and our team will get started right away.</p>
+                    </div>
+                    <button type="button" onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text-main)]">
+                        <XMarkIcon className="w-7 h-7" />
+                    </button>
                 </header>
                 <div className="p-6 flex-grow overflow-y-auto space-y-6">
+                    {formError && (
+                        <div className="rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">{formError}</div>
+                    )}
                     <p className="p-3 bg-[var(--bg-subtle)] rounded-lg text-sm text-[var(--text-main)] border border-[var(--border-subtle)]">Requests that are part of your plan (e.g. SEO posts, website reviews) will be counted against your benefits.</p>
-                    
+
                     <div>
                         <label htmlFor="service-type" className="block text-sm font-medium text-[var(--text-muted)] mb-1">Service Type</label>
-                        <select id="service-type" value={service} onChange={e => setService(e.target.value as any)} className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]">
-                            <option>SEO Blog Post</option>
-                            <option>Spotlight Article</option>
-                            <option>Website Review</option>
-                            <option>Badge Support</option>
-                            <option>Other</option>
+                        <select
+                            id="service-type"
+                            value={requestType}
+                            onChange={(event) => setRequestType(event.target.value)}
+                            className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]"
+                        >
+                            {requestOptions.map((option) => (
+                                <option key={option} value={option}>
+                                    {option}
+                                </option>
+                            ))}
                         </select>
                         {benefitNote && <p className="mt-2 text-sm text-info font-medium">{benefitNote}</p>}
                     </div>
 
                     <div>
                         <label htmlFor="request-title" className="block text-sm font-medium text-[var(--text-muted)] mb-1">Request Title</label>
-                        <input type="text" id="request-title" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g., Article on Emergency Fire Restoration" className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]" />
+                        <input
+                            type="text"
+                            id="request-title"
+                            value={title}
+                            onChange={(event) => setTitle(event.target.value)}
+                            placeholder="e.g., Article on Emergency Fire Restoration"
+                            className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]"
+                        />
                     </div>
 
                     <div>
                         <label htmlFor="description" className="block text-sm font-medium text-[var(--text-muted)] mb-1">Description / Brief</label>
-                        <textarea id="description" value={description} onChange={e => setDescription(e.target.value)} rows={5} placeholder="Please provide as much detail as possible, including any target keywords, desired tone, or specific instructions." className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]"></textarea>
+                        <textarea
+                            id="description"
+                            value={description}
+                            onChange={(event) => setDescription(event.target.value)}
+                            rows={5}
+                            placeholder="Please provide as much detail as possible, including any target keywords, desired tone, or specific instructions."
+                            className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]"
+                        ></textarea>
                     </div>
-                    
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div>
-                             <label htmlFor="priority" className="block text-sm font-medium text-[var(--text-muted)] mb-1">Priority</label>
-                            <select id="priority" value={priority} onChange={e => setPriority(e.target.value as any)} className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]">
-                                <option>Low</option>
-                                <option>Normal</option>
-                                <option>High</option>
+                            <label htmlFor="priority" className="block text-sm font-medium text-[var(--text-muted)] mb-1">Priority</label>
+                            <select
+                                id="priority"
+                                value={priority}
+                                onChange={(event) => setPriority(event.target.value as ServiceRequestPriority)}
+                                className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]"
+                            >
+                                {(Object.keys(priorityLabels) as ServiceRequestPriority[]).map((value) => (
+                                    <option key={value} value={value}>
+                                        {priorityLabels[value]}
+                                    </option>
+                                ))}
                             </select>
                         </div>
                         <div>
-                             <label className="block text-sm font-medium text-[var(--text-muted)] mb-1">Attachments (optional)</label>
+                            <label className="block text-sm font-medium text-[var(--text-muted)] mb-1">Attachments (optional)</label>
                             <div className="flex items-center justify-center w-full p-3 border-2 border-dashed border-[var(--border-subtle)] rounded-lg bg-[var(--bg-subtle)] text-[var(--text-muted)]">
-                                <UploadIcon className="w-6 h-6 mr-2"/>
+                                <UploadIcon className="w-6 h-6 mr-2" />
                                 <span>Click or drag to upload files</span>
                             </div>
                         </div>
                     </div>
                 </div>
                 <footer className="p-4 bg-[var(--bg-subtle)] border-t border-[var(--border-subtle)] flex flex-col sm:flex-row justify-end items-center gap-4">
-                     <button type="button" onClick={onClose} className="w-full sm:w-auto py-2.5 px-6 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">Cancel</button>
-                    <button type="submit" className="w-full sm:w-auto py-2.5 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)]">Submit Request</button>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="w-full sm:w-auto py-2.5 px-6 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]"
+                        disabled={isSubmitting}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        className="w-full sm:w-auto py-2.5 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)] disabled:opacity-70 disabled:cursor-not-allowed"
+                        disabled={isSubmitting}
+                    >
+                        {isSubmitting ? 'Submitting...' : 'Submit Request'}
+                    </button>
                 </footer>
             </form>
         </div>

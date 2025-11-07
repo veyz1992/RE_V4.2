@@ -17,13 +17,11 @@ import { supabase } from '@/lib/supabase';
 import {
   User,
   Role,
-  ServiceRequest,
   Answers,
   ScoreBreakdown,
   StoredAssessmentResult,
   Benefit,
 } from './types';
-import { SERVICE_REQUESTS } from './lib/mockData';
 
 interface AuthContextValue {
   session: Session | null;
@@ -31,19 +29,8 @@ interface AuthContextValue {
   isLoading: boolean;
   currentUser: User | null;
   isAdmin: boolean;
-  serviceRequests: ServiceRequest[];
   login: (email: string) => Promise<void>;
   logout: () => Promise<void>;
-  addServiceRequest: (
-    request: Omit<
-      ServiceRequest,
-      'id' | 'status' | 'date' | 'userId' | 'userName' | 'timeline' | 'attachments'
-    >,
-  ) => void;
-  updateServiceRequestStatus: (
-    id: string | number,
-    status: ServiceRequest['status'],
-  ) => void;
   updateUser: (updatedUser: User) => void;
 }
 
@@ -179,7 +166,6 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>(SERVICE_REQUESTS);
 
   useEffect(() => {
     let isMounted = true;
@@ -241,10 +227,12 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           .eq('user_id', session.user.id)
           .maybeSingle();
 
-        if (!error && data?.is_admin === true) {
-          admin = true;
-        } else if (error && error.code !== 'PGRST116') {
+        if (error && error.code !== 'PGRST116') {
           console.error('Failed to determine admin status', error);
+        }
+
+        if (data) {
+          admin = data.is_admin === undefined ? true : data.is_admin === true;
         }
       } catch (error) {
         console.error('Unexpected error determining admin status', error);
@@ -302,47 +290,6 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     }
   }, []);
 
-  const addServiceRequest = useCallback(
-    (
-      request: Omit<
-        ServiceRequest,
-        'id' | 'status' | 'date' | 'userId' | 'userName' | 'timeline' | 'attachments'
-      >,
-    ) => {
-      if (!currentUser) {
-        return;
-      }
-      const newRequest: ServiceRequest = {
-        ...request,
-        id: `REQ-${Date.now()}`,
-        status: 'Open',
-        date: new Date().toISOString().split('T')[0],
-        userId: currentUser.id,
-        userName: currentUser.name,
-        timeline: [
-          {
-            event: 'Request submitted',
-            date: new Date().toISOString().split('T')[0],
-          },
-        ],
-      };
-
-      setServiceRequests((previous) => [newRequest, ...previous]);
-    },
-    [currentUser],
-  );
-
-  const updateServiceRequestStatus = useCallback(
-    (id: string | number, status: ServiceRequest['status']) => {
-      setServiceRequests((previous) =>
-        previous.map((request) =>
-          request.id === id ? { ...request, status } : request,
-        ),
-      );
-    },
-    [],
-  );
-
   const updateUser = useCallback((updatedUser: User) => {
     setCurrentUser(updatedUser);
   }, []);
@@ -354,11 +301,8 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       isLoading,
       currentUser,
       isAdmin,
-      serviceRequests,
       login,
       logout,
-      addServiceRequest,
-      updateServiceRequestStatus,
       updateUser,
     }),
     [
@@ -366,11 +310,8 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       isLoading,
       currentUser,
       isAdmin,
-      serviceRequests,
       login,
       logout,
-      addServiceRequest,
-      updateServiceRequestStatus,
       updateUser,
     ],
   );
