@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { HomeIcon, UsersIcon, BriefcaseIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon, CurrencyDollarIcon, UserCircleIcon, ChevronDownIcon } from '../icons';
-import { useAppContext } from '../../App';
+import { useAuth } from '../../App';
 import AdminOverview from './AdminOverview';
 import PendingVerifications from './PendingVerifications';
 import ClientManagement from './ClientManagement';
@@ -31,7 +31,7 @@ const SidebarLink: React.FC<{ icon: React.ReactNode; label: string; isActive: bo
 type AdminView = 'overview' | 'members' | 'verifications' | 'serviceRequests' | 'billing' | 'settings';
 
 const AdminDashboard: React.FC = () => {
-    const { currentUser, logout } = useAppContext();
+    const { currentUser, logout } = useAuth();
     const [activeView, setActiveView] = useState<AdminView>('overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
