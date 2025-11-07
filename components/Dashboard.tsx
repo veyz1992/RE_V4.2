@@ -6,6 +6,7 @@ import ConfirmationModal from './admin/ConfirmationModal';
 import MemberBlueprint from './MemberBlueprint';
 import ThemeToggle from './ThemeToggle';
 import { ADMIN_MEMBERS } from '../lib/mockData';
+import { supabase } from '@/lib/supabase';
 
 // --- Reusable Components ---
 const SidebarLink: React.FC<{ icon: React.ReactNode; label: string; isActive: boolean; onClick: () => void; attention?: boolean }> = ({ icon, label, isActive, onClick, attention }) => (
@@ -35,91 +36,450 @@ const PlaceholderView: React.FC<{ title: string }> = ({ title }) => (
 
 // --- Page Components (Internal to Dashboard) ---
 
-// --- Dummy Data ---
-const memberData = {
-    status: 'active', // Can be 'pending' or 'actionRequired' for testing
-    plan: {
-      tier: 'Gold',
-      priceMonthly: 229,
-    },
-    verification: {
-        validUntil: '12/31/2025',
-        rating: 'A+',
-    },
+type MemberStatus = 'active' | 'pending' | 'actionRequired';
+
+type IconComponent = React.ComponentType<{ className?: string }>;
+
+interface OverviewBenefitItem {
+    name: string;
+    progress?: string | null;
+    Icon: IconComponent;
+}
+
+interface ActivityLogItem {
+    description: string;
+    timestamp: string;
+    Icon: IconComponent;
+}
+
+interface OverviewData {
+    status: MemberStatus;
+    verificationValidUntil?: string | null;
+    verificationRating?: string | null;
     stats: {
-        profileViews: { value: 132, period: 'This month' },
-        badgeClicks: { value: 24, period: 'This week' },
-        currentPlan: 'Gold – $229/mo',
-        nextRenewal: 'Mar 15, 2025',
-    },
+        profileViewsValue?: number | null;
+        profileViewsPeriod?: string | null;
+        badgeClicksValue?: number | null;
+        badgeClicksPeriod?: string | null;
+        planName?: string | null;
+        planPrice?: string | null;
+        nextRenewal?: string | null;
+    };
     benefits: {
-        planName: 'Gold Member Plan',
-        description: 'Your current plan gives you access to premium features to boost your online presence and credibility.',
-        items: [
-            { name: '2 SEO blog posts per year', progress: '1 of 2 used', icon: NewspaperIcon },
-            { name: 'Quarterly website review', progress: 'Next scheduled: May 2025', icon: MagnifyingGlassIcon },
-            { name: 'Trust badge & listing in network', progress: 'Active', icon: ShieldCheckIcon },
-        ]
-    },
-    activityLog: [
-        { description: 'New 5-star Google review detected', timestamp: '2 hours ago', icon: StarIcon },
-        { description: "SEO blog post 'Water Damage Checklist' published", timestamp: 'Yesterday', icon: NewspaperIcon },
-        { description: 'Badge downloaded', timestamp: '3 days ago', icon: ArrowDownTrayIcon },
-        { description: 'Verification renewed', timestamp: '1 week ago', icon: ShieldCheckIcon },
-        { description: 'Plan upgraded to Gold', timestamp: '3 weeks ago', icon: ArrowTrendingUpIcon },
-    ]
-};
+        description?: string | null;
+        items: OverviewBenefitItem[];
+    };
+    activityLog: ActivityLogItem[];
+}
 
 type DocumentStatus = 'approved' | 'underReview' | 'rejected' | 'needsReplacement' | 'notUploaded';
 
-const documentsData = [
-  {
-    name: 'Contractor License',
-    status: 'approved' as DocumentStatus,
-    uploadDate: 'Nov 2, 2025',
-    adminNote: 'Verified with state board. All clear.',
-    fileName: 'contractor-license-2025.pdf',
-    fileSize: '2.1 MB',
-    uploadTimestamp: 'Nov 2, 2025 at 10:45 AM',
-  },
-  {
-    name: 'Liability Insurance Certificate',
-    status: 'underReview' as DocumentStatus,
-    uploadDate: 'Nov 15, 2025',
-    adminNote: null,
-    fileName: 'liability-insurance-q4.pdf',
-    fileSize: '850 KB',
-    uploadTimestamp: 'Nov 15, 2025 at 2:30 PM',
-  },
-  {
-    name: 'Workers’ Compensation Insurance',
-    status: 'needsReplacement' as DocumentStatus,
-    uploadDate: 'Oct 5, 2025',
-    adminNote: 'Policy expired last month. Please upload the renewed certificate.',
-    fileName: 'workers-comp-2024-final.jpg',
-    fileSize: '4.5 MB',
-    uploadTimestamp: 'Oct 5, 2025 at 9:00 AM',
-  },
-  {
-    name: 'IICRC Water Damage Certification',
-    status: 'notUploaded' as DocumentStatus,
-    uploadDate: null,
-    adminNote: null,
-    fileName: null,
-    fileSize: null,
-    uploadTimestamp: null,
-  },
-];
+type DashboardDocument = {
+    id: string | number;
+    name: string;
+    status: DocumentStatus;
+    uploadDate: string | null;
+    adminNote: string | null;
+    fileName: string | null;
+    fileSize: string | null;
+    uploadTimestamp: string | null;
+    rawTimestamp?: string | null;
+};
+
+type DashboardServiceRequestStatus = 'Open' | 'In progress' | 'Completed' | 'Canceled';
+
+type DashboardServiceRequest = {
+    id: string;
+    service: string;
+    title: string;
+    status: DashboardServiceRequestStatus;
+    createdAt: string | null;
+    priority?: string | null;
+};
+
+interface SupabaseProfile {
+    id: string;
+    verification_status?: string | null;
+    verification_valid_until?: string | null;
+    verification_rating?: string | null;
+    badge_rating?: string | null;
+    profile_views?: number | null;
+    profile_views_value?: number | null;
+    profile_views_period?: string | null;
+    badge_clicks?: number | null;
+    badge_clicks_value?: number | null;
+    badge_clicks_period?: string | null;
+    current_plan_name?: string | null;
+    current_plan_price?: string | null;
+    next_renewal?: string | null;
+    benefits_description?: string | null;
+    benefits?: unknown;
+    activity_log?: unknown;
+    business_name?: string | null;
+    [key: string]: unknown;
+}
+
+interface SupabaseMembership {
+    id: string | number;
+    profile_id?: string | null;
+    plan_name?: string | null;
+    plan_tier?: string | null;
+    price_monthly?: number | null;
+    price?: number | string | null;
+    status?: string | null;
+    verification_valid_until?: string | null;
+    badge_rating?: string | null;
+    benefits?: unknown;
+    benefits_description?: string | null;
+    renewal_date?: string | null;
+    created_at?: string | null;
+    [key: string]: unknown;
+}
+
+interface SupabaseSubscription {
+    id: string | number;
+    profile_id?: string | null;
+    plan_name?: string | null;
+    price_monthly?: number | null;
+    price?: number | string | null;
+    status?: string | null;
+    next_renewal?: string | null;
+    renewal_date?: string | null;
+    current_period_end?: string | null;
+    created_at?: string | null;
+    [key: string]: unknown;
+}
+
+interface SupabaseMemberDocument {
+    id: string | number;
+    profile_id?: string | null;
+    document_name?: string | null;
+    document_type?: string | null;
+    status?: string | null;
+    uploaded_at?: string | null;
+    updated_at?: string | null;
+    created_at?: string | null;
+    admin_note?: string | null;
+    file_name?: string | null;
+    file_size?: string | number | null;
+    [key: string]: unknown;
+}
+
+interface SupabaseServiceRequest {
+    id: string | number;
+    profile_id?: string | null;
+    service?: string | null;
+    title?: string | null;
+    status?: string | null;
+    priority?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+    [key: string]: unknown;
+}
+
+const ICON_MAP: Record<string, IconComponent> = {
+    NewspaperIcon,
+    MagnifyingGlassIcon,
+    ShieldCheckIcon,
+    ArrowDownTrayIcon,
+    ArrowTrendingUpIcon,
+    StarIcon,
+    CreditCardIcon,
+    CheckCircleIcon,
+    ClockIcon,
+    ExclamationTriangleIcon,
+    ChartBarIcon,
+    ChatBubbleOvalLeftEllipsisIcon,
+    ClipboardIcon,
+    LightBulbIcon,
+    BriefcaseIcon,
+    KeyIcon,
+};
+
+const parsePossibleJson = <T,>(value: unknown): T | null => {
+    if (!value) {
+        return null;
+    }
+
+    if (typeof value === 'object') {
+        return value as T;
+    }
+
+    if (typeof value === 'string') {
+        try {
+            return JSON.parse(value) as T;
+        } catch (error) {
+            console.warn('Failed to parse JSON payload', error);
+            return null;
+        }
+    }
+
+    return null;
+};
+
+const formatDate = (value?: string | null): string | null => {
+    if (!value) {
+        return null;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+    });
+};
+
+const formatDateTime = (value?: string | null): string | null => {
+    if (!value) {
+        return null;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+};
+
+const formatRelativeTime = (value?: string | null): string => {
+    if (!value) {
+        return 'Just now';
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    const diffMs = Date.now() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+    if (diffMinutes < 1) {
+        return 'Just now';
+    }
+    if (diffMinutes < 60) {
+        return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
+    }
+
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) {
+        return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+    }
+
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) {
+        return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    }
+
+    return formatDate(value) ?? value;
+};
+
+const formatCurrency = (value?: number | string | null): string | null => {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    if (typeof value === 'number') {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+        }).format(value);
+    }
+
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+        }).format(parsed);
+    }
+
+    return value;
+};
+
+const formatFileSize = (value?: string | number | null): string | null => {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    if (typeof value === 'string') {
+        const parsed = Number(value);
+        if (!Number.isNaN(parsed)) {
+            return formatFileSize(parsed);
+        }
+        return value;
+    }
+
+    if (value === 0) {
+        return '0 B';
+    }
+
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+    const size = value / 1024 ** exponent;
+    return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[exponent]}`;
+};
+
+const normalizeMemberStatus = (status?: string | null): MemberStatus => {
+    const normalized = status?.toLowerCase();
+
+    if (!normalized) {
+        return 'pending';
+    }
+
+    if (normalized.includes('active') || normalized.includes('verified')) {
+        return 'active';
+    }
+
+    if (normalized.includes('action') || normalized.includes('needs')) {
+        return 'actionRequired';
+    }
+
+    return 'pending';
+};
+
+const normalizeDocumentStatus = (status?: string | null): DocumentStatus => {
+    const normalized = status?.toLowerCase();
+
+    if (!normalized) {
+        return 'notUploaded';
+    }
+
+    if (normalized.includes('approve') || normalized.includes('valid')) {
+        return 'approved';
+    }
+
+    if (normalized.includes('review') || normalized.includes('pending')) {
+        return 'underReview';
+    }
+
+    if (normalized.includes('reject') || normalized.includes('declin')) {
+        return 'rejected';
+    }
+
+    if (normalized.includes('replace') || normalized.includes('expire') || normalized.includes('update')) {
+        return 'needsReplacement';
+    }
+
+    return 'notUploaded';
+};
+
+const normalizeRequestStatus = (status?: string | null): DashboardServiceRequestStatus => {
+    const normalized = status?.toLowerCase();
+
+    if (!normalized) {
+        return 'Open';
+    }
+
+    if (normalized.includes('progress')) {
+        return 'In progress';
+    }
+
+    if (normalized.includes('complete') || normalized.includes('done')) {
+        return 'Completed';
+    }
+
+    if (normalized.includes('cancel')) {
+        return 'Canceled';
+    }
+
+    return 'Open';
+};
+
+const ensureIcon = (iconKey?: string | null): IconComponent => {
+    if (!iconKey) {
+        return ShieldCheckIcon;
+    }
+
+    return ICON_MAP[iconKey] ?? ShieldCheckIcon;
+};
+
+const getServiceIcon = (service?: string | null): IconComponent => {
+    if (!service) {
+        return ClipboardIcon;
+    }
+
+    const normalized = service.toLowerCase();
+
+    if (normalized.includes('blog')) {
+        return NewspaperIcon;
+    }
+
+    if (normalized.includes('spotlight')) {
+        return StarIcon;
+    }
+
+    if (normalized.includes('review')) {
+        return MagnifyingGlassIcon;
+    }
+
+    if (normalized.includes('badge')) {
+        return ShieldCheckIcon;
+    }
+
+    if (normalized.includes('consult')) {
+        return ChatBubbleOvalLeftEllipsisIcon;
+    }
+
+    return ClipboardIcon;
+};
+
+const mapDocumentRow = (document: SupabaseMemberDocument): DashboardDocument => {
+    const uploadedAt = document.uploaded_at ?? document.created_at ?? document.updated_at ?? null;
+
+    return {
+        id: document.id,
+        name: document.document_name ?? document.document_type ?? 'Document',
+        status: normalizeDocumentStatus(document.status),
+        uploadDate: formatDate(uploadedAt),
+        adminNote: document.admin_note ?? null,
+        fileName: document.file_name ?? null,
+        fileSize: formatFileSize(document.file_size),
+        uploadTimestamp: formatDateTime(uploadedAt),
+        rawTimestamp: uploadedAt,
+    };
+};
+
+const mapServiceRequestRow = (request: SupabaseServiceRequest): DashboardServiceRequest => ({
+    id: String(request.id),
+    service: request.service ?? 'Service Request',
+    title: request.title ?? 'Untitled Request',
+    status: normalizeRequestStatus(request.status),
+    createdAt: request.created_at ?? request.updated_at ?? null,
+    priority: request.priority ?? undefined,
+});
 
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
-const VerificationStatusCard: React.FC<{ onNavigate: (view: MemberView) => void }> = ({ onNavigate }) => {
+const VerificationStatusCard: React.FC<{
+    status: MemberStatus;
+    verificationValidUntil?: string | null;
+    verificationRating?: string | null;
+    onNavigate: (view: MemberView) => void;
+}> = ({ status, verificationValidUntil, verificationRating, onNavigate }) => {
+    const verificationDetails = [
+        verificationValidUntil ? `Valid until: ${verificationValidUntil}` : null,
+        verificationRating ? `Rating: ${verificationRating}` : null,
+    ].filter(Boolean).join(' • ');
+
     const statusConfig = {
         active: {
             title: "Verified Restoration Expertise Member",
             text: "Your badge is live and visible to homeowners.",
-            subtext: `Valid until: ${memberData.verification.validUntil} • Rating: ${memberData.verification.rating}`,
+            subtext: verificationDetails || null,
             buttonText: "View Badge",
             buttonAction: () => onNavigate('badge'),
             Icon: CheckCircleIcon,
@@ -145,7 +505,7 @@ const VerificationStatusCard: React.FC<{ onNavigate: (view: MemberView) => void 
         }
     };
 
-    const currentStatus = statusConfig[memberData.status as keyof typeof statusConfig];
+    const currentStatus = statusConfig[status];
     const colorClasses = {
         success: { bg: 'bg-success/5', border: 'border-success/20', text: 'text-success', iconBg: 'bg-success/10' },
         warning: { bg: 'bg-warning/5', border: 'border-warning/20', text: 'text-warning', iconBg: 'bg-warning/10' },
@@ -186,7 +546,7 @@ const StatCard: React.FC<{ icon: React.ReactNode, title: string, value: string, 
     );
 }
 
-const MemberOverview: React.FC<{ onNavigate: (view: MemberView) => void; onNewRequest: () => void; }> = ({ onNavigate, onNewRequest }) => {
+const MemberOverview: React.FC<{ data: OverviewData | null; onNavigate: (view: MemberView) => void; onNewRequest: () => void; }> = ({ data, onNavigate, onNewRequest }) => {
     const QuickActionButton: React.FC<{ icon: React.ElementType, label: string, onClick: () => void }> = ({ icon: Icon, label, onClick }) => (
         <button onClick={onClick} className="bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg p-4 flex flex-col items-center justify-center text-center transition-colors hover:bg-[var(--accent-dark)] h-28">
             <Icon className="w-8 h-8 mb-2" />
@@ -194,43 +554,78 @@ const MemberOverview: React.FC<{ onNavigate: (view: MemberView) => void; onNewRe
         </button>
     );
 
+    const safeData: OverviewData = data ?? {
+        status: 'pending',
+        verificationValidUntil: null,
+        verificationRating: null,
+        stats: {
+            profileViewsValue: null,
+            profileViewsPeriod: null,
+            badgeClicksValue: null,
+            badgeClicksPeriod: null,
+            planName: null,
+            planPrice: null,
+            nextRenewal: null,
+        },
+        benefits: {
+            description: null,
+            items: [],
+        },
+        activityLog: [],
+    };
+
+    const formatStatValue = (value?: number | string | null) => {
+        if (value === null || value === undefined) {
+            return '0';
+        }
+        if (typeof value === 'number') {
+            return value.toLocaleString();
+        }
+        return value;
+    };
+
     return (
         <div className="space-y-8 animate-fade-in">
-            <VerificationStatusCard onNavigate={onNavigate} />
-            
+            <VerificationStatusCard
+                status={safeData.status}
+                verificationValidUntil={safeData.verificationValidUntil}
+                verificationRating={safeData.verificationRating}
+                onNavigate={onNavigate}
+            />
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard 
-                    icon={<EyeIcon className="w-5 h-5"/>} 
-                    title="Profile Views" 
-                    value={memberData.stats.profileViews.value.toString()} 
-                    label={memberData.stats.profileViews.period}
+                <StatCard
+                    icon={<EyeIcon className="w-5 h-5"/>}
+                    title="Profile Views"
+                    value={formatStatValue(safeData.stats.profileViewsValue)}
+                    label={safeData.stats.profileViewsPeriod ?? 'Last 30 days'}
                 />
-                <StatCard 
-                    icon={<TrophyIcon className="w-5 h-5"/>} 
-                    title="Badge Clicks" 
-                    value={memberData.stats.badgeClicks.value.toString()} 
-                    label={memberData.stats.badgeClicks.period}
+                <StatCard
+                    icon={<TrophyIcon className="w-5 h-5"/>}
+                    title="Badge Clicks"
+                    value={formatStatValue(safeData.stats.badgeClicksValue)}
+                    label={safeData.stats.badgeClicksPeriod ?? 'Last 30 days'}
                 />
-                 <StatCard 
-                    icon={<CreditCardIcon className="w-5 h-5"/>} 
-                    title="Current Plan" 
-                    value={memberData.stats.currentPlan.split('–')[0].trim()}
-                    label={memberData.stats.currentPlan.split('–')[1].trim()}
+                <StatCard
+                    icon={<CreditCardIcon className="w-5 h-5"/>}
+                    title="Current Plan"
+                    value={safeData.stats.planName ?? '—'}
+                    label={safeData.stats.planPrice ?? ''}
                 />
-                <StatCard 
-                    icon={<CalendarDaysIcon className="w-5 h-5"/>} 
-                    title="Next Renewal" 
-                    value={memberData.stats.nextRenewal}
+                <StatCard
+                    icon={<CalendarDaysIcon className="w-5 h-5"/>}
+                    title="Next Renewal"
+                    value={safeData.stats.nextRenewal ?? '—'}
                 />
             </div>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <Card className="lg:col-span-2">
                     <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-1">Your Benefits</h2>
-                    <p className="text-[var(--text-muted)] mb-6">{memberData.benefits.description}</p>
+                    <p className="text-[var(--text-muted)] mb-6">{safeData.benefits.description ?? 'Your current plan gives you access to premium features to boost your online presence and credibility.'}</p>
                     <ul className="space-y-4">
-                        {memberData.benefits.items.map((item, index) => {
-                            const Icon = item.icon;
+                        {safeData.benefits.items.map((item, index) => {
+                            const Icon = item.Icon ?? ShieldCheckIcon;
                             return (
                                 <li key={index} className="flex items-center">
                                     <div className="bg-[var(--accent-bg-subtle)] text-[var(--accent-dark)] p-2 rounded-full mr-4">
@@ -238,11 +633,14 @@ const MemberOverview: React.FC<{ onNavigate: (view: MemberView) => void; onNewRe
                                     </div>
                                     <div className="flex-grow">
                                         <p className="font-semibold text-[var(--text-main)]">{item.name}</p>
-                                        <p className="text-sm text-[var(--text-muted)]">{item.progress}</p>
+                                        {item.progress && <p className="text-sm text-[var(--text-muted)]">{item.progress}</p>}
                                     </div>
                                 </li>
                             );
                         })}
+                        {safeData.benefits.items.length === 0 && (
+                            <li className="text-[var(--text-muted)]">No benefits found for your membership yet.</li>
+                        )}
                     </ul>
                     <div className="text-right mt-6">
                         <button onClick={() => onNavigate('benefits')} className="font-semibold text-[var(--accent-dark)] hover:underline">
@@ -265,8 +663,8 @@ const MemberOverview: React.FC<{ onNavigate: (view: MemberView) => void; onNewRe
             <Card>
                 <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Recent Activity</h2>
                 <ul className="divide-y divide-[var(--border-subtle)]">
-                    {memberData.activityLog.map((activity, index) => {
-                        const Icon = activity.icon;
+                    {safeData.activityLog.map((activity, index) => {
+                        const Icon = activity.Icon ?? ClipboardIcon;
                         return (
                              <li key={index} className="py-4 flex items-center">
                                 <div className="bg-[var(--bg-subtle)] p-3 rounded-full mr-4 text-[var(--text-muted)]">
@@ -279,6 +677,9 @@ const MemberOverview: React.FC<{ onNavigate: (view: MemberView) => void; onNewRe
                             </li>
                         );
                     })}
+                    {safeData.activityLog.length === 0 && (
+                        <li className="py-4 text-[var(--text-muted)]">No recent activity yet. Start by submitting a service request or uploading documents.</li>
+                    )}
                 </ul>
             </Card>
         </div>
@@ -787,7 +1188,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                     <div>
                         <div className="flex items-center gap-3">
                             <h3 className="text-2xl font-bold text-[var(--text-main)]">{currentUser.name}</h3>
-                            <span className="bg-success text-white px-3 py-1 text-xs font-bold rounded-full">{memberData.verification.rating}</span>
+                            <span className="bg-success text-white px-3 py-1 text-xs font-bold rounded-full">{currentUser.plan?.rating ?? 'A+'}</span>
                         </div>
                         <p className="text-[var(--text-muted)] font-medium">{currentUser.profile.address} • {currentUser.profile.yearsInBusiness} years in business</p>
                     </div>
@@ -864,7 +1265,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                             <div>
                                                 <p className={`font-bold text-lg leading-tight ${cardTheme === 'light' ? 'text-charcoal' : 'text-white'}`}>{currentUser.name}</p>
                                                 <p className={`text-xs font-semibold ${cardTheme === 'light' ? 'text-gold-dark' : 'text-gold-light'}`}>
-                                                    Verified • {memberData.plan.tier} • {memberData.verification.rating}
+                                                    Verified • {currentUser.plan?.name ?? 'Member'} • {currentUser.plan?.rating ?? 'A+'}
                                                 </p>
                                             </div>
                                         </div>
@@ -1105,26 +1506,26 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
     );
 };
 
-const MemberDocuments: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
+const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (view: MemberView) => void; }> = ({ documents, onNavigate }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
 
     const { approvedCount, underReviewCount, needsAttentionCount, docsNeedingAttention } = useMemo(() => {
-        const approved = documentsData.filter(d => d.status === 'approved').length;
-        const underReview = documentsData.filter(d => d.status === 'underReview').length;
-        const needingAttention = documentsData.filter(d => ['notUploaded', 'needsReplacement', 'rejected'].includes(d.status));
-        
+        const approved = documents.filter(d => d.status === 'approved');
+        const underReview = documents.filter(d => d.status === 'underReview');
+        const needingAttention = documents.filter(d => ['notUploaded', 'needsReplacement', 'rejected'].includes(d.status));
+
         return {
-            approvedCount: approved,
-            underReviewCount: underReview,
+            approvedCount: approved.length,
+            underReviewCount: underReview.length,
             needsAttentionCount: needingAttention.length,
             docsNeedingAttention: needingAttention,
         };
-    }, []);
+    }, [documents]);
 
-    const totalDocs = documentsData.length;
+    const totalDocs = documents.length;
     const progressPercent = totalDocs > 0 ? (approvedCount / totalDocs) * 100 : 0;
     
     const statusConfig = {
@@ -1135,7 +1536,7 @@ const MemberDocuments: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
         notUploaded: { icon: XMarkIcon, color: 'text-error', label: 'Not uploaded', pill: 'bg-gray-200 text-gray-dark' },
     };
     
-    const uploadedDocuments = documentsData.filter(doc => doc.status !== 'notUploaded');
+    const uploadedDocuments = documents.filter(doc => doc.status !== 'notUploaded');
 
     const handleDragEvents = (e: React.DragEvent) => {
         e.preventDefault();
@@ -1264,7 +1665,7 @@ const MemberDocuments: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                     <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Document Checklist</h2>
                 </div>
                 <ul className="divide-y divide-[var(--border-subtle)]">
-                    {documentsData.map((doc, index) => {
+                    {documents.map((doc, index) => {
                         const { icon: Icon, color, label } = statusConfig[doc.status];
                         return (
                             <li key={index} className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -2497,13 +2898,20 @@ const viewTitles: Record<MemberView, string> = {
 
 
 const MemberDashboard: React.FC = () => {
-    const { currentUser, logout } = useAuth();
+    const { currentUser, logout, session } = useAuth();
     const [activeView, setActiveView] = useState<MemberView>('overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
     const userMenuRef = useRef<HTMLDivElement>(null);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [isNewRequestModalOpen, setNewRequestModalOpen] = useState(false);
+    const [profile, setProfile] = useState<SupabaseProfile | null>(null);
+    const [membership, setMembership] = useState<SupabaseMembership | null>(null);
+    const [subscription, setSubscription] = useState<SupabaseSubscription | null>(null);
+    const [documents, setDocuments] = useState<DashboardDocument[]>([]);
+    const [recentRequests, setRecentRequests] = useState<DashboardServiceRequest[]>([]);
+    const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+    const [dashboardError, setDashboardError] = useState<string | null>(null);
 
     useEffect(() => {
         if (toast) {
@@ -2526,17 +2934,301 @@ const MemberDashboard: React.FC = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    useEffect(() => {
+        if (!session?.user?.id) {
+            setProfile(null);
+            setMembership(null);
+            setSubscription(null);
+            setDocuments([]);
+            setRecentRequests([]);
+            return;
+        }
+
+        let isMounted = true;
+
+        setIsDashboardLoading(true);
+        setDashboardError(null);
+
+        const fetchDashboardData = async () => {
+            try {
+                const [
+                    profileResult,
+                    membershipResult,
+                    subscriptionResult,
+                    documentsResult,
+                    serviceRequestsResult,
+                ] = await Promise.all([
+                    supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .maybeSingle(),
+                    supabase
+                        .from('memberships')
+                        .select('*')
+                        .eq('profile_id', session.user.id)
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle(),
+                    supabase
+                        .from('subscriptions')
+                        .select('*')
+                        .eq('profile_id', session.user.id)
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle(),
+                    supabase
+                        .from('member_documents')
+                        .select('*')
+                        .eq('profile_id', session.user.id)
+                        .order('created_at', { ascending: false }),
+                    supabase
+                        .from('service_requests')
+                        .select('*')
+                        .eq('profile_id', session.user.id)
+                        .order('created_at', { ascending: false })
+                        .limit(5),
+                ]);
+
+                if (!isMounted) {
+                    return;
+                }
+
+                const queryErrors = [
+                    profileResult.error,
+                    membershipResult.error,
+                    subscriptionResult.error,
+                    documentsResult.error,
+                    serviceRequestsResult.error,
+                ].filter((error): error is typeof profileResult.error => Boolean(error && error.code !== 'PGRST116'));
+
+                if (queryErrors.length > 0) {
+                    queryErrors.forEach((error) => {
+                        if (error) {
+                            console.error('Failed to load dashboard data', error);
+                        }
+                    });
+                    setDashboardError('Some dashboard data failed to load. Please refresh to try again.');
+                } else {
+                    setDashboardError(null);
+                }
+
+                setProfile((profileResult.data as SupabaseProfile | null) ?? null);
+                setMembership((membershipResult.data as SupabaseMembership | null) ?? null);
+                setSubscription((subscriptionResult.data as SupabaseSubscription | null) ?? null);
+
+                const fetchedDocuments = (documentsResult.data as SupabaseMemberDocument[] | null) ?? [];
+                setDocuments(fetchedDocuments.map(mapDocumentRow));
+
+                const fetchedRequests = (serviceRequestsResult.data as SupabaseServiceRequest[] | null) ?? [];
+                setRecentRequests(fetchedRequests.map(mapServiceRequestRow));
+            } catch (error) {
+                if (!isMounted) {
+                    return;
+                }
+                console.error('Unexpected error loading dashboard data', error);
+                setDashboardError('Unable to load your dashboard right now. Please try again later.');
+                setProfile(null);
+                setMembership(null);
+                setSubscription(null);
+                setDocuments([]);
+                setRecentRequests([]);
+            } finally {
+                if (isMounted) {
+                    setIsDashboardLoading(false);
+                }
+            }
+        };
+
+        void fetchDashboardData();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [session?.user?.id]);
+
     const handleViewChange = (view: MemberView) => {
         setActiveView(view);
         setIsSidebarOpen(false);
     };
 
-    const docsNeedAttention = documentsData.some(doc => ['notUploaded', 'needsReplacement', 'rejected'].includes(doc.status));
+    const overviewData = useMemo<OverviewData>(() => {
+        const status = normalizeMemberStatus(
+            (profile?.verification_status ?? membership?.status ?? subscription?.status) as string | undefined,
+        );
+
+        const verificationValidUntil =
+            formatDate(
+                profile?.verification_valid_until ??
+                membership?.verification_valid_until ??
+                (membership?.renewal_date ?? null),
+            ) ?? null;
+
+        const verificationRating =
+            profile?.verification_rating ??
+            membership?.badge_rating ??
+            profile?.badge_rating ??
+            currentUser?.plan?.rating ??
+            null;
+
+        const planName =
+            membership?.plan_name ??
+            membership?.plan_tier ??
+            subscription?.plan_name ??
+            profile?.current_plan_name ??
+            currentUser?.plan?.name ??
+            null;
+
+        const rawPlanPrice =
+            membership?.price_monthly ??
+            (typeof membership?.price === 'number' ? membership?.price : null) ??
+            subscription?.price_monthly ??
+            (typeof subscription?.price === 'number' ? subscription?.price : null);
+
+        const formattedPlanPrice =
+            formatCurrency(rawPlanPrice) ??
+            (typeof membership?.price === 'string' ? membership?.price : null) ??
+            (typeof subscription?.price === 'string' ? subscription?.price : null) ??
+            currentUser?.plan?.price ??
+            null;
+
+        const planPrice = formattedPlanPrice && !formattedPlanPrice.toLowerCase().includes('month') && !formattedPlanPrice.includes('/mo')
+            ? `${formattedPlanPrice}/mo`
+            : formattedPlanPrice;
+
+        const nextRenewal =
+            formatDate(
+                subscription?.next_renewal ??
+                subscription?.renewal_date ??
+                membership?.renewal_date ??
+                profile?.next_renewal ??
+                (currentUser?.plan?.renewalDate ?? null),
+            ) ?? null;
+
+        const profileViewsValue = profile?.profile_views_value ?? profile?.profile_views ?? null;
+        const profileViewsPeriod = profile?.profile_views_period ?? 'Last 30 days';
+        const badgeClicksValue = profile?.badge_clicks_value ?? profile?.badge_clicks ?? null;
+        const badgeClicksPeriod = profile?.badge_clicks_period ?? 'Last 30 days';
+
+        const parsedBenefits = parsePossibleJson<Array<{ name: string; progress?: string | null; icon?: string | null }>>(
+            membership?.benefits ?? profile?.benefits,
+        );
+
+        const benefitsDescription =
+            membership?.benefits_description ?? profile?.benefits_description ?? null;
+
+        const fallbackBenefits = (currentUser?.benefits ?? []).map((benefit) => ({
+            name: benefit.title,
+            progress:
+                benefit.quota !== undefined && benefit.used !== undefined
+                    ? `${benefit.used} of ${benefit.quota} used`
+                    : benefit.status ?? benefit.nextDate ?? (benefit.isIncluded ? 'Included' : null),
+            Icon: ensureIcon(benefit.icon),
+        }));
+
+        const benefitsItems = parsedBenefits && parsedBenefits.length > 0
+            ? parsedBenefits.map((benefit) => ({
+                name: benefit.name ?? 'Benefit',
+                progress: benefit.progress ?? null,
+                Icon: ensureIcon(benefit.icon ?? undefined),
+            }))
+            : fallbackBenefits;
+
+        type InternalActivity = ActivityLogItem & { createdAt?: string | null };
+
+        const activities: InternalActivity[] = [];
+
+        const profileActivities = parsePossibleJson<
+            Array<{ description: string; timestamp?: string | null; icon?: string | null }>
+        >(profile?.activity_log) ?? [];
+
+        profileActivities.forEach((activity) => {
+            const createdAt = activity.timestamp ?? null;
+            activities.push({
+                description: activity.description ?? 'Account activity',
+                timestamp: activity.timestamp ? formatRelativeTime(activity.timestamp) : 'Recently',
+                Icon: ensureIcon(activity.icon ?? undefined),
+                createdAt,
+            });
+        });
+
+        recentRequests.forEach((request) => {
+            activities.push({
+                description: `${request.service}: ${request.title}`,
+                timestamp: request.createdAt ? formatRelativeTime(request.createdAt) : 'Recently',
+                Icon: getServiceIcon(request.service),
+                createdAt: request.createdAt,
+            });
+        });
+
+        documents.forEach((doc) => {
+            if (!doc.rawTimestamp) {
+                return;
+            }
+            const statusDescriptor =
+                doc.status === 'approved'
+                    ? 'approved'
+                    : doc.status === 'underReview'
+                        ? 'submitted for review'
+                        : 'needs attention';
+            const icon =
+                doc.status === 'approved'
+                    ? CheckCircleIcon
+                    : doc.status === 'underReview'
+                        ? ClockIcon
+                        : ExclamationTriangleIcon;
+
+            activities.push({
+                description: `${doc.name} ${statusDescriptor}`,
+                timestamp: formatRelativeTime(doc.rawTimestamp),
+                Icon: icon,
+                createdAt: doc.rawTimestamp,
+            });
+        });
+
+        const sortedActivities = activities
+            .sort((a, b) => {
+                const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return dateB - dateA;
+            })
+            .slice(0, 5)
+            .map(({ createdAt, ...rest }) => rest);
+
+        return {
+            status,
+            verificationValidUntil,
+            verificationRating,
+            stats: {
+                profileViewsValue,
+                profileViewsPeriod,
+                badgeClicksValue,
+                badgeClicksPeriod,
+                planName,
+                planPrice,
+                nextRenewal,
+            },
+            benefits: {
+                description: benefitsDescription,
+                items: benefitsItems,
+            },
+            activityLog: sortedActivities,
+        };
+    }, [
+        profile,
+        membership,
+        subscription,
+        documents,
+        recentRequests,
+        currentUser,
+    ]);
+
+    const docsNeedAttention = documents.some(doc => ['notUploaded', 'needsReplacement', 'rejected'].includes(doc.status));
 
     const renderView = () => {
         switch (activeView) {
             case 'overview':
-                return <MemberOverview onNavigate={setActiveView} onNewRequest={() => setNewRequestModalOpen(true)} />;
+                return <MemberOverview data={overviewData} onNavigate={setActiveView} onNewRequest={() => setNewRequestModalOpen(true)} />;
             case 'my-requests':
                 return <MyRequests onNewRequest={() => setNewRequestModalOpen(true)} showToast={showToast} />;
             case 'profile':
@@ -2544,7 +3236,7 @@ const MemberDashboard: React.FC = () => {
             case 'badge':
                  return <MemberBadge onNavigate={setActiveView} showToast={showToast} />;
             case 'documents':
-                return <MemberDocuments onNavigate={setActiveView} />;
+                return <MemberDocuments documents={documents} onNavigate={setActiveView} />;
             case 'benefits':
                 return <MemberBenefits showToast={showToast} />;
             case 'billing':
@@ -2642,8 +3334,20 @@ const MemberDashboard: React.FC = () => {
                 </header>
 
                 <main className="flex-1 overflow-x-hidden overflow-y-auto">
-                    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+                    <div className="relative max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+                        {dashboardError && (
+                            <div className="mb-6 rounded-xl border border-error/20 bg-error/10 px-4 py-3 text-error font-semibold">
+                                {dashboardError}
+                            </div>
+                        )}
                         {renderView()}
+                        {isDashboardLoading && (
+                            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-[var(--bg-main)]/70 backdrop-blur-sm">
+                                <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] px-6 py-4 text-[var(--text-main)] font-semibold shadow-lg">
+                                    Loading your dashboard...
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </main>
             </div>
