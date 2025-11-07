@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { HomeIcon, ListBulletIcon, UserCircleIcon, ArrowRightOnRectangleIcon, PencilSquareIcon, TrophyIcon, DocumentTextIcon, CheckCircleIcon, CreditCardIcon, UsersIcon, Cog6ToothIcon, ClockIcon, ExclamationTriangleIcon, EyeIcon, CalendarDaysIcon, PlusCircleIcon, StarIcon, NewspaperIcon, ArrowDownTrayIcon, ArrowTrendingUpIcon, ShieldCheckIcon, MagnifyingGlassIcon, ClipboardIcon, LightBulbIcon, XMarkIcon, UploadIcon, TrashIcon, ChevronDownIcon, ChartBarIcon, ChatBubbleOvalLeftEllipsisIcon, CheckIcon, BriefcaseIcon, KeyIcon, ClipboardDocumentCheckIcon } from './icons';
-import { useAppContext } from '../App';
+import { useAuth } from '../App';
 import { ServiceRequest, Benefit, Invoice } from '../types';
 import ConfirmationModal from './admin/ConfirmationModal';
 import MemberBlueprint from './MemberBlueprint';
@@ -286,7 +286,7 @@ const MemberOverview: React.FC<{ onNavigate: (view: MemberView) => void; onNewRe
 };
 
 const MyRequests: React.FC<{ onNewRequest: () => void; showToast: (message: string, type: 'success' | 'error') => void; }> = ({ onNewRequest, showToast }) => {
-    const { currentUser, serviceRequests, updateServiceRequestStatus } = useAppContext();
+    const { currentUser, serviceRequests, updateServiceRequestStatus } = useAuth();
     const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null);
 
     const [statusFilter, setStatusFilter] = useState('All');
@@ -492,7 +492,7 @@ const MyRequests: React.FC<{ onNewRequest: () => void; showToast: (message: stri
 
 
 const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
-    const { currentUser, updateUser } = useAppContext();
+    const { currentUser, updateUser } = useAuth();
     const logoInputRef = useRef<HTMLInputElement>(null);
 
     if (!currentUser) return null;
@@ -958,7 +958,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
 
 const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast: (message: string, type: 'success' | 'error') => void; }> = ({ onNavigate, showToast }) => {
     // For now, hardcode a member to get badge data. This would come from context/API.
-    const { currentUser } = useAppContext();
+    const { currentUser } = useAuth();
     const currentMember = ADMIN_MEMBERS.find(m => m.email === currentUser?.email) || ADMIN_MEMBERS[0]; // Fallback to Acme
     const { badge } = currentMember;
 
@@ -1491,7 +1491,7 @@ const UsageOverviewChart: React.FC<{ benefits: Benefit[] }> = ({ benefits }) => 
 };
 
 const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
-    const { currentUser, updateUser } = useAppContext();
+    const { currentUser, updateUser } = useAuth();
     const [localBenefits, setLocalBenefits] = useState(currentUser?.benefits || []);
     const [selectedBenefit, setSelectedBenefit] = useState<Benefit | null>(null);
 
@@ -1670,7 +1670,7 @@ const CancelSubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void; 
 
 
 const MemberBilling: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
-    const { currentUser, updateUser } = useAppContext();
+    const { currentUser, updateUser } = useAuth();
     const [localUser, setLocalUser] = useState(currentUser);
     const [isPauseModalOpen, setPauseModalOpen] = useState(false);
     const [isCancelModalOpen, setCancelModalOpen] = useState(false);
@@ -1943,7 +1943,7 @@ const communityResources = [
 ];
 
 const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
-    const { currentUser } = useAppContext();
+    const { currentUser } = useAuth();
     const guidelinesRef = useRef<HTMLDivElement>(null);
     const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
     const [agreedToGuidelines, setAgreedToGuidelines] = useState(false);
@@ -2199,7 +2199,7 @@ const MemberSettings: React.FC<{
     showToast: (message: string, type: 'success' | 'error') => void;
     onNavigate: (view: MemberView) => void;
 }> = ({ showToast, onNavigate }) => {
-    const { currentUser, updateUser } = useAppContext();
+    const { currentUser, updateUser } = useAuth();
 
     // Account Info State
     const [isAccountEditing, setIsAccountEditing] = useState(false);
@@ -2497,7 +2497,7 @@ const viewTitles: Record<MemberView, string> = {
 
 
 const MemberDashboard: React.FC = () => {
-    const { currentUser, logout } = useAppContext();
+    const { currentUser, logout } = useAuth();
     const [activeView, setActiveView] = useState<MemberView>('overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
@@ -2661,7 +2661,7 @@ const RequestDetailModal: React.FC<{
     onMarkResolved: (id: string) => void;
     showToast: (message: string, type: 'success' | 'error') => void;
 }> = ({ request, onClose, statusColors, serviceIcons, onMarkResolved, showToast }) => {
-    const { currentUser } = useAppContext();
+    const { currentUser } = useAuth();
     const ServiceIcon = serviceIcons[request.service] || ClipboardIcon;
     const canResolve = request.status === 'Open' || request.status === 'In progress';
 
@@ -2773,7 +2773,7 @@ const NewRequestModal: React.FC<{
     onClose: () => void;
     showToast: (message: string, type: 'success' | 'error') => void;
 }> = ({ onClose, showToast }) => {
-    const { currentUser, addServiceRequest } = useAppContext();
+    const { currentUser, addServiceRequest } = useAuth();
     const [service, setService] = useState<ServiceRequest['service']>('SEO Blog Post');
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');

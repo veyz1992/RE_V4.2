@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { useAppContext } from '../App';
+import { useAuth } from '../App';
 import { CheckCircleIcon } from './icons';
 
 const LoginPage: React.FC = () => {
-  const { login, isSupabaseEnabled, isSupabaseReady } = useAppContext();
+  const { login, isLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [loginState, setLoginState] = useState<'form' | 'confirming' | 'confirmed'>('form');
-  const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastLoginMode, setLastLoginMode] = useState<'magicLink' | 'mock' | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,8 +18,7 @@ const LoginPage: React.FC = () => {
     setLoginState('confirming');
 
     try {
-      const result = await login(isAdminLogin ? 'admin' : 'member', email);
-      setLastLoginMode(result.mode);
+      await login(email);
       setLoginState('confirmed');
     } catch (err) {
       console.error('Failed to initiate login flow', err);
@@ -31,7 +28,7 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  const isSubmitDisabled = !email || (isSupabaseEnabled && !isSupabaseReady) || loginState !== 'form';
+  const isSubmitDisabled = !email || loginState !== 'form';
 
   return (
     <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] font-inter flex flex-col justify-center items-center p-4">
@@ -48,10 +45,10 @@ const LoginPage: React.FC = () => {
               <form onSubmit={handleSubmit}>
                 <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)] mb-2">Welcome</h2>
                 <p className="text-[var(--text-muted)] mb-6">
-                  Enter your email to {isSupabaseEnabled ? 'receive a magic login link.' : 'log in to the interactive demo.'}
+                  Enter your email to receive a magic login link.
                 </p>
 
-                {isSupabaseEnabled && !isSupabaseReady && (
+                {isLoading && (
                   <p className="mb-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-3 text-sm text-[var(--text-muted)]">
                     Connecting to Supabase...
                   </p>
@@ -75,7 +72,7 @@ const LoginPage: React.FC = () => {
                   className="w-full py-3 px-4 bg-[var(--accent)] text-[var(--accent-text)] font-bold text-lg rounded-lg shadow-lg hover:bg-[var(--accent-dark)] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[var(--accent)]/50 disabled:opacity-50"
                   disabled={isSubmitDisabled}
                 >
-                  {isSupabaseEnabled ? 'Send Magic Link' : 'Log In'}
+                  Send Magic Link
                 </button>
               </form>
 
@@ -99,21 +96,6 @@ const LoginPage: React.FC = () => {
                 Take Free Credibility Assessment
               </button>
               
-              {!isSupabaseEnabled && (
-                <div className="mt-6 text-center">
-                  <label htmlFor="admin-toggle" className="flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] cursor-pointer">
-                    <input
-                      id="admin-toggle"
-                      type="checkbox"
-                      checked={isAdminLogin}
-                      onChange={() => setIsAdminLogin(!isAdminLogin)}
-                      className="h-4 w-4 rounded border-[var(--border-subtle)] text-[var(--accent)] focus:ring-[var(--accent)]"
-                    />
-                    Login as Admin (demo mode)
-                  </label>
-                </div>
-              )}
-
             </div>
           )}
 
@@ -121,12 +103,10 @@ const LoginPage: React.FC = () => {
             <div className="text-center animate-fade-in">
                 <CheckCircleIcon className="w-16 h-16 text-success mx-auto mb-4" />
                 <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">
-                  {lastLoginMode === 'magicLink' ? 'Magic link sent!' : 'Logging you in...'}
+                  Magic link sent!
                 </h2>
                 <p className="text-[var(--text-muted)] mt-2 mb-6">
-                  {lastLoginMode === 'magicLink'
-                    ? `Check your email to continue. The link will bring you back to ${window.location.origin}.`
-                    : 'Sit tight, we are preparing your dashboard.'}
+                  {`Check your email to continue. The link will bring you back to ${window.location.origin}.`}
                 </p>
                 <div className="w-full bg-[var(--bg-subtle)] rounded-full h-2.5">
                     <div className="bg-[var(--accent)] h-2.5 rounded-full animate-pulse"></div>
