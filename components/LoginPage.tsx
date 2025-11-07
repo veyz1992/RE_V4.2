@@ -99,18 +99,26 @@ const LoginPage: React.FC = () => {
             </div>
           )}
 
-          {(loginState === 'confirming' || loginState === 'confirmed') && (
+          {loginState === 'confirming' && (
             <div className="text-center animate-fade-in">
-                <CheckCircleIcon className="w-16 h-16 text-success mx-auto mb-4" />
-                <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">
-                  Magic link sent!
-                </h2>
-                <p className="text-[var(--text-muted)] mt-2 mb-6">
-                  {`Check your email to continue. The link will bring you back to ${window.location.origin}.`}
-                </p>
-                <div className="w-full bg-[var(--bg-subtle)] rounded-full h-2.5">
-                    <div className="bg-[var(--accent)] h-2.5 rounded-full animate-pulse"></div>
-                </div>
+              <div className="mx-auto mb-6 h-16 w-16 animate-spin rounded-full border-4 border-[var(--accent)] border-t-transparent" />
+              <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">Sending magic link...</h2>
+              <p className="text-[var(--text-muted)] mt-2 mb-6">
+                {`We're sending a secure link to ${email}. Follow the instructions in your inbox to continue.`}
+              </p>
+            </div>
+          )}
+
+          {loginState === 'confirmed' && (
+            <div className="text-center animate-fade-in">
+              <CheckCircleIcon className="mx-auto mb-4 h-16 w-16 text-success" />
+              <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">Magic link sent!</h2>
+              <p className="text-[var(--text-muted)] mt-2 mb-6">
+                {`Check your email to finish signing in. The link will bring you back to ${window.location.origin}.`}
+              </p>
+              <div className="h-2.5 w-full rounded-full bg-[var(--bg-subtle)]">
+                <div className="h-2.5 animate-pulse rounded-full bg-[var(--accent)]" />
+              </div>
             </div>
           )}
         </div>

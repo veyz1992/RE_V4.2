@@ -9,7 +9,7 @@ import React, {
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import MemberDashboard from './components/Dashboard';
 import AdminDashboard from './components/admin/AdminDashboard';
-import LoginPage from './components/EntryPage';
+import LoginPage from './components/LoginPage';
 import AssessmentTool from './components/AssessmentTool';
 import ResultsPage from './components/ResultsPage';
 import { ThemeProvider } from './components/ThemeContext';
@@ -228,10 +228,51 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       return;
     }
 
-    const role = ((session.user.app_metadata?.role as Role | undefined) ?? 'member') as Role;
-    setIsAdmin(role === 'admin');
+    let isMounted = true;
 
-    setCurrentUser((previous) => createAppUserFromSession(session, role, previous));
+    const determineAdminStatus = async () => {
+      let admin = false;
+
+      try {
+        const { data, error } = await supabase
+          .from('admin_profiles')
+          .select('is_admin')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+
+        if (!error && data?.is_admin === true) {
+          admin = true;
+        } else if (error && error.code !== 'PGRST116') {
+          console.error('Failed to determine admin status', error);
+        }
+      } catch (error) {
+        console.error('Unexpected error determining admin status', error);
+      }
+
+      if (!isMounted) {
+        return;
+      }
+
+      setIsAdmin(admin);
+      setCurrentUser((previous) =>
+        createAppUserFromSession(session, admin ? 'admin' : 'member', previous),
+      );
+    };
+
+    determineAdminStatus().catch((error) => {
+      if (!isMounted) {
+        return;
+      }
+      console.error('Unexpected admin status resolution error', error);
+      setIsAdmin(false);
+      setCurrentUser((previous) =>
+        createAppUserFromSession(session, 'member', previous),
+      );
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [session]);
 
   const login = useCallback(async (email: string) => {
