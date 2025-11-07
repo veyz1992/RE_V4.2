@@ -20,6 +20,7 @@ import {
   ServiceRequest,
   Answers,
   ScoreBreakdown,
+  StoredAssessmentResult,
   Benefit,
 } from './types';
 import { SERVICE_REQUESTS } from './lib/mockData';
@@ -381,8 +382,9 @@ const AppContent: React.FC = () => {
   const { session, currentUser, isAdmin, isLoading } = useAuth();
   const [location, setLocation] = useState<string>(window.location.hash || '#/');
   const [assessmentResult, setAssessmentResult] = useState<
-    (ScoreBreakdown & { answers: Answers }) | null
+    StoredAssessmentResult | null
   >(null);
+  const [isSavingAssessment, setIsSavingAssessment] = useState(false);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -410,9 +412,136 @@ const AppContent: React.FC = () => {
     }
   }, [session, currentUser, location, isAdmin, isLoading]);
 
-  const handleAssessmentComplete = (result: ScoreBreakdown & { answers: Answers }) => {
-    setAssessmentResult(result);
-    window.location.hash = '#/results';
+  const determineMembershipTier = (
+    grade: ScoreBreakdown['grade'],
+    isEligible: boolean,
+  ) => {
+    if (isEligible) {
+      return 'Founding Member';
+    }
+
+    switch (grade) {
+      case 'A+':
+      case 'A':
+        return 'Gold';
+      case 'B+':
+        return 'Silver';
+      default:
+        return 'Bronze';
+    }
+  };
+
+  const handleAssessmentComplete = async (
+    result: ScoreBreakdown & { answers: Answers },
+  ) => {
+    if (isSavingAssessment) {
+      return;
+    }
+
+    const scenario = result.isEligibleForCertification
+      ? 'eligible'
+      : 'not_eligible';
+    const intendedMembershipTier = determineMembershipTier(
+      result.grade,
+      result.isEligibleForCertification,
+    );
+
+    let emailEntered: string | null =
+      session?.user?.email ?? currentUser?.email ?? null;
+
+    if (!session) {
+      emailEntered = emailEntered?.trim() || null;
+      if (!emailEntered) {
+        const promptValue = window
+          .prompt('Where should we send your assessment results?')
+          ?.trim();
+
+        if (!promptValue) {
+          alert('Please enter an email address to receive your results.');
+          return;
+        }
+
+        emailEntered = promptValue;
+      }
+    }
+
+    setIsSavingAssessment(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('assessments')
+        .insert({
+          user_id: session?.user?.id ?? null,
+          email_entered: emailEntered,
+          answers: result.answers,
+          total_score: result.total,
+          operational_score: result.operational,
+          licensing_score: result.licensing,
+          feedback_score: result.feedback,
+          certifications_score: result.certifications,
+          digital_score: result.digital,
+          scenario,
+          pci_rating: result.grade,
+          intended_membership_tier: intendedMembershipTier,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      type SupabaseAssessmentRow = {
+        id?: number | string;
+        created_at?: string;
+        user_id?: string | null;
+        email_entered?: string | null;
+        answers?: Answers;
+        total_score?: number;
+        operational_score?: number;
+        licensing_score?: number;
+        feedback_score?: number;
+        certifications_score?: number;
+        digital_score?: number;
+        scenario?: string | null;
+        pci_rating?: string | null;
+        intended_membership_tier?: string | null;
+      };
+
+      const row = data as SupabaseAssessmentRow;
+
+      const storedResult: StoredAssessmentResult = {
+        ...result,
+        answers: (row.answers as Answers) ?? result.answers,
+        operational: row.operational_score ?? result.operational,
+        licensing: row.licensing_score ?? result.licensing,
+        feedback: row.feedback_score ?? result.feedback,
+        certifications: row.certifications_score ?? result.certifications,
+        digital: row.digital_score ?? result.digital,
+        total: row.total_score ?? result.total,
+        grade:
+          (row.pci_rating as ScoreBreakdown['grade']) ?? result.grade,
+        isEligibleForCertification: row.scenario
+          ? row.scenario === 'eligible'
+          : result.isEligibleForCertification,
+        scenario: row.scenario ?? scenario,
+        pciRating: row.pci_rating ?? result.grade,
+        intendedMembershipTier:
+          row.intended_membership_tier ?? intendedMembershipTier,
+        id: row.id,
+        createdAt: row.created_at,
+        userId: row.user_id ?? session?.user?.id ?? null,
+        emailEntered: row.email_entered ?? emailEntered,
+      };
+
+      setAssessmentResult(storedResult);
+      window.location.hash = '#/results';
+    } catch (err) {
+      console.error('Failed to save assessment result', err);
+      alert('We had trouble saving your assessment. Please try again.');
+    } finally {
+      setIsSavingAssessment(false);
+    }
   };
 
   const handleRetakeAssessment = () => {

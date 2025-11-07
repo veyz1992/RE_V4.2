@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import PricingCard from './PricingCard';
 import FoundingMemberModal from './FoundingMemberModal';
 import { FOUNDING_MEMBER_SPOTS_REMAINING } from '../constants';
-import { Answers, ScoreBreakdown, Opportunity } from '../types';
+import { StoredAssessmentResult, Opportunity } from '../types';
 import { CheckCircleIcon, ExclamationTriangleIcon, XMarkIcon } from './icons';
 
 const AnimatedScore: React.FC<{ score: number }> = ({ score }) => {
@@ -159,7 +159,7 @@ const BenefitPreviewModal: React.FC<{ tier: { name: string, features: string[] }
 
 
 interface ResultsPageProps {
-    result: ScoreBreakdown & { answers: Answers };
+    result: StoredAssessmentResult;
     onRetake: () => void;
     onJoin: () => void;
 }
