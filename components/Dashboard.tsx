@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { HomeIcon, ListBulletIcon, UserCircleIcon, ArrowRightOnRectangleIcon, PencilSquareIcon, TrophyIcon, DocumentTextIcon, CheckCircleIcon, CreditCardIcon, UsersIcon, Cog6ToothIcon, ClockIcon, ExclamationTriangleIcon, EyeIcon, CalendarDaysIcon, PlusCircleIcon, StarIcon, NewspaperIcon, ArrowDownTrayIcon, ArrowTrendingUpIcon, ShieldCheckIcon, MagnifyingGlassIcon, ClipboardIcon, LightBulbIcon, XMarkIcon, UploadIcon, TrashIcon, ChevronDownIcon, ChartBarIcon, ChatBubbleOvalLeftEllipsisIcon, CheckIcon, BriefcaseIcon, KeyIcon, ClipboardDocumentCheckIcon } from './icons';
 import { useAuth } from '../App';
 import { ServiceRequest, Benefit, Invoice } from '../types';
@@ -7,6 +7,7 @@ import MemberBlueprint from './MemberBlueprint';
 import ThemeToggle from './ThemeToggle';
 import { ADMIN_MEMBERS } from '../lib/mockData';
 import { supabase } from '@/lib/supabase';
+import type { PostgrestError } from '@supabase/supabase-js';
 
 // --- Reusable Components ---
 const SidebarLink: React.FC<{ icon: React.ReactNode; label: string; isActive: boolean; onClick: () => void; attention?: boolean }> = ({ icon, label, isActive, onClick, attention }) => (
@@ -77,6 +78,8 @@ type DocumentStatus = 'approved' | 'underReview' | 'rejected' | 'needsReplacemen
 type DashboardDocument = {
     id: string | number;
     name: string;
+    docType: string | null;
+    docTypeLabel: string;
     status: DocumentStatus;
     uploadDate: string | null;
     adminNote: string | null;
@@ -84,6 +87,11 @@ type DashboardDocument = {
     fileSize: string | null;
     uploadTimestamp: string | null;
     rawTimestamp?: string | null;
+    fileUrl: string | null;
+    storagePath: string | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+    statusText: string | null;
 };
 
 type DashboardServiceRequestStatus = 'Open' | 'In progress' | 'Completed' | 'Canceled';
@@ -155,6 +163,7 @@ interface SupabaseMemberDocument {
     profile_id?: string | null;
     document_name?: string | null;
     document_type?: string | null;
+    doc_type?: string | null;
     status?: string | null;
     uploaded_at?: string | null;
     updated_at?: string | null;
@@ -162,6 +171,7 @@ interface SupabaseMemberDocument {
     admin_note?: string | null;
     file_name?: string | null;
     file_size?: string | number | null;
+    file_url?: string | null;
     [key: string]: unknown;
 }
 
@@ -332,6 +342,34 @@ const formatFileSize = (value?: string | number | null): string | null => {
     return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[exponent]}`;
 };
 
+const isPostgrestError = (error: unknown): error is PostgrestError => {
+    return Boolean(error && typeof error === 'object' && 'code' in (error as Record<string, unknown>));
+};
+
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+    business_license: 'Business License',
+    license: 'Business License',
+    liability_insurance: 'Proof of Liability Insurance',
+    insurance: 'Proof of Liability Insurance',
+    w9: 'W-9 Form',
+    other: 'Supporting Document',
+};
+
+const getDocumentTypeLabel = (docType?: string | null): string => {
+    if (!docType) {
+        return 'Document';
+    }
+
+    const normalized = docType.toLowerCase();
+    if (DOCUMENT_TYPE_LABELS[normalized]) {
+        return DOCUMENT_TYPE_LABELS[normalized];
+    }
+
+    return docType
+        .replace(/[-_]+/g, ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
 const normalizeMemberStatus = (status?: string | null): MemberStatus => {
     const normalized = status?.toLowerCase();
 
@@ -438,17 +476,28 @@ const getServiceIcon = (service?: string | null): IconComponent => {
 
 const mapDocumentRow = (document: SupabaseMemberDocument): DashboardDocument => {
     const uploadedAt = document.uploaded_at ?? document.created_at ?? document.updated_at ?? null;
+    const docType = document.doc_type ?? document.document_type ?? null;
+    const docTypeLabel = document.document_name ?? getDocumentTypeLabel(docType ?? undefined);
+    const storagePath = document.file_url ?? null;
+    const fileName = document.file_name ?? (storagePath ? storagePath.split('/').pop() ?? null : null);
 
     return {
         id: document.id,
-        name: document.document_name ?? document.document_type ?? 'Document',
+        name: docTypeLabel,
+        docType,
+        docTypeLabel,
         status: normalizeDocumentStatus(document.status),
         uploadDate: formatDate(uploadedAt),
         adminNote: document.admin_note ?? null,
-        fileName: document.file_name ?? null,
+        fileName: fileName ?? docTypeLabel,
         fileSize: formatFileSize(document.file_size),
         uploadTimestamp: formatDateTime(uploadedAt),
         rawTimestamp: uploadedAt,
+        fileUrl: storagePath,
+        storagePath,
+        createdAt: document.created_at ?? null,
+        updatedAt: document.updated_at ?? null,
+        statusText: document.status ?? null,
     };
 };
 
@@ -1506,16 +1555,29 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
     );
 };
 
-const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (view: MemberView) => void; }> = ({ documents, onNavigate }) => {
-    const [isDragging, setIsDragging] = useState(false);
+const DOCUMENT_UPLOAD_OPTIONS = [
+    { value: 'license', label: 'Business License' },
+    { value: 'insurance', label: 'Proof of Liability Insurance' },
+];
+
+const MemberDocuments: React.FC<{
+    documents: DashboardDocument[];
+    onNavigate: (view: MemberView) => void;
+    onRefreshDocuments: () => Promise<DashboardDocument[]>;
+}> = ({ documents, onNavigate, onRefreshDocuments }) => {
     const [isUploading, setIsUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
     const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
+    const [selectedDocType, setSelectedDocType] = useState('');
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [uploadError, setUploadError] = useState<string | null>(null);
+    const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const { session } = useAuth();
 
     const { approvedCount, underReviewCount, needsAttentionCount, docsNeedingAttention } = useMemo(() => {
-        const approved = documents.filter(d => d.status === 'approved');
-        const underReview = documents.filter(d => d.status === 'underReview');
-        const needingAttention = documents.filter(d => ['notUploaded', 'needsReplacement', 'rejected'].includes(d.status));
+        const approved = documents.filter((d) => d.status === 'approved');
+        const underReview = documents.filter((d) => d.status === 'underReview');
+        const needingAttention = documents.filter((d) => ['notUploaded', 'needsReplacement', 'rejected'].includes(d.status));
 
         return {
             approvedCount: approved.length,
@@ -1527,60 +1589,98 @@ const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (v
 
     const totalDocs = documents.length;
     const progressPercent = totalDocs > 0 ? (approvedCount / totalDocs) * 100 : 0;
-    
+
     const statusConfig = {
         approved: { icon: CheckCircleIcon, color: 'text-success', label: 'Approved', pill: 'bg-success/10 text-success' },
         underReview: { icon: ClockIcon, color: 'text-warning', label: 'Under review', pill: 'bg-warning/10 text-yellow-800' },
         rejected: { icon: XMarkIcon, color: 'text-error', label: 'Rejected', pill: 'bg-error/10 text-error' },
         needsReplacement: { icon: ExclamationTriangleIcon, color: 'text-warning', label: 'Needs replacement', pill: 'bg-warning/10 text-yellow-800' },
         notUploaded: { icon: XMarkIcon, color: 'text-error', label: 'Not uploaded', pill: 'bg-gray-200 text-gray-dark' },
-    };
-    
-    const uploadedDocuments = documents.filter(doc => doc.status !== 'notUploaded');
+    } as const;
 
-    const handleDragEvents = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.type === 'dragenter' || e.type === 'dragover') {
-            setIsDragging(true);
-        } else if (e.type === 'dragleave') {
-            setIsDragging(false);
+    const uploadedDocuments = documents.filter((doc) => doc.status !== 'notUploaded');
+
+    const resetMessages = () => {
+        setUploadError(null);
+        setUploadSuccess(null);
+    };
+
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0] ?? null;
+        setSelectedFile(file);
+        resetMessages();
+    };
+
+    const handleDocTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        setSelectedDocType(event.target.value);
+        resetMessages();
+    };
+
+    const handleBrowseClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleUpload = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        resetMessages();
+
+        if (!session?.user?.id) {
+            setUploadError('You must be signed in to upload documents.');
+            return;
         }
-    };
 
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            // Simulate upload
-            setIsUploading(true);
-            setUploadProgress(0);
-            const interval = setInterval(() => {
-                setUploadProgress(prev => {
-                    if (prev >= 100) {
-                        clearInterval(interval);
-                        setIsUploading(false);
-                        return 100;
-                    }
-                    return prev + 10;
+        if (!selectedDocType || !selectedFile) {
+            setUploadError('Select a document type and file to upload.');
+            return;
+        }
+
+        setIsUploading(true);
+        const storagePath = `${session.user.id}/${selectedDocType}-${Date.now()}-${selectedFile.name}`;
+
+        try {
+            const { error: storageError } = await supabase.storage
+                .from('member-documents')
+                .upload(storagePath, selectedFile, {
+                    cacheControl: '3600',
+                    upsert: false,
                 });
-            }, 200);
-        }
-    };
 
-    const getButton = (status: DocumentStatus) => {
-        switch (status) {
-            case 'approved':
-            case 'underReview':
-                return <button disabled={status === 'underReview'} className="py-2 px-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold text-[var(--text-main)] hover:bg-[var(--bg-subtle)] disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">View</button>;
-            case 'needsReplacement':
-            case 'rejected':
-                return <button className="py-2 px-5 bg-[var(--accent)] text-[var(--accent-text)] rounded-lg font-bold hover:bg-[var(--accent-light)] whitespace-nowrap">Upload replacement</button>;
-            case 'notUploaded':
-                return <button className="py-2 px-5 bg-[var(--accent)] text-[var(--accent-text)] rounded-lg font-bold hover:bg-[var(--accent-light)] whitespace-nowrap">Upload now</button>;
-            default:
-                return null;
+            if (storageError) {
+                throw storageError;
+            }
+
+            const { error: insertError } = await supabase
+                .from('member_documents')
+                .insert({
+                    profile_id: session.user.id,
+                    doc_type: selectedDocType,
+                    file_url: storagePath,
+                    status: 'pending',
+                });
+
+            if (insertError) {
+                await supabase.storage.from('member-documents').remove([storagePath]);
+                throw insertError;
+            }
+
+            setUploadSuccess('Document uploaded successfully. We will review it shortly.');
+            setSelectedFile(null);
+            setSelectedDocType('');
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+
+            try {
+                await onRefreshDocuments();
+            } catch (refreshError) {
+                console.error('Failed to refresh documents after upload', refreshError);
+                setUploadError('Document uploaded successfully, but we could not refresh the list. Please refresh the page.');
+            }
+        } catch (error) {
+            console.error('Failed to upload document', error);
+            setUploadError('Unable to upload your document right now. Please try again.');
+        } finally {
+            setIsUploading(false);
         }
     };
 
@@ -1595,10 +1695,12 @@ const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (v
             <div className="relative group w-full bg-[var(--bg-card)] p-4 rounded-xl shadow-md border-l-4 transition-all" style={{ borderColor: getChipColor().split('-')[1] }}>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div>
-                        <p className="font-bold text-[var(--text-main)]">Verification Progress: {approvedCount} / {totalDocs} documents approved</p>
-                        <p className="text-sm text-[var(--text-muted)]">
-                            <span className="font-semibold">Under review:</span> {underReviewCount} • <span className="font-semibold">Needs attention:</span> {needsAttentionCount}
-                        </p>
+                        <p className="font-bold text-[var(--text-main)]">{totalDocs > 0 ? `Verification Progress: ${approvedCount} / ${totalDocs} documents approved` : 'No documents uploaded yet'}</p>
+                        {totalDocs > 0 && (
+                            <p className="text-sm text-[var(--text-muted)]">
+                                <span className="font-semibold">Under review:</span> {underReviewCount} • <span className="font-semibold">Needs attention:</span> {needsAttentionCount}
+                            </p>
+                        )}
                     </div>
                 </div>
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-3 py-1.5 bg-charcoal text-white text-xs font-semibold rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
@@ -1612,12 +1714,32 @@ const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (v
     const NextStepsCard = () => {
         const getActionText = (status: DocumentStatus) => {
             switch (status) {
-                case 'notUploaded': return '(missing)';
-                case 'needsReplacement': return '(policy expired)';
-                case 'rejected': return '(rejected, see note)';
-                default: return '';
+                case 'notUploaded':
+                    return '(missing)';
+                case 'needsReplacement':
+                    return '(policy expired)';
+                case 'rejected':
+                    return '(rejected, see note)';
+                default:
+                    return '';
             }
         };
+
+        if (totalDocs === 0) {
+            return (
+                <Card className="bg-gold/10 border-gold/20">
+                    <div className="flex flex-col sm:flex-row items-start gap-4">
+                        <div className="bg-gold/20 text-gold-dark p-3 rounded-full shrink-0">
+                            <UploadIcon className="w-6 h-6" />
+                        </div>
+                        <div className="flex-grow">
+                            <h2 className="font-playfair text-2xl font-bold text-charcoal">Start your verification</h2>
+                            <p className="mt-2 text-gray-dark">Upload your first document to begin the verification process.</p>
+                        </div>
+                    </div>
+                </Card>
+            );
+        }
 
         return (
             <Card className="bg-gold/10 border-gold/20">
@@ -1631,9 +1753,10 @@ const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (v
                                 <h2 className="font-playfair text-2xl font-bold text-charcoal">Next Steps to Get Verified</h2>
                                 <p className="mt-2 text-gray-dark">To complete your verification, please take care of the items below:</p>
                                 <ul className="mt-4 space-y-2 list-disc list-inside text-charcoal font-semibold">
-                                    {docsNeedingAttention.map(doc => (
-                                        <li key={doc.name}>
-                                            {doc.status === 'notUploaded' ? 'Upload' : 'Replace'} {doc.name} <span className="font-normal text-gray-dark">{getActionText(doc.status)}</span>
+                                    {docsNeedingAttention.map((doc) => (
+                                        <li key={String(doc.id)}>
+                                            {doc.status === 'notUploaded' ? 'Upload' : 'Replace'} {doc.name}{' '}
+                                            <span className="font-normal text-gray-dark">{getActionText(doc.status)}</span>
                                         </li>
                                     ))}
                                 </ul>
@@ -1642,7 +1765,7 @@ const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (v
                         ) : (
                             <>
                                 <h2 className="font-playfair text-2xl font-bold text-charcoal">You’re all set for now</h2>
-                                <p className="mt-2 text-gray-dark">All required documents are either approved or under review. We’ll notify you if we need anything else.</p>
+                                <p className="mt-2 text-gray-dark">All submitted documents are either approved or under review. We’ll notify you if we need anything else.</p>
                             </>
                         )}
                     </div>
@@ -1650,7 +1773,7 @@ const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (v
             </Card>
         );
     };
-    
+
     return (
         <div className="animate-fade-in space-y-8">
             <div>
@@ -1665,31 +1788,41 @@ const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (v
                     <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Document Checklist</h2>
                 </div>
                 <ul className="divide-y divide-[var(--border-subtle)]">
-                    {documents.map((doc, index) => {
-                        const { icon: Icon, color, label } = statusConfig[doc.status];
-                        return (
-                            <li key={index} className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                                <div className="flex items-start flex-grow">
-                                    <Icon className={`w-7 h-7 mr-4 mt-1 shrink-0 ${color}`} />
-                                    <div>
-                                        <p className="font-bold text-lg text-[var(--text-main)]">{doc.name}</p>
-                                        <p className={`text-sm font-semibold ${color}`}>{label}
-                                            {doc.uploadDate && <span className="text-[var(--text-muted)] font-normal ml-2">• Uploaded: {doc.uploadDate}</span>}
-                                        </p>
-                                        {doc.adminNote && <p className="text-xs text-[var(--text-muted)] italic mt-1">Note: {doc.adminNote}</p>}
+                    {documents.length === 0 ? (
+                        <li className="p-6 text-sm text-[var(--text-muted)]">No documents uploaded yet. Use the form below to submit your first document.</li>
+                    ) : (
+                        documents.map((doc) => {
+                            const { icon: Icon, color, label } = statusConfig[doc.status];
+                            return (
+                                <li key={doc.id} className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                    <div className="flex items-start flex-grow">
+                                        <Icon className={`w-7 h-7 mr-4 mt-1 shrink-0 ${color}`} />
+                                        <div>
+                                            <p className="font-bold text-lg text-[var(--text-main)]">{doc.docTypeLabel}</p>
+                                            <p className={`text-sm font-semibold ${color}`}>
+                                                {label}
+                                                {doc.uploadDate && <span className="text-[var(--text-muted)] font-normal ml-2">• Uploaded: {doc.uploadDate}</span>}
+                                            </p>
+                                            {doc.fileName && (
+                                                <p className="text-xs text-[var(--text-muted)] mt-1">
+                                                    File: {doc.fileName}
+                                                    {doc.fileSize ? ` • ${doc.fileSize}` : ''}
+                                                </p>
+                                            )}
+                                            {doc.adminNote && <p className="text-xs text-[var(--text-muted)] italic mt-1">Note: {doc.adminNote}</p>}
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="w-full sm:w-auto flex justify-end shrink-0 self-end sm:self-center">
-                                    {getButton(doc.status)}
-                                </div>
-                            </li>
-                        )
-                    })}
+                                </li>
+                            );
+                        })
+                    )}
                 </ul>
                 <div className="p-6 bg-[var(--bg-subtle)] rounded-b-2xl">
                     <div className="flex justify-between items-center mb-2">
-                         <p className="text-sm font-semibold text-[var(--text-main)]">Overall Progress</p>
-                         <p className="text-sm font-bold text-[var(--text-main)]">{approvedCount} of {totalDocs} documents approved</p>
+                        <p className="text-sm font-semibold text-[var(--text-main)]">Overall Progress</p>
+                        <p className="text-sm font-bold text-[var(--text-main)]">
+                            {totalDocs > 0 ? `${approvedCount} of ${totalDocs} documents approved` : 'Upload your first document to begin verification'}
+                        </p>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
                         <div className="bg-[var(--accent)] h-2.5 rounded-full transition-all duration-500" style={{ width: `${progressPercent}%` }}></div>
@@ -1699,58 +1832,97 @@ const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (v
 
             <Card>
                 <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Upload Documents</h2>
-                <div 
-                    className={`relative flex flex-col items-center justify-center p-10 border-2 border-dashed rounded-xl transition-colors duration-300
-                        ${isDragging ? 'bg-gold/20 border-[var(--accent)]' : 'bg-[var(--bg-subtle)] border-[var(--border-subtle)] hover:border-[var(--accent)]'}`
-                    }
-                    onDragEnter={handleDragEvents}
-                    onDragOver={handleDragEvents}
-                    onDragLeave={handleDragEvents}
-                    onDrop={handleDrop}
-                >
-                    <UploadIcon className="w-12 h-12 text-[var(--text-muted)]" />
-                    <p className="mt-4 text-lg font-semibold text-[var(--text-main)]">{isDragging ? 'Drop files here' : 'Drag files here or click to upload'}</p>
-                    <p className="text-sm text-[var(--text-muted)]">Accepted: PDF, JPG, PNG (max 10MB each)</p>
-                </div>
-                <div className="mt-4 text-center">
-                    <button className="py-2.5 px-6 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold text-[var(--text-main)] hover:bg-[var(--bg-subtle)] shadow-sm">
-                        Choose files
-                    </button>
-                </div>
-                {isUploading && (
-                     <div className="mt-4">
-                        <p className="text-sm font-semibold text-center mb-1">Uploading... {uploadProgress}%</p>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div className="bg-[var(--accent)] h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }}></div>
-                        </div>
+                <form onSubmit={handleUpload} className="space-y-6">
+                    <div>
+                        <label htmlFor="document-type" className="block text-sm font-semibold text-[var(--text-main)] mb-2">
+                            Document type
+                        </label>
+                        <select
+                            id="document-type"
+                            value={selectedDocType}
+                            onChange={handleDocTypeChange}
+                            className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                        >
+                            <option value="">Select a document type</option>
+                            {DOCUMENT_UPLOAD_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
                     </div>
-                )}
+
+                    <div className="relative flex flex-col items-center justify-center p-10 border-2 border-dashed rounded-xl bg-[var(--bg-subtle)] border-[var(--border-subtle)]">
+                        <UploadIcon className="w-12 h-12 text-[var(--text-muted)]" />
+                        {selectedFile ? (
+                            <>
+                                <p className="mt-4 text-lg font-semibold text-[var(--text-main)]">{selectedFile.name}</p>
+                                <p className="text-sm text-[var(--text-muted)]">{formatFileSize(selectedFile.size) ?? `${selectedFile.size} bytes`}</p>
+                            </>
+                        ) : (
+                            <p className="mt-4 text-lg font-semibold text-[var(--text-main)]">Select a file to upload</p>
+                        )}
+                        <p className="text-sm text-[var(--text-muted)] mt-2">Accepted: PDF, JPG, PNG (max 10MB each)</p>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            className="hidden"
+                            onChange={handleFileChange}
+                            accept=".pdf,.jpg,.jpeg,.png"
+                        />
+                        <button
+                            type="button"
+                            onClick={handleBrowseClick}
+                            className="mt-6 py-2.5 px-6 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold text-[var(--text-main)] hover:bg-[var(--bg-subtle)] shadow-sm"
+                        >
+                            Choose file
+                        </button>
+                    </div>
+
+                    {(uploadError || uploadSuccess) && (
+                        <div className="space-y-2">
+                            {uploadError && <p className="text-sm text-error">{uploadError}</p>}
+                            {uploadSuccess && <p className="text-sm text-success">{uploadSuccess}</p>}
+                        </div>
+                    )}
+
+                    <div className="flex justify-end">
+                        <button
+                            type="submit"
+                            disabled={!selectedDocType || !selectedFile || isUploading}
+                            className="py-2.5 px-8 bg-gold text-charcoal font-bold rounded-lg shadow-lg hover:bg-gold-light transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
+                        >
+                            {isUploading ? 'Uploading...' : 'Submit for Verification'}
+                        </button>
+                    </div>
+                </form>
             </Card>
-            
+
             <div className="space-y-6">
                 <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Uploaded Documents</h2>
-                {uploadedDocuments.map((doc, index) => (
-                    <Card key={index} className="flex flex-col md:flex-row md:items-center gap-4">
-                        <div className="flex-grow">
-                            <div className="flex items-center gap-3">
-                                <p className="font-bold text-[var(--text-main)]">{doc.fileName}</p>
-                                <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusConfig[doc.status].pill}`}>{statusConfig[doc.status].label}</span>
+                {uploadedDocuments.length === 0 ? (
+                    <Card className="text-sm text-[var(--text-muted)]">No documents have been uploaded yet.</Card>
+                ) : (
+                    uploadedDocuments.map((doc) => (
+                        <Card key={doc.id} className="flex flex-col gap-3">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                <div>
+                                    <div className="flex items-center gap-3">
+                                        <p className="font-bold text-[var(--text-main)]">{doc.fileName}</p>
+                                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusConfig[doc.status].pill}`}>
+                                            {statusConfig[doc.status].label}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-[var(--text-muted)] mt-1">
+                                        {doc.uploadTimestamp ?? 'Pending timestamp'}
+                                        {doc.fileSize ? ` • ${doc.fileSize}` : ''}
+                                    </p>
+                                    {doc.adminNote && <p className="text-xs text-[var(--text-muted)] italic mt-2">Admin Note: {doc.adminNote}</p>}
+                                </div>
                             </div>
-                            <p className="text-sm text-[var(--text-muted)] mt-1">
-                                {doc.uploadTimestamp} • {doc.fileSize}
-                            </p>
-                            {doc.adminNote && <p className="text-xs text-[var(--text-muted)] italic mt-2">Admin Note: {doc.adminNote}</p>}
-                        </div>
-                         <div className="flex items-center gap-2 self-end md:self-center">
-                            {(doc.status === 'rejected' || doc.status === 'needsReplacement') &&
-                                <button className="py-2 px-3 bg-gold/20 text-gold-dark font-bold text-xs rounded-md hover:bg-gold/30">Upload replacement</button>
-                            }
-                            <button className="p-2 text-[var(--text-muted)] hover:bg-[var(--bg-subtle)] rounded-full"><EyeIcon className="w-5 h-5"/></button>
-                            <button className="p-2 text-[var(--text-muted)] hover:bg-[var(--bg-subtle)] rounded-full"><ArrowDownTrayIcon className="w-5 h-5"/></button>
-                            <button className="p-2 text-error hover:bg-error/10 rounded-full"><TrashIcon className="w-5 h-5"/></button>
-                        </div>
-                    </Card>
-                ))}
+                        </Card>
+                    ))
+                )}
             </div>
 
             <NextStepsCard />
@@ -1763,12 +1935,12 @@ const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (v
                 {isGuidelinesOpen && (
                     <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] animate-fade-in">
                         <ul className="space-y-2 list-disc list-inside text-[var(--text-muted)]">
-                           <li>Documents must be current and not expired.</li>
-                           <li>Text must be clearly readable, no blurry photos.</li>
-                           <li>Upload all pages, front and back if applicable.</li>
-                           <li>Information must match your business name and details.</li>
+                            <li>Documents must be current and not expired.</li>
+                            <li>Text must be clearly readable, no blurry photos.</li>
+                            <li>Upload all pages, front and back if applicable.</li>
+                            <li>Information must match your business name and details.</li>
                         </ul>
-                         <div className="mt-6 pt-6 border-t border-[var(--border-subtle)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <div className="mt-6 pt-6 border-t border-[var(--border-subtle)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                             <p className="text-[var(--text-main)] font-semibold">Need help with your documents?</p>
                             <a href="mailto:documents@restorationexpertise.com" className="font-bold text-[var(--accent-dark)] hover:underline">
                                 Contact Support →
@@ -1780,8 +1952,6 @@ const MemberDocuments: React.FC<{ documents: DashboardDocument[]; onNavigate: (v
         </div>
     );
 };
-
-
 const BenefitDetailModal: React.FC<{ benefit: Benefit; onClose: () => void; onRequest: (title: string) => void; }> = ({ benefit, onClose, onRequest }) => {
     const progressPercent = benefit.quota && benefit.used ? (benefit.used / benefit.quota) * 100 : 0;
     const canRequest = benefit.quota !== undefined && benefit.used !== undefined && benefit.used < benefit.quota;
@@ -2913,6 +3083,29 @@ const MemberDashboard: React.FC = () => {
     const [isDashboardLoading, setIsDashboardLoading] = useState(false);
     const [dashboardError, setDashboardError] = useState<string | null>(null);
 
+    const refetchDocuments = useCallback(async (): Promise<DashboardDocument[]> => {
+        if (!session?.user?.id) {
+            setDocuments([]);
+            return [];
+        }
+
+        const { data, error } = await supabase
+            .from('member_documents')
+            .select('*')
+            .eq('profile_id', session.user.id)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Failed to load member documents', error);
+            throw error;
+        }
+
+        const rows = (data as SupabaseMemberDocument[] | null) ?? [];
+        const mapped = rows.map(mapDocumentRow);
+        setDocuments(mapped);
+        return mapped;
+    }, [session?.user?.id]);
+
     useEffect(() => {
         if (toast) {
             const timer = setTimeout(() => setToast(null), 3000);
@@ -2955,7 +3148,6 @@ const MemberDashboard: React.FC = () => {
                     profileResult,
                     membershipResult,
                     subscriptionResult,
-                    documentsResult,
                     serviceRequestsResult,
                 ] = await Promise.all([
                     supabase
@@ -2978,11 +3170,6 @@ const MemberDashboard: React.FC = () => {
                         .limit(1)
                         .maybeSingle(),
                     supabase
-                        .from('member_documents')
-                        .select('*')
-                        .eq('profile_id', session.user.id)
-                        .order('created_at', { ascending: false }),
-                    supabase
                         .from('service_requests')
                         .select('*')
                         .eq('profile_id', session.user.id)
@@ -2994,13 +3181,21 @@ const MemberDashboard: React.FC = () => {
                     return;
                 }
 
+                let documentsError: PostgrestError | null = null;
+                try {
+                    await refetchDocuments();
+                } catch (error) {
+                    console.error('Failed to load member documents', error);
+                    documentsError = isPostgrestError(error) ? error : null;
+                }
+
                 const queryErrors = [
                     profileResult.error,
                     membershipResult.error,
                     subscriptionResult.error,
-                    documentsResult.error,
                     serviceRequestsResult.error,
-                ].filter((error): error is typeof profileResult.error => Boolean(error && error.code !== 'PGRST116'));
+                    documentsError,
+                ].filter((error): error is PostgrestError => isPostgrestError(error) && error.code !== 'PGRST116');
 
                 if (queryErrors.length > 0) {
                     queryErrors.forEach((error) => {
@@ -3016,9 +3211,6 @@ const MemberDashboard: React.FC = () => {
                 setProfile((profileResult.data as SupabaseProfile | null) ?? null);
                 setMembership((membershipResult.data as SupabaseMembership | null) ?? null);
                 setSubscription((subscriptionResult.data as SupabaseSubscription | null) ?? null);
-
-                const fetchedDocuments = (documentsResult.data as SupabaseMemberDocument[] | null) ?? [];
-                setDocuments(fetchedDocuments.map(mapDocumentRow));
 
                 const fetchedRequests = (serviceRequestsResult.data as SupabaseServiceRequest[] | null) ?? [];
                 setRecentRequests(fetchedRequests.map(mapServiceRequestRow));
@@ -3045,7 +3237,7 @@ const MemberDashboard: React.FC = () => {
         return () => {
             isMounted = false;
         };
-    }, [session?.user?.id]);
+    }, [session?.user?.id, refetchDocuments]);
 
     const handleViewChange = (view: MemberView) => {
         setActiveView(view);
@@ -3236,7 +3428,7 @@ const MemberDashboard: React.FC = () => {
             case 'badge':
                  return <MemberBadge onNavigate={setActiveView} showToast={showToast} />;
             case 'documents':
-                return <MemberDocuments documents={documents} onNavigate={setActiveView} />;
+                return <MemberDocuments documents={documents} onNavigate={setActiveView} onRefreshDocuments={refetchDocuments} />;
             case 'benefits':
                 return <MemberBenefits showToast={showToast} />;
             case 'billing':
