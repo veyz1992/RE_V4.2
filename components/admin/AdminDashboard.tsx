@@ -2,11 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { HomeIcon, UsersIcon, BriefcaseIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon, CurrencyDollarIcon, UserCircleIcon, ChevronDownIcon } from '../icons';
 import { useAuth } from '../../App';
 import AdminOverview from './AdminOverview';
-import PendingVerifications from './PendingVerifications';
 import ClientManagement from './ClientManagement';
 import AdminSettings from './AdminSettings';
-import ServiceRequestsQueue from './ServiceRequestsQueue';
-import BillingOverview from './BillingOverview';
+import AdminServiceRequests from './AdminServiceRequests';
+import AdminDocumentsView from './AdminDocumentsView';
+import AdminSubscriptionsView from './AdminSubscriptionsView';
 import ThemeToggle from '../ThemeToggle';
 
 const PlaceholderView: React.FC<{ title: string }> = ({ title }) => (
@@ -28,7 +28,7 @@ const SidebarLink: React.FC<{ icon: React.ReactNode; label: string; isActive: bo
 );
 
 // --- Main Dashboard Component ---
-type AdminView = 'overview' | 'members' | 'verifications' | 'serviceRequests' | 'billing' | 'settings';
+type AdminView = 'overview' | 'members' | 'serviceRequests' | 'documents' | 'subscriptions' | 'settings';
 
 const AdminDashboard: React.FC = () => {
     const { currentUser, logout } = useAuth();
@@ -66,27 +66,33 @@ const AdminDashboard: React.FC = () => {
 
     const renderView = () => {
         switch (activeView) {
-            case 'overview': return <AdminOverview />;
-            case 'members': return <ClientManagement showToast={showToast} />;
-            case 'verifications': return <PendingVerifications showToast={showToast} />;
-            case 'serviceRequests': return <ServiceRequestsQueue showToast={showToast} />;
-            case 'billing': return <BillingOverview showToast={showToast} />;
-            case 'settings': return <AdminSettings showToast={showToast} />;
-            default: return <AdminOverview />;
+            case 'overview':
+                return <AdminOverview />;
+            case 'members':
+                return <ClientManagement showToast={showToast} />;
+            case 'serviceRequests':
+                return <AdminServiceRequests showToast={showToast} />;
+            case 'documents':
+                return <AdminDocumentsView showToast={showToast} />;
+            case 'subscriptions':
+                return <AdminSubscriptionsView showToast={showToast} />;
+            case 'settings':
+                return <AdminSettings showToast={showToast} />;
+            default:
+                return <AdminOverview />;
         }
     };
-    
+
     const NavItems = (
         <>
             <SidebarLink icon={<HomeIcon className="w-6 h-6" />} label="Overview" isActive={activeView === 'overview'} onClick={() => handleViewChange('overview')} />
             <SidebarLink icon={<UsersIcon className="w-6 h-6" />} label="Members" isActive={activeView === 'members'} onClick={() => handleViewChange('members')} />
-            <SidebarLink icon={<ShieldCheckIcon className="w-6 h-6" />} label="Verifications" isActive={activeView === 'verifications'} onClick={() => handleViewChange('verifications')} />
             <SidebarLink icon={<BriefcaseIcon className="w-6 h-6" />} label="Service Requests" isActive={activeView === 'serviceRequests'} onClick={() => handleViewChange('serviceRequests')} />
-            <SidebarLink icon={<CurrencyDollarIcon className="w-6 h-6" />} label="Billing" isActive={activeView === 'billing'} onClick={() => handleViewChange('billing')} />
+            <SidebarLink icon={<ShieldCheckIcon className="w-6 h-6" />} label="Documents" isActive={activeView === 'documents'} onClick={() => handleViewChange('documents')} />
+            <SidebarLink icon={<CurrencyDollarIcon className="w-6 h-6" />} label="Subscriptions" isActive={activeView === 'subscriptions'} onClick={() => handleViewChange('subscriptions')} />
             <SidebarLink icon={<Cog6ToothIcon className="w-6 h-6" />} label="Settings" isActive={activeView === 'settings'} onClick={() => handleViewChange('settings')} />
         </>
     );
-
     return (
         <div className="flex h-screen bg-[var(--bg-main)] text-[var(--text-main)]">
              {toast && (

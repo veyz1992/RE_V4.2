@@ -96,24 +96,34 @@ export interface User {
   };
 }
 
-export interface ServiceRequest {
+export type ServiceRequestStatus = 'open' | 'in_progress' | 'completed' | 'canceled';
+export type ServiceRequestPriority = 'low' | 'medium' | 'high';
+
+export interface MemberServiceRequest {
     id: string;
-    userId: number;
-    userName: string;
-    service: 'SEO Blog Post' | 'Spotlight Article' | 'Website Review' | 'Badge Support' | 'Consultation' | 'Other';
+    profileId: string;
+    requestType: string;
     title: string;
-    date: string;
-    status: 'Open' | 'In progress' | 'Completed' | 'Canceled';
-    priority: 'Normal' | 'Low' | 'High';
-    description?: string;
-    timeline?: {
-        event: string;
-        date: string;
-    }[];
-    attachments?: {
-        name: string;
-        size: string;
-    }[];
+    description: string | null;
+    priority: ServiceRequestPriority;
+    status: ServiceRequestStatus;
+    adminNotes: string | null;
+    assignedAdminId: string | null;
+    createdAt: string;
+    updatedAt: string | null;
+    profileName?: string | null;
+    profileEmail?: string | null;
+    assignedAdminName?: string | null;
+}
+
+export interface ServiceRequestActivityLog {
+    id: string;
+    serviceRequestId: string;
+    actorUserId: string | null;
+    action: string | null;
+    description: string | null;
+    createdAt: string;
+    actorName?: string | null;
 }
 
 // --- ADMIN & VERIFICATION TYPES ---
