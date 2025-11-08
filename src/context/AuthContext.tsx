@@ -8,7 +8,93 @@ import React, {
 } from 'react';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import type { Benefit, Role, User } from '@/types';
+import type { Benefit, PackageTier, Role, User } from '@/types';
+
+type ProfileMembershipSnapshot = {
+  membership_tier: string | null;
+  next_billing_date: string | null;
+};
+
+const PACKAGE_TIERS: PackageTier[] = [
+  'Bronze',
+  'Silver',
+  'Gold',
+  'Founding Member',
+  'Platinum',
+];
+
+const isValidPackageTier = (
+  value: string | null | undefined,
+): value is PackageTier => {
+  return value !== null && value !== undefined && PACKAGE_TIERS.includes(value as PackageTier);
+};
+
+const formatRenewalDate = (input?: string | null): string | undefined => {
+  if (!input) {
+    return undefined;
+  }
+
+  const parsed = new Date(input);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  return parsed.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+const applyMembershipSnapshotToUser = (
+  user: User,
+  snapshot: ProfileMembershipSnapshot,
+): User => {
+  if (!snapshot.membership_tier && !snapshot.next_billing_date) {
+    return user;
+  }
+
+  const membershipTier = isValidPackageTier(snapshot.membership_tier)
+    ? snapshot.membership_tier
+    : user.plan?.name ?? user.package;
+
+  const formattedRenewal =
+    formatRenewalDate(snapshot.next_billing_date) ??
+    user.plan?.renewalDate ??
+    user.billing?.subscription?.renewalDate;
+
+  const updatedPlan = user.plan
+    ? {
+        ...user.plan,
+        name: membershipTier,
+        renewalDate: formattedRenewal ?? user.plan.renewalDate,
+      }
+    : {
+        name: membershipTier,
+        billingCycle: 'Billed monthly',
+        price: user.plan?.price ?? '$0/month',
+        renewalDate: formattedRenewal ?? '',
+        rating: user.plan?.rating ?? 'A+',
+      };
+
+  const updatedBilling = user.billing
+    ? {
+        ...user.billing,
+        subscription: {
+          ...user.billing.subscription,
+          planName: membershipTier,
+          renewalDate: formattedRenewal ?? user.billing.subscription.renewalDate,
+        },
+      }
+    : user.billing;
+
+  return {
+    ...user,
+    package: membershipTier,
+    plan: updatedPlan,
+    billing: updatedBilling,
+  };
+};
 
 interface AuthContextValue {
   session: Session | null;
@@ -262,15 +348,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const admin = !!data;
 
+        let profileSnapshot: ProfileMembershipSnapshot | null = null;
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('membership_tier, next_billing_date')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.error('Failed to load profile membership data', profileError);
+        } else if (profileData) {
+          profileSnapshot = profileData as ProfileMembershipSnapshot;
+        }
+
         setAuthState((previous) => ({
           ...previous,
           isAdmin: admin,
           loading: false,
         }));
 
-        setCurrentUser((previous) =>
-          createAppUserFromSession(session, admin ? 'admin' : 'member', previous),
-        );
+        setCurrentUser((previous) => {
+          const baseUser = createAppUserFromSession(
+            session,
+            admin ? 'admin' : 'member',
+            previous,
+          );
+
+          if (profileSnapshot) {
+            return applyMembershipSnapshotToUser(baseUser, profileSnapshot);
+          }
+
+          return baseUser;
+        });
       } catch (error) {
         if (!isMounted) {
           return;

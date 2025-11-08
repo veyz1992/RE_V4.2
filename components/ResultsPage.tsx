@@ -4,6 +4,7 @@ import FoundingMemberModal from './FoundingMemberModal';
 import { FOUNDING_MEMBER_SPOTS_REMAINING } from '../constants';
 import { StoredAssessmentResult, Opportunity } from '../types';
 import { CheckCircleIcon, ExclamationTriangleIcon, XMarkIcon } from './icons';
+import { startCheckout } from '@/lib/checkout';
 
 const AnimatedScore: React.FC<{ score: number }> = ({ score }) => {
     const [displayScore, setDisplayScore] = useState(0);
@@ -165,7 +166,7 @@ interface ResultsPageProps {
 }
 
 const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) => {
-    const { total: score, answers, grade, isEligibleForCertification, eligibilityReasons, opportunities } = result;
+    const { total: score, grade, isEligibleForCertification, eligibilityReasons, opportunities } = result;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [previewedTier, setPreviewedTier] = useState<{ name: string; features: string[] } | null>(null);
 
@@ -178,16 +179,43 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
         }
     }, [isEligibleForCertification]);
 
-    const handleClaimAndJoin = () => {
-        console.log("User wants to join as Founding Member. Proceeding to account creation/login.");
-        setIsModalOpen(false);
-        onJoin();
+    const beginCheckout = async (tier: string) => {
+        const trimmedStoredEmail = result.emailEntered?.trim() ?? '';
+        let email = trimmedStoredEmail;
+
+        if (!email) {
+            const promptValue = window
+                .prompt('Where should we send your receipt and member access link?')
+                ?.trim();
+
+            if (!promptValue) {
+                alert('Email is required to continue to secure checkout.');
+                return;
+            }
+
+            email = promptValue;
+        }
+
+        try {
+            await startCheckout(tier, email, result.id);
+        } catch (error) {
+            console.error('Failed to start Stripe Checkout', error);
+            alert('We were unable to start checkout. Please try again or contact support.');
+        }
     };
-    
+
+    const handleClaimAndJoin = () => {
+        setIsModalOpen(false);
+        beginCheckout('Founding Member').catch(() => {
+            /* Error surface handled inside beginCheckout */
+        });
+    };
+
     const handleSelectAndJoin = (tier: string) => {
-         console.log(`User selected ${tier}. Proceeding to account creation/login.`);
-         onJoin();
-    }
+        beginCheckout(tier).catch(() => {
+            /* Error surface handled inside beginCheckout */
+        });
+    };
 
     if (isEligibleForCertification) {
         // SCENARIO A: ELIGIBLE
