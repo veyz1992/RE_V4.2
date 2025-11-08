@@ -7,14 +7,14 @@ if (!stripeSecretKey) {
 }
 
 const stripe = new Stripe(stripeSecretKey, {
-  apiVersion: '2024-12-18',
+  apiVersion: '2022-11-15',
 });
 
-const PRICE_IDS: Record<string, string> = {
-  Bronze: 'price_test_bronze',
-  Silver: 'price_test_silver',
-  Gold: 'price_test_gold',
-  'Founding Member': 'price_test_founding',
+const PRICE_IDS: Record<string, string | undefined> = {
+  Bronze: process.env.STRIPE_PRICE_BRONZE,
+  Silver: process.env.STRIPE_PRICE_SILVER,
+  Gold: process.env.STRIPE_PRICE_GOLD,
+  'Founding Member': process.env.STRIPE_PRICE_FOUNDING_MEMBER,
 };
 
 const jsonResponse = (statusCode: number, body: unknown) => ({
@@ -90,12 +90,21 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
 
   const { tier, email, assessmentId } = payload;
 
-  if (!tier || !PRICE_IDS[tier]) {
+  if (!tier || typeof tier !== 'string') {
     return jsonResponse(400, { error: 'Invalid or missing membership tier' });
   }
 
   if (!email || typeof email !== 'string') {
     return jsonResponse(400, { error: 'Invalid or missing email address' });
+  }
+
+  const priceId = PRICE_IDS[tier];
+
+  if (!priceId) {
+    console.error(`No Stripe price configured for tier: ${tier}`);
+    return jsonResponse(400, {
+      error: `No Stripe price configured for ${tier}`,
+    });
   }
 
   const origin = getOriginFromHeaders(event.headers ?? {});
@@ -106,7 +115,7 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
       customer_email: email,
       line_items: [
         {
-          price: PRICE_IDS[tier],
+          price: priceId,
           quantity: 1,
         },
       ],
