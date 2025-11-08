@@ -87,6 +87,77 @@ const AppRoutes: React.FC = () => {
     }
   };
 
+  type ProfileRow = {
+    id: string;
+    last_assessment_id?: number | string | null;
+    last_pci_score?: number | null;
+  };
+
+  const getOrCreateProfile = async (userId: string) => {
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('id, last_assessment_id, last_pci_score')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    if (existingProfile) {
+      return existingProfile as ProfileRow;
+    }
+
+    const { data: createdProfile, error: insertError } = await supabase
+      .from('profiles')
+      .insert({ id: userId })
+      .select('id, last_assessment_id, last_pci_score')
+      .single();
+
+    if (insertError) {
+      throw insertError;
+    }
+
+    return createdProfile as ProfileRow;
+  };
+
+  const updateProfileWithAssessment = async (
+    profileId: string,
+    assessmentId: number | string,
+    pciScore: number,
+  ) => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        last_assessment_id: assessmentId,
+        last_pci_score: pciScore,
+      })
+      .eq('id', profileId);
+
+    if (error) {
+      throw error;
+    }
+  };
+
+  const createPendingMembership = async (
+    profileId: string,
+    tier: string,
+    assessmentId: number | string,
+  ) => {
+    const { error } = await supabase.from('memberships').insert({
+      profile_id: profileId,
+      tier,
+      status: 'pending',
+      verification_status: 'pending',
+      badge_rating: null,
+      assessment_id: assessmentId,
+    });
+
+    if (error) {
+      throw error;
+    }
+  };
+
   const handleAssessmentComplete = async (
     result: ScoreBreakdown & { answers: Answers },
   ) => {
@@ -123,11 +194,25 @@ const AppRoutes: React.FC = () => {
 
     setIsSavingAssessment(true);
 
+    let profile: ProfileRow | null = null;
+
+    if (session?.user?.id) {
+      try {
+        profile = await getOrCreateProfile(session.user.id);
+      } catch (profileError) {
+        console.error('Failed to load or create profile', profileError);
+        alert(
+          'We will continue with your assessment, but updating your profile may not be complete.',
+        );
+      }
+    }
+
     try {
       const { data, error } = await supabase
         .from('assessments')
         .insert({
           user_id: session?.user?.id ?? null,
+          profile_id: profile?.id ?? null,
           email_entered: emailEntered,
           answers: result.answers,
           total_score: result.total,
@@ -151,6 +236,7 @@ const AppRoutes: React.FC = () => {
         id?: number | string;
         created_at?: string;
         user_id?: string | null;
+        profile_id?: string | null;
         email_entered?: string | null;
         answers?: Answers;
         total_score?: number;
@@ -165,6 +251,30 @@ const AppRoutes: React.FC = () => {
       };
 
       const row = data as SupabaseAssessmentRow;
+
+      if (profile?.id && row.id != null) {
+        try {
+          await updateProfileWithAssessment(profile.id, row.id, result.total);
+        } catch (profileUpdateError) {
+          console.error('Failed to update profile with assessment', profileUpdateError);
+          alert('We saved your assessment but could not update your profile.');
+        }
+
+        if (result.isEligibleForCertification && intendedMembershipTier) {
+          try {
+            await createPendingMembership(
+              profile.id,
+              intendedMembershipTier,
+              row.id,
+            );
+          } catch (membershipError) {
+            console.error('Failed to create pending membership', membershipError);
+            alert(
+              'We saved your assessment but could not update your membership status.',
+            );
+          }
+        }
+      }
 
       const storedResult: StoredAssessmentResult = {
         ...result,
