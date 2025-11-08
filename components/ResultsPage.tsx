@@ -211,12 +211,6 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
         });
     };
 
-    const handleSelectAndJoin = (tier: string) => {
-        beginCheckout(tier).catch(() => {
-            /* Error surface handled inside beginCheckout */
-        });
-    };
-
     if (isEligibleForCertification) {
         // SCENARIO A: ELIGIBLE
         const professionalTitle = score >= 80 ? 'Premier Restoration Professional' : 'Certified Restoration Professional';
@@ -272,37 +266,43 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
 
                 <h2 className="font-sora text-3xl font-bold text-charcoal text-center mb-8">Choose Your Membership Tier</h2>
                  <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 items-start">
-                    <PricingCard 
-                        tier="Bronze" 
-                        price="$159" 
-                        pricePeriod="/mo" 
+                    <PricingCard
+                        tier="Bronze"
+                        price="$159"
+                        pricePeriod="/mo"
                         features={[
                             'Verified Badge (A+, A, or B+)',
                             'Profile page with SEO backlink',
                             'Basic directory listing',
                             'Community access',
                             'Annual re-verification included'
-                        ]} 
-                        onSelect={() => handleSelectAndJoin('Bronze')} 
+                        ]}
+                        onSelect={() => {}}
+                        disabled
+                        buttonLabel="Coming Soon"
+                        disabledText="Bronze launches soon."
                     />
-                    <PricingCard 
-                        tier="Silver" 
-                        price="$229" 
-                        pricePeriod="/mo" 
+                    <PricingCard
+                        tier="Silver"
+                        price="$229"
+                        pricePeriod="/mo"
                         features={[
                             'Everything in Bronze, plus:',
                             'Featured placement in directory',
                             'Enhanced profile (logo, gallery, CTA)',
                             'Yearly SEO blog post',
                             'Quarterly compliance check'
-                        ]} 
-                        popular 
-                        onSelect={() => handleSelectAndJoin('Silver')} 
+                        ]}
+                        popular
+                        onSelect={() => {}}
+                        disabled
+                        buttonLabel="Coming Soon"
+                        disabledText="Silver launches soon."
                     />
-                    <PricingCard 
-                        tier="Gold" 
-                        price="$497" 
-                        pricePeriod="/mo" 
+                    <PricingCard
+                        tier="Gold"
+                        price="$497"
+                        pricePeriod="/mo"
                         features={[
                             'Everything in Silver, plus:',
                             'Featured in "Top Verified Experts"',
@@ -310,8 +310,11 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
                             'Bi-annual spotlight article',
                             'Social media spotlight (2x/year)',
                             '99-Steps Blueprint included'
-                        ]} 
-                        onSelect={() => handleSelectAndJoin('Gold')} 
+                        ]}
+                        onSelect={() => {}}
+                        disabled
+                        buttonLabel="Coming Soon"
+                        disabledText="Gold launches soon."
                     />
                     <PricingCard 
                         tier="Founding Member" 
