@@ -114,54 +114,51 @@ type DashboardServiceRequest = {
 
 interface SupabaseProfile {
     id: string;
+    email?: string | null;
+    company_name?: string | null;
+    membership_tier?: string | null;
+    member_status?: string | null;
     verification_status?: string | null;
-    verification_valid_until?: string | null;
-    verification_rating?: string | null;
     badge_rating?: string | null;
-    profile_views?: number | null;
-    profile_views_value?: number | null;
-    profile_views_period?: string | null;
-    badge_clicks?: number | null;
-    badge_clicks_value?: number | null;
-    badge_clicks_period?: string | null;
-    current_plan_name?: string | null;
-    current_plan_price?: string | null;
-    next_renewal?: string | null;
-    benefits_description?: string | null;
-    benefits?: unknown;
-    activity_log?: unknown;
-    business_name?: string | null;
+    stripe_customer_id?: string | null;
+    stripe_subscription_id?: string | null;
+    next_billing_date?: string | null;
+    last_pci_score?: number | null;
+    last_assessment_id?: string | null;
     [key: string]: unknown;
 }
 
 interface SupabaseMembership {
-    id: string | number;
+    id: string;
     profile_id?: string | null;
-    plan_name?: string | null;
-    plan_tier?: string | null;
-    price_monthly?: number | null;
-    price?: number | string | null;
+    tier?: string | null;
     status?: string | null;
-    verification_valid_until?: string | null;
+    verification_status?: string | null;
     badge_rating?: string | null;
-    benefits?: unknown;
-    benefits_description?: string | null;
-    renewal_date?: string | null;
+    activated_at?: string | null;
+    canceled_at?: string | null;
+    assessment_id?: string | null;
     created_at?: string | null;
+    updated_at?: string | null;
     [key: string]: unknown;
 }
 
 interface SupabaseSubscription {
-    id: string | number;
+    id: string;
     profile_id?: string | null;
-    plan_name?: string | null;
-    price_monthly?: number | null;
-    price?: number | string | null;
+    membership_id?: string | null;
+    stripe_customer_id?: string | null;
+    stripe_subscription_id?: string | null;
+    tier?: string | null;
     status?: string | null;
-    next_renewal?: string | null;
-    renewal_date?: string | null;
+    billing_cycle?: string | null;
+    unit_amount_cents?: number | null;
+    current_period_start?: string | null;
     current_period_end?: string | null;
+    cancel_at_period_end?: boolean | null;
+    canceled_at?: string | null;
     created_at?: string | null;
+    updated_at?: string | null;
     [key: string]: unknown;
 }
 
@@ -3592,69 +3589,81 @@ const MemberDashboard: React.FC = () => {
     };
 
     const overviewData = useMemo<OverviewData>(() => {
-        const status = normalizeMemberStatus(
-            (profile?.verification_status ?? membership?.status ?? subscription?.status) as string | undefined,
-        );
+        const statusSource =
+            profile?.member_status ??
+            profile?.verification_status ??
+            membership?.status ??
+            subscription?.status;
+        const status = normalizeMemberStatus(statusSource ?? undefined);
 
-        const verificationValidUntil =
-            formatDate(
-                profile?.verification_valid_until ??
-                membership?.verification_valid_until ??
-                (membership?.renewal_date ?? null),
-            ) ?? null;
+        const verificationValidUntilRaw =
+            (profile?.['verification_valid_until'] as string | null | undefined) ??
+            (membership?.['verification_valid_until'] as string | null | undefined) ??
+            (membership?.['renewal_date'] as string | null | undefined) ??
+            null;
+        const verificationValidUntil = formatDate(verificationValidUntilRaw) ?? null;
 
         const verificationRating =
-            profile?.verification_rating ??
+            (profile?.['verification_rating'] as string | null | undefined) ??
             membership?.badge_rating ??
             profile?.badge_rating ??
             currentUser?.plan?.rating ??
             null;
 
         const planName =
-            membership?.plan_name ??
-            membership?.plan_tier ??
-            subscription?.plan_name ??
-            profile?.current_plan_name ??
-            currentUser?.plan?.name ??
+            membership?.tier ??
+            subscription?.tier ??
+            profile?.membership_tier ??
             null;
 
-        const rawPlanPrice =
-            membership?.price_monthly ??
-            (typeof membership?.price === 'number' ? membership?.price : null) ??
-            subscription?.price_monthly ??
-            (typeof subscription?.price === 'number' ? subscription?.price : null);
-
-        const formattedPlanPrice =
-            formatCurrency(rawPlanPrice) ??
-            (typeof membership?.price === 'string' ? membership?.price : null) ??
-            (typeof subscription?.price === 'string' ? subscription?.price : null) ??
-            currentUser?.plan?.price ??
-            null;
-
-        const planPrice = formattedPlanPrice && !formattedPlanPrice.toLowerCase().includes('month') && !formattedPlanPrice.includes('/mo')
-            ? `${formattedPlanPrice}/mo`
-            : formattedPlanPrice;
+        let planPrice: string | null = null;
+        if (subscription?.unit_amount_cents !== null && subscription?.unit_amount_cents !== undefined) {
+            const amountInDollars = subscription.unit_amount_cents / 100;
+            const formattedAmount = formatCurrency(amountInDollars);
+            if (formattedAmount) {
+                const billingCycle = subscription.billing_cycle?.toLowerCase();
+                if (billingCycle?.includes('year')) {
+                    planPrice = `${formattedAmount}/year`;
+                } else if (billingCycle?.includes('month')) {
+                    planPrice = `${formattedAmount}/month`;
+                } else if (billingCycle) {
+                    planPrice = `${formattedAmount}/${billingCycle}`;
+                } else {
+                    planPrice = formattedAmount;
+                }
+            }
+        }
 
         const nextRenewal =
             formatDate(
-                subscription?.next_renewal ??
-                subscription?.renewal_date ??
-                membership?.renewal_date ??
-                profile?.next_renewal ??
-                (currentUser?.plan?.renewalDate ?? null),
+                subscription?.current_period_end ??
+                profile?.next_billing_date ??
+                null,
             ) ?? null;
 
-        const profileViewsValue = profile?.profile_views_value ?? profile?.profile_views ?? null;
-        const profileViewsPeriod = profile?.profile_views_period ?? 'Last 30 days';
-        const badgeClicksValue = profile?.badge_clicks_value ?? profile?.badge_clicks ?? null;
-        const badgeClicksPeriod = profile?.badge_clicks_period ?? 'Last 30 days';
+        const profileViewsValue =
+            (profile?.['profile_views_value'] as number | null | undefined) ??
+            (profile?.['profile_views'] as number | null | undefined) ??
+            null;
+        const profileViewsPeriod =
+            (profile?.['profile_views_period'] as string | null | undefined) ??
+            'Last 30 days';
+        const badgeClicksValue =
+            (profile?.['badge_clicks_value'] as number | null | undefined) ??
+            (profile?.['badge_clicks'] as number | null | undefined) ??
+            null;
+        const badgeClicksPeriod =
+            (profile?.['badge_clicks_period'] as string | null | undefined) ??
+            'Last 30 days';
 
         const parsedBenefits = parsePossibleJson<Array<{ name: string; progress?: string | null; icon?: string | null }>>(
-            membership?.benefits ?? profile?.benefits,
+            (membership?.['benefits'] as unknown) ?? (profile?.['benefits'] as unknown),
         );
 
         const benefitsDescription =
-            membership?.benefits_description ?? profile?.benefits_description ?? null;
+            (membership?.['benefits_description'] as string | null | undefined) ??
+            (profile?.['benefits_description'] as string | null | undefined) ??
+            null;
 
         const fallbackBenefits = (currentUser?.benefits ?? []).map((benefit) => ({
             name: benefit.title,
