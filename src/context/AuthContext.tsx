@@ -22,6 +22,14 @@ interface AuthContextValue {
   updateUser: (updatedUser: User) => void;
 }
 
+const getMagicLinkRedirectUrl = (): string | undefined => {
+  // Use the current origin so this works for both dev and production.
+  // App.tsx will route the authenticated user to /member/dashboard or /admin
+  // based on the session, so the root URL is enough.
+  if (typeof window === 'undefined') return undefined;
+  return window.location.origin;
+};
+
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const BASE_BENEFITS: Benefit[] = [
@@ -301,11 +309,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [session, user]);
 
   const login = useCallback(async (email: string) => {
+    const redirectUrl = getMagicLinkRedirectUrl();
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        emailRedirectTo: window.location.origin,
-      },
+      options: redirectUrl
+        ? { emailRedirectTo: redirectUrl }
+        : undefined,
     });
 
     if (error) {
