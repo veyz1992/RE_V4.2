@@ -17,6 +17,15 @@ const PRICE_IDS: Record<string, string | undefined> = {
   'Founding Member': process.env.STRIPE_PRICE_FOUNDING_MEMBER,
 };
 
+// Validate all price IDs are configured
+const missingPrices = Object.entries(PRICE_IDS)
+  .filter(([tier, priceId]) => !priceId)
+  .map(([tier]) => tier);
+
+if (missingPrices.length > 0) {
+  throw new Error(`Missing Stripe price environment variables for: ${missingPrices.join(', ')}`);
+}
+
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
   headers: {
@@ -121,6 +130,7 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
       ],
       metadata: {
         tier,
+        email,
         assessmentId: assessmentId ? String(assessmentId) : '',
       },
       success_url: `${origin}/login?checkout=success`,

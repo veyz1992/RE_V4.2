@@ -6,24 +6,31 @@ interface AdminSubscriptionsViewProps {
     showToast: (message: string, type: 'success' | 'error') => void;
 }
 
-interface SupabaseMembershipRow {
+interface SupabaseSubscriptionRow {
     id: string | number;
     profile_id?: string | null;
-    plan_name?: string | null;
-    plan_tier?: string | null;
-    price?: number | string | null;
-    price_monthly?: number | null;
+    tier?: string | null;
     status?: string | null;
-    renewal_date?: string | null;
+    unit_amount_cents?: number | null;
+    billing_cycle?: string | null;
+    current_period_end?: string | null;
     created_at?: string | null;
+    profiles?: {
+        id: string;
+        email: string;
+        full_name?: string | null;
+        company_name?: string | null;
+        membership_tier?: string | null;
+    } | null;
     [key: string]: unknown;
 }
 
 interface AdminSubscription {
     id: string;
-    profileId: string;
-    planName: string;
-    planTier: string | null;
+    memberName: string;
+    memberEmail: string;
+    planTier: string;
+    status: string;
     price: string | null;
     renewalDate: string | null;
     createdAt: string | null;
@@ -62,16 +69,19 @@ const formatDate = (value?: string | null): string | null => {
     }).format(date);
 };
 
-const mapMembershipRow = (row: SupabaseMembershipRow): AdminSubscription => {
-    const price = formatCurrency(row.price_monthly ?? (typeof row.price === 'number' ? row.price : null)) ?? (typeof row.price === 'string' ? row.price : null);
+const mapSubscriptionRow = (row: SupabaseSubscriptionRow): AdminSubscription => {
+    const price = row.unit_amount_cents ? formatCurrency(row.unit_amount_cents / 100) : null;
+    const memberName = row.profiles?.full_name || row.profiles?.company_name || `Member ${row.profile_id?.slice(0, 8) || 'Unknown'}`;
+    const memberEmail = row.profiles?.email || `member${row.profile_id?.slice(0, 8) || 'unknown'}@example.com`;
 
     return {
         id: String(row.id),
-        profileId: row.profile_id ?? '',
-        planName: row.plan_name ?? 'Membership',
-        planTier: row.plan_tier ?? null,
+        memberName,
+        memberEmail,
+        planTier: row.tier ?? 'Unknown',
+        status: row.status ?? 'unknown',
         price,
-        renewalDate: formatDate(row.renewal_date ?? null),
+        renewalDate: formatDate(row.current_period_end ?? null),
         createdAt: formatDate(row.created_at ?? null),
     };
 };
@@ -86,8 +96,24 @@ const AdminSubscriptionsView: React.FC<AdminSubscriptionsViewProps> = ({ showToa
 
         try {
             const { data, error: fetchError } = await supabase
-                .from('memberships')
-                .select('id, profile_id, plan_name, plan_tier, price, price_monthly, status, renewal_date, created_at')
+                .from('subscriptions')
+                .select(`
+                  id,
+                  profile_id,
+                  tier,
+                  status,
+                  unit_amount_cents,
+                  billing_cycle,
+                  current_period_end,
+                  created_at,
+                  profiles!inner(
+                    id,
+                    email,
+                    full_name,
+                    company_name,
+                    membership_tier
+                  )
+                `)
                 .eq('status', 'active')
                 .order('created_at', { ascending: false });
 
@@ -95,8 +121,8 @@ const AdminSubscriptionsView: React.FC<AdminSubscriptionsViewProps> = ({ showToa
                 throw fetchError;
             }
 
-            const rows = (data as SupabaseMembershipRow[] | null) ?? [];
-            setSubscriptions(rows.map(mapMembershipRow));
+            const rows = (data as SupabaseSubscriptionRow[] | null) ?? [];
+            setSubscriptions(rows.map(mapSubscriptionRow));
             setError(null);
         } catch (fetchError) {
             console.error('Failed to load subscriptions', fetchError);
@@ -154,11 +180,12 @@ const AdminSubscriptionsView: React.FC<AdminSubscriptionsViewProps> = ({ showToa
                             {subscriptions.map((subscription) => (
                                 <tr key={subscription.id} className="hover:bg-gray-light/50">
                                     <td className="p-4">
-                                        <p className="font-semibold text-charcoal">{subscription.profileId}</p>
+                                        <p className="font-semibold text-charcoal">{subscription.memberName}</p>
+                                        <p className="text-sm text-gray-dark">{subscription.memberEmail}</p>
                                     </td>
                                     <td className="p-4">
-                                        <p className="font-semibold text-charcoal">{subscription.planName}</p>
-                                        <p className="text-sm text-gray-dark">{subscription.planTier ?? '—'}</p>
+                                        <p className="font-semibold text-charcoal">{subscription.planTier}</p>
+                                        <p className="text-sm text-gray-dark">{subscription.status}</p>
                                     </td>
                                     <td className="p-4 text-sm text-gray-dark">{subscription.price ?? '—'}</td>
                                     <td className="p-4 text-sm text-gray-dark">{subscription.renewalDate ?? '—'}</td>
@@ -174,12 +201,12 @@ const AdminSubscriptionsView: React.FC<AdminSubscriptionsViewProps> = ({ showToa
                         <div key={subscription.id} className="p-4 space-y-3">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <p className="font-semibold text-charcoal">{subscription.planName}</p>
-                                    <p className="text-sm text-gray-dark">{subscription.planTier ?? '—'}</p>
+                                    <p className="font-semibold text-charcoal">{subscription.memberName}</p>
+                                    <p className="text-sm text-gray-dark">{subscription.memberEmail}</p>
                                 </div>
                                 <span className="text-sm font-semibold text-gray-dark">{subscription.price ?? '—'}</span>
                             </div>
-                            <p className="text-sm text-gray-dark">Profile: {subscription.profileId}</p>
+                            <p className="text-sm text-gray-dark">Plan: {subscription.planTier} ({subscription.status})</p>
                             <p className="text-sm text-gray-dark">Renewal {subscription.renewalDate ?? '—'}</p>
                             <p className="text-sm text-gray-dark">Joined {subscription.createdAt ?? '—'}</p>
                         </div>

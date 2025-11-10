@@ -50,10 +50,10 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
 });
 
 const PRICE_IDS: Record<string, string> = {
-  Bronze: 'price_test_bronze',
-  Silver: 'price_test_silver',
-  Gold: 'price_test_gold',
-  'Founding Member': 'price_test_founding',
+  Bronze: process.env.STRIPE_PRICE_BRONZE!,
+  Silver: process.env.STRIPE_PRICE_SILVER!,
+  Gold: process.env.STRIPE_PRICE_GOLD!,
+  'Founding Member': process.env.STRIPE_PRICE_FOUNDING_MEMBER!,
 };
 
 const PRICE_TO_TIER = Object.fromEntries(
@@ -184,6 +184,54 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
   }
 
   try {
+    // Helper function to create/update subscriptions table
+    const upsertSubscription = async (
+      profileId: string,
+      subscriptionData: {
+        stripe_subscription_id: string;
+        stripe_customer_id: string;
+        status: string;
+        tier: string;
+        billing_cycle: string;
+        unit_amount_cents: number;
+        current_period_start: string;
+        current_period_end: string;
+      }
+    ) => {
+      try {
+        const { error } = await supabase
+          .from('subscriptions')
+          .upsert({
+            profile_id: profileId,
+            stripe_subscription_id: subscriptionData.stripe_subscription_id,
+            stripe_customer_id: subscriptionData.stripe_customer_id,
+            status: subscriptionData.status,
+            tier: subscriptionData.tier,
+            billing_cycle: subscriptionData.billing_cycle,
+            unit_amount_cents: subscriptionData.unit_amount_cents,
+            current_period_start: subscriptionData.current_period_start,
+            current_period_end: subscriptionData.current_period_end,
+          }, {
+            onConflict: 'stripe_subscription_id'
+          });
+
+        if (error) {
+          console.error('Error upserting subscription:', error);
+          throw error;
+        }
+        console.log('Successfully upserted subscription for profile:', profileId);
+      } catch (error) {
+        console.error('Failed to upsert subscription:', error);
+        throw error;
+      }
+    };
+
+    // Helper function to get tier from price ID
+    const getTierFromPriceId = (priceId: string): string => {
+      const tierEntry = Object.entries(PRICE_IDS).find(([_, id]) => id === priceId);
+      return tierEntry ? tierEntry[0] : 'Bronze'; // Default fallback
+    };
+
     if (stripeEvent.type === 'checkout.session.completed') {
       const session = stripeEvent.data.object as Stripe.Checkout.Session;
       const email = session.customer_details?.email ?? session.customer_email ?? undefined;
@@ -215,6 +263,99 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
       const profileId = await ensureProfileForEmail(email);
       await updateProfileMembership(profileId, tier, customerId, subscriptionId, nextRenewal);
       await activatePendingMembership(profileId, tier);
+
+      // Create subscription entry
+      await upsertSubscription(profileId, {
+        stripe_subscription_id: subscriptionId,
+        stripe_customer_id: customerId,
+        status: subscription.status,
+        tier: tier as any, // Assuming tier enum matches
+        billing_cycle: subscription.items.data[0]?.price?.recurring?.interval || 'month',
+        unit_amount_cents: subscription.items.data[0]?.price?.unit_amount || 0,
+        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      });
+    }
+
+    // Handle subscription created/updated
+    if (stripeEvent.type === 'customer.subscription.created' || stripeEvent.type === 'customer.subscription.updated') {
+      const subscription = stripeEvent.data.object as Stripe.Subscription;
+      const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
+      
+      // Find profile by stripe_customer_id
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('stripe_customer_id', customerId)
+        .single();
+
+      if (profile?.id) {
+        const priceId = subscription.items.data[0]?.price?.id;
+        const tier = priceId ? getTierFromPriceId(priceId) : 'Bronze';
+        
+        await upsertSubscription(profile.id, {
+          stripe_subscription_id: subscription.id,
+          stripe_customer_id: customerId,
+          status: subscription.status,
+          tier: tier as any,
+          billing_cycle: subscription.items.data[0]?.price?.recurring?.interval || 'month',
+          unit_amount_cents: subscription.items.data[0]?.price?.unit_amount || 0,
+          current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+          current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        });
+      }
+    }
+
+    // Handle subscription deleted (cancellation)
+    if (stripeEvent.type === 'customer.subscription.deleted') {
+      const subscription = stripeEvent.data.object as Stripe.Subscription;
+      
+      const { error } = await supabase
+        .from('subscriptions')
+        .update({ status: 'canceled' })
+        .eq('stripe_subscription_id', subscription.id);
+
+      if (error) {
+        console.error('Error updating canceled subscription:', error);
+      }
+    }
+
+    // Handle successful payments
+    if (stripeEvent.type === 'invoice.payment_succeeded') {
+      const invoice = stripeEvent.data.object as Stripe.Invoice;
+      const subscriptionId = typeof invoice.subscription === 'string' 
+        ? invoice.subscription 
+        : invoice.subscription?.id;
+
+      if (subscriptionId) {
+        const { error } = await supabase
+          .from('subscriptions')
+          .update({ status: 'active' })
+          .eq('stripe_subscription_id', subscriptionId);
+
+        if (error) {
+          console.error('Error updating subscription after successful payment:', error);
+        }
+      }
+    }
+
+    // Handle failed payments
+    if (stripeEvent.type === 'invoice.payment_failed') {
+      const invoice = stripeEvent.data.object as Stripe.Invoice;
+      const subscriptionId = typeof invoice.subscription === 'string' 
+        ? invoice.subscription 
+        : invoice.subscription?.id;
+
+      if (subscriptionId) {
+        const { error } = await supabase
+          .from('subscriptions')
+          .update({ status: 'past_due' })
+          .eq('stripe_subscription_id', subscriptionId);
+
+        if (error) {
+          console.error('Error updating subscription after failed payment:', error);
+        }
+      }
     }
 
     return jsonResponse(200, { received: true });

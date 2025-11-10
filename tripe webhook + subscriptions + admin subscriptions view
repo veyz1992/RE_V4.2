@@ -1,0 +1,138 @@
+[1mdiff --git a/components/admin/AdminSubscriptionsView.tsx b/components/admin/AdminSubscriptionsView.tsx[m
+[1mindex 1cd8efd..9725e84 100644[m
+[1m--- a/components/admin/AdminSubscriptionsView.tsx[m
+[1m+++ b/components/admin/AdminSubscriptionsView.tsx[m
+[36m@@ -6,24 +6,31 @@[m [minterface AdminSubscriptionsViewProps {[m
+     showToast: (message: string, type: 'success' | 'error') => void;[m
+ }[m
+ [m
+[31m-interface SupabaseMembershipRow {[m
+[32m+[m[32minterface SupabaseSubscriptionRow {[m
+     id: string | number;[m
+     profile_id?: string | null;[m
+[31m-    plan_name?: string | null;[m
+[31m-    plan_tier?: string | null;[m
+[31m-    price?: number | string | null;[m
+[31m-    price_monthly?: number | null;[m
+[32m+[m[32m    tier?: string | null;[m
+     status?: string | null;[m
+[31m-    renewal_date?: string | null;[m
+[32m+[m[32m    unit_amount_cents?: number | null;[m
+[32m+[m[32m    billing_cycle?: string | null;[m
+[32m+[m[32m    current_period_end?: string | null;[m
+     created_at?: string | null;[m
+[32m+[m[32m    profiles?: {[m
+[32m+[m[32m        id: string;[m
+[32m+[m[32m        email: string;[m
+[32m+[m[32m        full_name?: string | null;[m
+[32m+[m[32m        company_name?: string | null;[m
+[32m+[m[32m        membership_tier?: string | null;[m
+[32m+[m[32m    } | null;[m
+     [key: string]: unknown;[m
+ }[m
+ [m
+ interface AdminSubscription {[m
+     id: string;[m
+[31m-    profileId: string;[m
+[31m-    planName: string;[m
+[31m-    planTier: string | null;[m
+[32m+[m[32m    memberName: string;[m
+[32m+[m[32m    memberEmail: string;[m
+[32m+[m[32m    planTier: string;[m
+[32m+[m[32m    status: string;[m
+     price: string | null;[m
+     renewalDate: string | null;[m
+     createdAt: string | null;[m
+[36m@@ -62,16 +69,19 @@[m [mconst formatDate = (value?: string | null): string | null => {[m
+     }).format(date);[m
+ };[m
+ [m
+[31m-const mapMembershipRow = (row: SupabaseMembershipRow): AdminSubscription => {[m
+[31m-    const price = formatCurrency(row.price_monthly ?? (typeof row.price === 'number' ? row.price : null)) ?? (typeof row.price === 'string' ? row.price : null);[m
+[32m+[m[32mconst mapSubscriptionRow = (row: SupabaseSubscriptionRow): AdminSubscription => {[m
+[32m+[m[32m    const price = row.unit_amount_cents ? formatCurrency(row.unit_amount_cents / 100) : null;[m
+[32m+[m[32m    const memberName = row.profiles?.full_name || row.profiles?.company_name || `Member ${row.profile_id?.slice(0, 8) || 'Unknown'}`;[m
+[32m+[m[32m    const memberEmail = row.profiles?.email || `member${row.profile_id?.slice(0, 8) || 'unknown'}@example.com`;[m
+ [m
+     return {[m
+         id: String(row.id),[m
+[31m-        profileId: row.profile_id ?? '',[m
+[31m-        planName: row.plan_name ?? 'Membership',[m
+[31m-        planTier: row.plan_tier ?? null,[m
+[32m+[m[32m        memberName,[m
+[32m+[m[32m        memberEmail,[m
+[32m+[m[32m        planTier: row.tier ?? 'Unknown',[m
+[32m+[m[32m        status: row.status ?? 'unknown',[m
+         price,[m
+[31m-        renewalDate: formatDate(row.renewal_date ?? null),[m
+[32m+[m[32m        renewalDate: formatDate(row.current_period_end ?? null),[m
+         createdAt: formatDate(row.created_at ?? null),[m
+     };[m
+ };[m
+[36m@@ -86,8 +96,24 @@[m [mconst AdminSubscriptionsView: React.FC<AdminSubscriptionsViewProps> = ({ showToa[m
+ [m
+         try {[m
+             const { data, error: fetchError } = await supabase[m
+[31m-                .from('memberships')[m
+[31m-                .select('id, profile_id, plan_name, plan_tier, price, price_monthly, status, renewal_date, created_at')[m
+[32m+[m[32m                .from('subscriptions')[m
+[32m+[m[32m                .select(`[m
+[32m+[m[32m                  id,[m
+[32m+[m[32m                  profile_id,[m
+[32m+[m[32m                  tier,[m
+[32m+[m[32m                  status,[m
+[32m+[m[32m                  unit_amount_cents,[m
+[32m+[m[32m                  billing_cycle,[m
+[32m+[m[32m                  current_period_end,[m
+[32m+[m[32m                  created_at,[m
+[32m+[m[32m                  profiles!inner([m
+[32m+[m[32m                    id,[m
+[32m+[m[32m                    email,[m
+[32m+[m[32m                    full_name,[m
+[32m+[m[32m                    company_name,[m
+[32m+[m[32m                    membership_tier[m
+[32m+[m[32m                  )[m
+[32m+[m[32m                `)[m
+                 .eq('status', 'active')[m
+                 .order('created_at', { ascending: false });[m
+ [m
+[36m@@ -95,8 +121,8 @@[m [mconst AdminSubscriptionsView: React.FC<AdminSubscriptionsViewProps> = ({ showToa[m
+                 throw fetchError;[m
+             }[m
+ [m
+[31m-            const rows = (data as SupabaseMembershipRow[] | null) ?? [];[m
+[31m-            setSubscriptions(rows.map(mapMembershipRow));[m
+[32m+[m[32m            const rows = (data as SupabaseSubscriptionRow[] | null) ?? [];[m
+[32m+[m[32m            setSubscriptions(rows.map(mapSubscriptionRow));[m
+             setError(null);[m
+         } catch (fetchError) {[m
+             console.error('Failed to load subscriptions', fetchError);[m
+[36m@@ -154,11 +180,12 @@[m [mconst AdminSubscriptionsView: React.FC<AdminSubscriptionsViewProps> = ({ showToa[m
+                             {subscriptions.map((subscription) => ([m
+                                 <tr key={subscription.id} className="hover:bg-gray-light/50">[m
+                                     <td className="p-4">[m
+[31m-                                        <p className="font-semibold text-charcoal">{subscription.profileId}</p>[m
+[32m+[m[32m                                        <p className="font-semibold text-charcoal">{subscription.memberName}</p>[m
+[32m+[m[32m                                        <p className="text-sm text-gray-dark">{subscription.memberEmail}</p>[m
+                                     </td>[m
+                                     <td className="p-4">[m
+[31m-                                        <p className="font-semibold text-charcoal">{subscription.planName}</p>[m
+[31m-                                        <p className="text-sm text-gray-dark">{subscription.planTier ?? '—'}</p>[m
+[32m+[m[32m                                        <p className="font-semibold text-charcoal">{subscription.planTier}</p>[m
+[32m+[m[32m                                        <p className="text-sm text-gray-dark">{subscription.status}</p>[m
+                                     </td>[m
+                                     <td className="p-4 text-sm text-gray-dark">{subscription.price ?? '—'}</td>[m
+                                     <td className="p-4 text-sm text-gray-dark">{subscription.renewalDate ?? '—'}</td>[m
+[36m@@ -174,12 +201,12 @@[m [mconst AdminSubscriptionsView: React.FC<AdminSubscriptionsViewProps> = ({ showToa[m
+                         <div key={subscription.id} className="p-4 space-y-3">[m
+                             <div className="flex justify-between items-start">[m
+                                 <div>[m
+[31m-                                    <p className="font-semibold text-charcoal">{subscription.planName}</p>[m
+[31m-                                    <p className="text-sm text-gray-dark">{subscription.planTier ?? '—'}</p>[m
+[32m+[m[32m                                    <p className="font-semibold text-charcoal">{subscription.memberName}</p>[m
+[32m+[m[32m                                    <p className="text-sm text-gray-dark">{subscription.memberEmail}</p>[m
+                                 </div>[m
+                                 <span className="text-sm font-semibold text-gray-dark">{subscription.price ?? '—'}</span>[m
+                             </div>[m
+[31m-                            <p className="text-sm text-gray-dark">Profile: {subscription.profileId}</p>[m
+[32m+[m[32m                            <p className="text-sm text-gray-dark">Plan: {subscription.planTier} ({subscription.s
