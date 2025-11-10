@@ -46,7 +46,7 @@ const FoundingMemberModal: React.FC<FoundingMemberModalProps> = ({ isOpen, onClo
                             'Founding Member Seal (exclusive design, never offered again)',
                             'Enhanced profile (logo, gallery, detailed services, CTA buttons)',
                             'Verified listing on RestorationExpertise.com with SEO backlink',
-                            'Lifetime pricing lock at $199 per month (offer disappears after launch)',
+                            'Lifetime pricing lock at $229 per month (offer disappears after launch)',
                             'Private community access (Facebook group + resources)',
                             'Direct line to team (priority support, early access to new features)',
                             'Priority SEO backlink placement',

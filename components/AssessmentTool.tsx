@@ -1,6 +1,6 @@
 
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Answers, ScoreBreakdown, Opportunity } from '../types';
 import { ASSESSMENT_STEPS, MAX_SCORES, INITIAL_ANSWERS } from '../constants';
@@ -259,6 +259,42 @@ const calculateScore = (answers: Answers): ScoreBreakdown => {
 };
 
 const ScoreWidget: React.FC<{ score: number, breakdown: Omit<ScoreBreakdown, 'total' | 'grade' | 'isEligibleForCertification' | 'eligibilityReasons' | 'opportunities'>, isPopup?: boolean }> = ({ score, breakdown, isPopup }) => {
+    const [displayScore, setDisplayScore] = useState(score);
+    const prevScoreRef = useRef(score);
+
+    React.useEffect(() => {
+        const previousScore = prevScoreRef.current;
+        if (previousScore === score) {
+            return;
+        }
+        let animationFrameId: number;
+        const duration = 500;
+        const startTimestamp = performance.now();
+
+        const step = (timestamp: number) => {
+            const elapsedTime = timestamp - startTimestamp;
+            const progress = Math.min(elapsedTime / duration, 1);
+            const easedProgress = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+
+            const newDisplayScore = Math.round(previousScore + (score - previousScore) * easedProgress);
+            setDisplayScore(newDisplayScore);
+
+            if (progress < 1) {
+                animationFrameId = requestAnimationFrame(step);
+            }
+        };
+
+        animationFrameId = requestAnimationFrame(step);
+        
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+        };
+    }, [score]);
+    
+    React.useEffect(() => {
+        prevScoreRef.current = score;
+    }, [score]);
+    
     const getScoreColor = (s: number) => {
         if (s < 45) return 'bg-error';
         if (s < 60) return 'bg-warning';
@@ -277,9 +313,9 @@ const ScoreWidget: React.FC<{ score: number, breakdown: Omit<ScoreBreakdown, 'to
     return (
         <div className={`p-4 bg-white rounded-xl shadow-lg border border-gray-border ${!isPopup ? 'sticky top-0 md:top-8 md:w-64 md:ml-8 lg:ml-16 z-10' : ''}`}>
             <h3 className="font-sora text-charcoal text-lg font-bold text-center mb-2">Your Score</h3>
-            <div className="flex justify-center items-center mb-4">
-                <span className="font-sora text-6xl font-bold text-charcoal">{score}</span>
-                <span className="text-2xl text-gray-500 mt-4">/100</span>
+            <div className="flex justify-center items-baseline gap-1 mb-4">
+                <span className="font-sora text-6xl font-bold text-charcoal">{displayScore}</span>
+                <span className="font-sora text-2xl font-semibold text-gray-400">/100</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-4">
                 <div 
@@ -362,6 +398,123 @@ const PointCheckbox: React.FC<CheckboxProps> = ({ label, points, checked, onChan
     );
 };
 
+const LiveScoreIndicator: React.FC<{ score: number }> = ({ score }) => {
+    const [displayScore, setDisplayScore] = useState(score);
+    const prevScoreRef = useRef(score);
+
+    React.useEffect(() => {
+        const previousScore = prevScoreRef.current;
+        if (previousScore === score) {
+            return;
+        }
+        let animationFrameId: number;
+        const duration = 400;
+        const startTimestamp = performance.now();
+
+        const step = (timestamp: number) => {
+            const elapsedTime = timestamp - startTimestamp;
+            const progress = Math.min(elapsedTime / duration, 1);
+            const easedProgress = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+
+            const newDisplayScore = Math.round(previousScore + (score - previousScore) * easedProgress);
+            setDisplayScore(newDisplayScore);
+
+            if (progress < 1) {
+                animationFrameId = requestAnimationFrame(step);
+            }
+        };
+
+        animationFrameId = requestAnimationFrame(step);
+        
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+        };
+    }, [score]);
+    
+    React.useEffect(() => {
+        prevScoreRef.current = score;
+    }, [score]);
+
+
+    const getScoreColor = (s: number) => {
+        if (s < 45) return 'bg-error';
+        if (s < 60) return 'bg-warning';
+        if (s < 75) return 'bg-brand-accent';
+        return 'bg-success';
+    };
+
+    return (
+        <div className="flex items-center gap-2">
+            <div className="flex items-baseline w-14 justify-end">
+                <span className="font-sora font-bold text-sm text-charcoal">{displayScore}</span>
+                <span className="font-sora text-xs text-gray-500">/100</span>
+            </div>
+            <div className="w-20 bg-gray-200 rounded-full h-2 relative">
+                <div 
+                    className={`h-2 rounded-full transition-all duration-300 ${getScoreColor(score)}`}
+                    style={{ width: `${score}%` }}
+                ></div>
+            </div>
+        </div>
+    );
+};
+
+const MobileBottomBar: React.FC<{
+  step: number;
+  score: number;
+  onScoreClick: () => void;
+  onBack: () => void;
+  onNext: () => void;
+}> = ({ step, score, onScoreClick, onBack, onNext }) => {
+    const progress = ((step + 1) / ASSESSMENT_STEPS.length) * 100;
+    return (
+        <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-border z-20 md:hidden">
+            <div onClick={onScoreClick} className="px-4 pt-2 pb-1.5 cursor-pointer">
+                <div className="flex justify-between items-center text-xs mb-1">
+                    <span className="font-bold text-gray-dark">Step {step + 1} of {ASSESSMENT_STEPS.length}</span>
+                    <LiveScoreIndicator score={score} />
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="bg-brand-accent h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                </div>
+                <p className="text-center text-xs font-bold text-gray-dark mt-1.5">{ASSESSMENT_STEPS[step]}</p>
+            </div>
+            <div className="p-4 flex justify-between items-center gap-4 bg-white/50">
+                 <button 
+                    onClick={onBack} 
+                    className="py-3 px-6 bg-white text-charcoal font-semibold rounded-lg shadow-md border border-gray-border hover:bg-gray-100"
+                >
+                    Back
+                </button>
+                <button 
+                    onClick={onNext}
+                    className="flex-grow py-3 px-8 bg-brand-accent text-charcoal font-bold text-lg rounded-lg shadow-lg hover:bg-brand-accent-dark"
+                >
+                    {step === ASSESSMENT_STEPS.length - 1 ? 'Finish' : 'Continue'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
+const LiveScorePopup: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    score: number;
+    breakdown: Omit<ScoreBreakdown, 'total' | 'grade' | 'isEligibleForCertification' | 'eligibilityReasons' | 'opportunities'>;
+}> = ({ isOpen, onClose, score, breakdown }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-40" onClick={onClose}>
+            <div className="absolute inset-0 bg-black/50 animate-fade-in"></div>
+            <div className="absolute bottom-0 left-0 right-0 animate-slide-up-drawer p-4" onClick={e => e.stopPropagation()}>
+                <ScoreWidget score={score} breakdown={breakdown} isPopup={true} />
+            </div>
+        </div>
+    );
+};
+
+
 const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers: Answers }) => void }> = ({ onComplete }) => {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
@@ -412,66 +565,6 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
       }));
   };
     
-  const MobileScoreDisplay = ({ score }: { score: number }) => {
-    const getScoreColor = (s: number) => {
-        if (s < 45) return 'text-error';
-        if (s < 60) return 'text-warning';
-        if (s < 75) return 'text-brand-accent';
-        return 'text-success';
-    };
-    return (
-        <div className={`text-center font-sora font-bold ${getScoreColor(score)}`}>
-            <p className="text-4xl">{score}</p>
-            <p className="text-sm -mt-1">/100</p>
-        </div>
-    );
-  };
-  
-  const MobileBottomBar = () => {
-    const progress = ((step + 1) / ASSESSMENT_STEPS.length) * 100;
-    return (
-        <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-border z-20 md:hidden">
-            <div onClick={() => setIsScorePopupOpen(true)} className="px-4 pt-2 pb-1.5 cursor-pointer">
-                <div className="flex justify-between items-center text-xs font-bold text-gray-dark mb-1">
-                    <span>Step {step + 1} of {ASSESSMENT_STEPS.length}</span>
-                    <span>Tap for score details</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-brand-accent h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
-                </div>
-                <p className="text-center text-xs font-bold text-gray-dark mt-1.5">{ASSESSMENT_STEPS[step]}</p>
-            </div>
-            <div className="p-4 flex justify-between items-center gap-4 bg-white/50">
-                 <button 
-                    onClick={handleBack} 
-                    className="py-3 px-6 bg-white text-charcoal font-semibold rounded-lg shadow-md border border-gray-border hover:bg-gray-100"
-                >
-                    Back
-                </button>
-                <button 
-                    onClick={handleNext}
-                    className="flex-grow py-3 px-8 bg-brand-accent text-charcoal font-bold text-lg rounded-lg shadow-lg hover:bg-brand-accent-dark"
-                >
-                    {step === ASSESSMENT_STEPS.length - 1 ? 'Finish' : 'Continue'}
-                </button>
-            </div>
-        </div>
-    );
-  };
-
-  const LiveScorePopup = () => {
-    if (!isScorePopupOpen) return null;
-    return (
-        <div className="fixed inset-0 z-40" onClick={() => setIsScorePopupOpen(false)}>
-            <div className="absolute inset-0 bg-black/50 animate-fade-in"></div>
-            <div className="absolute bottom-0 left-0 right-0 animate-slide-up-drawer p-4" onClick={e => e.stopPropagation()}>
-                <ScoreWidget score={scoreData.total} breakdown={scoreData} isPopup={true} />
-            </div>
-        </div>
-    );
-  };
-
-
   const renderStep = () => {
     const feedbackMessage = "Nice — this is one of the core signals top-tier restoration firms have in place.";
 
@@ -481,15 +574,15 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
                 <div className="space-y-6">
                     <div>
                         <label className="block text-sm font-medium text-gray">Business Name</label>
-                        <input type="text" value={answers.businessName} onChange={e => updateAnswer('businessName', e.target.value)} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent"/>
+                        <input type="text" value={answers.businessName} onChange={e => updateAnswer('businessName', e.target.value)} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)]"/>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray">What city do you primarily serve?</label>
-                        <input type="text" value={answers.city} onChange={e => updateAnswer('city', e.target.value)} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent"/>
+                        <input type="text" value={answers.city} onChange={e => updateAnswer('city', e.target.value)} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)]"/>
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray">How long have you been in business?</label>
-                        <select value={answers.yearsInBusiness} onChange={e => updateAnswer('yearsInBusiness', parseInt(e.target.value))} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent">
+                        <select value={answers.yearsInBusiness} onChange={e => updateAnswer('yearsInBusiness', parseInt(e.target.value))} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)]">
                             {[1,2,3,4,5,10,15,20].map(y => <option key={y} value={y}>{y}{y === 20 ? '+' : ''} years</option>)}
                         </select>
                     </div>
@@ -499,7 +592,7 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
                             value={answers.businessDescription} 
                             onChange={e => updateAnswer('businessDescription', e.target.value)} 
                             rows={3}
-                            className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent"
+                            className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)]"
                             placeholder="E.g., We are a family-owned restoration company specializing in 24/7 water and fire damage cleanup..."
                         />
                     </div>
@@ -548,7 +641,7 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
             return (
                 <div>
                     <label className="block text-sm font-medium text-gray mb-2">How many years have you been licensed?</label>
-                    <input type="range" min="0" max="20" value={answers.yearsLicensed} onChange={e => updateAnswer('yearsLicensed', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-accent"/>
+                    <input type="range" min="0" max="20" value={answers.yearsLicensed} onChange={e => updateAnswer('yearsLicensed', parseInt(e.target.value))} className="w-full custom-slider" style={{'--value-percent': `${(answers.yearsLicensed / 20) * 100}%`} as React.CSSProperties}/>
                     <div className="text-center font-sora font-bold text-2xl text-charcoal mt-2">{answers.yearsLicensed} years</div>
                     <p className="text-center text-sm text-gray mt-2">1–2 years = 4 pts • 3–5 years = 7 pts • 6+ years = 10 pts</p>
                 </div>
@@ -558,14 +651,14 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
                 <div className="space-y-6">
                     <div>
                         <label className="block text-sm font-medium text-gray">What's your Google Business Profile rating?</label>
-                        <select value={answers.googleRating} onChange={e => updateAnswer('googleRating', parseFloat(e.target.value))} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent">
+                        <select value={answers.googleRating} onChange={e => updateAnswer('googleRating', parseFloat(e.target.value))} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)]">
                             <option value={0}>No rating yet</option>
                             {Array.from({length: 11}, (_, i) => 4.0 + i * 0.1).map(r => <option key={r} value={r.toFixed(1)}>{r.toFixed(1)} stars</option>)}
                         </select>
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray">How many Google reviews do you have?</label>
-                        <input type="number" value={answers.googleReviews} onChange={e => updateAnswer('googleReviews', parseInt(e.target.value) || 0)} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent"/>
+                        <input type="number" value={answers.googleReviews} onChange={e => updateAnswer('googleReviews', parseInt(e.target.value) || 0)} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)]"/>
                     </div>
                 </div>
             );
@@ -657,9 +750,6 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
                             <h2 className="font-sora text-2xl font-bold text-charcoal mb-1">Step {step + 1}: {ASSESSMENT_STEPS[step]}</h2>
                             <p className="text-gray">Complete this section to see your score update.</p>
                         </div>
-                        <div className="md:hidden flex-shrink-0 ml-4">
-                            <MobileScoreDisplay score={scoreData.total} />
-                        </div>
                     </div>
                     <div className={`mt-8 ${animationClass}`} key={contentKey}>
                         {renderStep()}
@@ -687,8 +777,19 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
             </div>
             {/* Mobile Bottom Bar & Popups */}
             <div className="md:hidden">
-                <MobileBottomBar />
-                <LiveScorePopup />
+                <MobileBottomBar
+                    step={step}
+                    score={scoreData.total}
+                    onScoreClick={() => setIsScorePopupOpen(true)}
+                    onBack={handleBack}
+                    onNext={handleNext}
+                />
+                <LiveScorePopup
+                    isOpen={isScorePopupOpen}
+                    onClose={() => setIsScorePopupOpen(false)}
+                    score={scoreData.total}
+                    breakdown={scoreData}
+                />
             </div>
         </div>
     </div>

@@ -1,6 +1,13 @@
 
 import React from 'react';
 
+export const AnimatedCheckmarkIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg viewBox="0 0 52 52" className={`animated-checkmark ${className}`}>
+    <circle className="checkmark__circle" cx="26" cy="26" r="25" fill="none" />
+    <path className="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+  </svg>
+);
+
 export const CheckCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -238,6 +245,12 @@ export const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) =
 export const LightBulbIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.311a15.045 15.045 0 01-3.75 0M10.5 18.75v-3.375c0-1.423.895-2.684 2.182-3.223a9.041 9.041 0 011.135-.447M17.25 10.5a8.965 8.965 0 01-3.642 7.24M12 18.75a9.041 9.041 0 01-1.135-.447c-1.287-.54-2.182-1.8-2.182-3.223V15.375M12 18.75a9.043 9.043 0 01-3.642-7.24m6.5 1.649v-3.375c0-1.423-.895-2.684-2.182-3.223a9.041 9.041 0 00-1.135-.447M12 18.75a9.043 9.043 0 003.642-7.24" />
+  </svg>
+);
+
+export const PhoneIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
   </svg>
 );
 
