@@ -5,6 +5,7 @@ import AdminDashboard from './components/admin/AdminDashboard';
 import LoginPage from './components/LoginPage';
 import AssessmentTool from './components/AssessmentTool';
 import ResultsPage from './components/ResultsPage';
+import SuccessPage from './components/SuccessPage';
 import { ThemeProvider } from './components/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -341,6 +342,7 @@ const AppRoutes: React.FC = () => {
           )
         }
       />
+      <Route path="/success/:plan" element={<SuccessPage />} />
       <Route path="/member/dashboard" element={<MemberRoute />} />
       <Route path="/admin/*" element={<AdminRoute />} />
       <Route path="*" element={<Navigate to="/" replace />} />

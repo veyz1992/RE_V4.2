@@ -1,26 +1,57 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { CheckCircleIcon } from './icons';
+
+const PLAN_STORAGE_KEY = 'restorationexpertise:last-plan';
+const EMAIL_STORAGE_KEY = 'restorationexpertise:last-email';
 
 const LoginPage: React.FC = () => {
   const { login, isLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [loginState, setLoginState] = useState<'form' | 'confirming' | 'confirmed'>('form');
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
+    if (storedEmail) {
+      setEmail(storedEmail);
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const checkoutStatus = params.get('checkout');
+
+    if (checkoutStatus === 'success') {
+      const storedPlan = typeof window !== 'undefined' ? window.localStorage.getItem(PLAN_STORAGE_KEY) : null;
+      const slug = (storedPlan ?? 'founding-member').toLowerCase().replace(/\s+/g, '-');
+      navigate(`/success/${slug}`, { replace: true });
+    } else if (checkoutStatus === 'cancelled') {
+      setError('Checkout was cancelled. You can try again when you are ready.');
+    }
+  }, [location.search, navigate]);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!email || loginState !== 'form') {
       return;
     }
 
+    const trimmedEmail = email.trim();
     setError(null);
     setLoginState('confirming');
 
     try {
-      await login(email);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(EMAIL_STORAGE_KEY, trimmedEmail);
+      }
+      await login(trimmedEmail);
       setLoginState('confirmed');
     } catch (err) {
       console.error('Failed to initiate login flow', err);
@@ -33,99 +64,102 @@ const LoginPage: React.FC = () => {
   const isSubmitDisabled = !email || loginState !== 'form';
 
   return (
-    <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-main)] font-inter flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md mx-auto">
-        <div className="text-center mb-8">
-            <img src="https://restorationexpertise.com/wp-content/uploads/2025/11/Restorationexpertise_ig_profilepic_2_small.webp" alt="Restoration Expertise Logo" className="w-24 h-24 mx-auto mb-4"/>
-            <h1 className="font-playfair text-5xl font-bold text-[var(--text-main)]">Restoration Expertise</h1>
-            <p className="text-lg text-[var(--text-muted)] mt-2">The national trust network for professionals.</p>
+    <div className="login-page-container font-inter">
+      <div className="login-animation-bg" />
+      <div className="w-full max-w-lg mx-auto relative z-10">
+        <div className="text-center mb-8 animate-fade-in">
+          <img
+            src="https://restorationexpertise.com/wp-content/uploads/2025/11/restorationexpertisecom2_logo3D.webp"
+            alt="Restoration Expertise Logo"
+            className="w-40 h-40 md:w-52 md:h-52 mx-auto mb-4 animate-float-logo"
+          />
+          <h1 className="font-playfair text-xl md:text-2xl font-bold text-white">Restoration Expertise</h1>
+          <p className="text-lg text-gray-300 mt-2">The national trust network for professionals.</p>
         </div>
 
-        <div className="bg-[var(--bg-card)] p-8 rounded-2xl shadow-xl border border-[var(--border-subtle)] transition-all duration-500">
+        <div className="login-glass-card p-8 rounded-2xl transition-all duration-500">
           {loginState === 'form' && (
-            <div className="animate-fade-in">
-              <form onSubmit={handleSubmit}>
-                <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)] mb-2">Welcome</h2>
-                <p className="text-[var(--text-muted)] mb-6">
-                  Enter your email to receive a magic login link.
-                </p>
+            <div className="animate-fade-in space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-2 text-center">
+                  <h2 className="font-playfair text-3xl font-bold text-white">Welcome back</h2>
+                  <p className="text-gray-300">Enter your email to receive a secure magic link.</p>
+                </div>
 
                 {isLoading && (
-                  <p className="mb-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-3 text-sm text-[var(--text-muted)]">
-                    Connecting to Supabase...
-                  </p>
+                  <p className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-gray-300">Connecting to Supabase…</p>
                 )}
-                
-                <div className="mb-4">
-                  <label htmlFor="email" className="block text-sm font-medium text-[var(--text-muted)] sr-only">Email Address</label>
+
+                <div>
+                  <label htmlFor="email" className="sr-only">
+                    Email address
+                  </label>
                   <input
-                    type="email"
                     id="email"
+                    type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(event) => setEmail(event.target.value)}
                     placeholder="you@example.com"
                     required
-                    className="mt-1 block w-full px-4 py-3 border border-[var(--border-subtle)] rounded-lg shadow-sm focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] transition-shadow bg-[var(--bg-input)] text-[var(--text-main)]"
+                    className="mt-1 block w-full px-4 py-3 border border-white/20 rounded-lg shadow-sm focus:ring-2 focus:ring-[var(--accent)] focus:border-[var(--accent)] bg-white/10 text-white placeholder:text-gray-400"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-3 px-4 bg-[var(--accent)] text-[var(--accent-text)] font-bold text-lg rounded-lg shadow-lg hover:bg-[var(--accent-dark)] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[var(--accent)]/50 disabled:opacity-50"
                   disabled={isSubmitDisabled}
+                  className="w-full py-3 px-4 bg-[var(--accent)] text-[var(--accent-text)] font-bold text-lg rounded-lg shadow-lg hover:bg-[var(--accent-dark)] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[var(--accent)]/50 disabled:opacity-50"
                 >
                   Send Magic Link
                 </button>
               </form>
 
               {error && (
-                <p className="mt-4 rounded-lg border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</p>
+                <p className="rounded-lg border border-error/40 bg-error/10 p-3 text-sm text-error">{error}</p>
               )}
 
-              <div className="relative my-6">
+              <div className="relative">
                 <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                  <div className="w-full border-t border-[var(--border-subtle)]" />
+                  <div className="w-full border-t border-white/20" />
                 </div>
                 <div className="relative flex justify-center">
-                  <span className="bg-[var(--bg-card)] px-2 text-sm text-[var(--text-muted)]">Or</span>
+                  <span className="bg-[rgba(28,28,28,0.2)] px-2 text-sm text-gray-400">Or</span>
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={() => navigate('/assessment')}
-                className="w-full py-3 px-4 bg-[var(--bg-card)] text-[var(--text-main)] font-bold rounded-lg shadow-md border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] transition-all transform hover:scale-105"
+                className="w-full py-3 px-4 bg-white/10 text-white font-bold rounded-lg shadow-md border border-white/20 hover:bg-white/20 transition-all transform hover:scale-105"
               >
                 Take Free Credibility Assessment
               </button>
-              
             </div>
           )}
 
           {loginState === 'confirming' && (
-            <div className="text-center animate-fade-in">
-              <div className="mx-auto mb-6 h-16 w-16 animate-spin rounded-full border-4 border-[var(--accent)] border-t-transparent" />
-              <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">Sending magic link...</h2>
-              <p className="text-[var(--text-muted)] mt-2 mb-6">
-                {`We're sending a secure link to ${email}. Follow the instructions in your inbox to continue.`}
-              </p>
+            <div className="text-center animate-fade-in space-y-4">
+              <div className="mx-auto mb-4 h-16 w-16 animate-spin rounded-full border-4 border-[var(--accent)] border-t-transparent" />
+              <h2 className="font-playfair text-3xl font-bold text-white">Sending magic link…</h2>
+              <p className="text-gray-300">We're sending a secure link to {email}. Follow the instructions in your inbox to continue.</p>
             </div>
           )}
 
           {loginState === 'confirmed' && (
-            <div className="text-center animate-fade-in">
-              <CheckCircleIcon className="mx-auto mb-4 h-16 w-16 text-success" />
-              <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">Magic link sent!</h2>
-              <p className="text-[var(--text-muted)] mt-2 mb-6">
-                {`Check your email to finish signing in. The link will bring you back to ${window.location.origin}.`}
+            <div className="text-center animate-fade-in space-y-4">
+              <CheckCircleIcon className="mx-auto h-16 w-16 text-success" />
+              <h2 className="font-playfair text-3xl font-bold text-white">Magic link sent!</h2>
+              <p className="text-gray-300">
+                Check your email to finish signing in. The link will bring you back to {window.location.origin}.
               </p>
-              <div className="h-2.5 w-full rounded-full bg-[var(--bg-subtle)]">
+              <div className="h-2.5 w-full rounded-full bg-white/10">
                 <div className="h-2.5 animate-pulse rounded-full bg-[var(--accent)]" />
               </div>
             </div>
           )}
         </div>
       </div>
-      <footer className="absolute bottom-4 text-center text-[var(--text-muted)]">
+      <footer className="absolute bottom-4 text-center text-gray-400 z-10">
         <p>&copy; {new Date().getFullYear()} RestorationExpertise. All Rights Reserved.</p>
       </footer>
     </div>

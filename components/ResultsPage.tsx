@@ -6,6 +6,9 @@ import { StoredAssessmentResult, Opportunity } from '../types';
 import { CheckCircleIcon, ExclamationTriangleIcon, XMarkIcon } from './icons';
 import { startCheckout } from '@/lib/checkout';
 
+const PLAN_STORAGE_KEY = 'restorationexpertise:last-plan';
+const EMAIL_STORAGE_KEY = 'restorationexpertise:last-email';
+
 const AnimatedScore: React.FC<{ score: number }> = ({ score }) => {
     const [displayScore, setDisplayScore] = useState(0);
 
@@ -197,8 +200,15 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
         }
 
         try {
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(PLAN_STORAGE_KEY, tier);
+                window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
+            }
             await startCheckout(tier, email, result.id);
         } catch (error) {
+            if (typeof window !== 'undefined') {
+                window.localStorage.removeItem(PLAN_STORAGE_KEY);
+            }
             console.error('Failed to start Stripe Checkout', error);
             alert('We were unable to start checkout. Please try again or contact support.');
         }
@@ -284,7 +294,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
                     />
                     <PricingCard
                         tier="Silver"
-                        price="$229"
+                        price="$297"
                         pricePeriod="/mo"
                         features={[
                             'Everything in Bronze, plus:',
@@ -316,13 +326,13 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
                         buttonLabel="Coming Soon"
                         disabledText="Gold launches soon."
                     />
-                    <PricingCard 
-                        tier="Founding Member" 
-                        price="$229" 
+                    <PricingCard
+                        tier="Founding Member"
+                        price="$229"
                         pricePeriod="/mo" 
                         features={[
                             'Exclusive Founding Member Seal',
-                            'Lifetime price lock at $199/mo',
+                            'Lifetime price lock at $229/mo',
                             'Enhanced Profile & Priority SEO',
                             'Yearly SEO blog post',
                             '99 Steps Blueprint included',
@@ -352,7 +362,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
             'Bi-annual spotlight article', 'Social media spotlight (2x/year)', '99-Steps Blueprint included'
         ];
         const foundingMemberFeatures = [
-            'Exclusive Founding Member Seal', 'Lifetime price lock at $199/mo', 'Enhanced Profile & Priority SEO',
+            'Exclusive Founding Member Seal', 'Lifetime price lock at $229/mo', 'Enhanced Profile & Priority SEO',
             'Yearly SEO blog post', '99 Steps Blueprint included', 'Direct line for priority support',
         ];
 
@@ -430,8 +440,8 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
                         tier="Bronze" price="$159" pricePeriod="/mo" features={bronzeFeatures} 
                         onSelect={() => setPreviewedTier({ name: 'Bronze', features: bronzeFeatures })} buttonLabel="Preview benefits" 
                     />
-                    <PricingCard 
-                        tier="Silver" price="$229" pricePeriod="/mo" features={silverFeatures} popular 
+                    <PricingCard
+                        tier="Silver" price="$297" pricePeriod="/mo" features={silverFeatures} popular
                         onSelect={() => setPreviewedTier({ name: 'Silver', features: silverFeatures })} buttonLabel="Preview benefits" 
                     />
                     <PricingCard 
