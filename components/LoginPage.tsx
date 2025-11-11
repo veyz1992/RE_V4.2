@@ -65,7 +65,16 @@ const LoginPage: React.FC = () => {
 
   return (
     <div className="login-page-container font-inter">
-      <div className="login-animation-bg" />
+      <div className="login-animation-bg">
+        <div className="aurora-layer layer-1"></div>
+        <div className="aurora-layer layer-2"></div>
+        <div className="login-particle-container">
+          {Array.from({ length: 15 }).map((_, i) => (
+            <div key={i} className="login-particle"></div>
+          ))}
+        </div>
+        <div className="light-streak"></div>
+      </div>
       <div className="w-full max-w-lg mx-auto relative z-10">
         <div className="text-center mb-8 animate-fade-in">
           <img

@@ -190,102 +190,6 @@
         100% { transform: translate(50vw, 40vh) scale(1.1); }
       }
 
-      /* Aurora layers */
-      .aurora-layer {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        border-radius: 50%;
-        filter: blur(80px);
-        opacity: 0.3;
-        mix-blend-mode: screen;
-      }
-
-      .aurora-layer.layer-1 {
-        background: radial-gradient(ellipse 60% 50% at 50% 20%, #d4af37, transparent);
-        animation: aurora-1 20s ease-in-out infinite alternate;
-      }
-
-      .aurora-layer.layer-2 {
-        background: radial-gradient(ellipse 40% 60% at 80% 70%, #ffd700, transparent);
-        animation: aurora-2 25s ease-in-out infinite alternate-reverse;
-      }
-
-      @keyframes aurora-1 {
-        0% { transform: rotate(0deg) scale(1) translate(-10%, -10%); opacity: 0.2; }
-        50% { transform: rotate(180deg) scale(1.2) translate(5%, 15%); opacity: 0.4; }
-        100% { transform: rotate(360deg) scale(0.9) translate(-5%, -20%); opacity: 0.3; }
-      }
-
-      @keyframes aurora-2 {
-        0% { transform: rotate(45deg) scale(1.1) translate(10%, 20%); opacity: 0.3; }
-        50% { transform: rotate(225deg) scale(0.8) translate(-15%, -5%); opacity: 0.2; }
-        100% { transform: rotate(405deg) scale(1.3) translate(20%, -10%); opacity: 0.4; }
-      }
-
-      /* Particle system */
-      .login-particle-container {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        pointer-events: none;
-      }
-
-      .login-particle {
-        position: absolute;
-        width: 2px;
-        height: 2px;
-        background: rgba(212, 175, 55, 0.6);
-        border-radius: 50%;
-        box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
-      }
-
-      .login-particle:nth-child(1) { animation: float-particle 15s infinite linear; left: 10%; animation-delay: 0s; }
-      .login-particle:nth-child(2) { animation: float-particle 18s infinite linear; left: 20%; animation-delay: -2s; }
-      .login-particle:nth-child(3) { animation: float-particle 12s infinite linear; left: 30%; animation-delay: -4s; }
-      .login-particle:nth-child(4) { animation: float-particle 20s infinite linear; left: 40%; animation-delay: -6s; }
-      .login-particle:nth-child(5) { animation: float-particle 16s infinite linear; left: 50%; animation-delay: -8s; }
-      .login-particle:nth-child(6) { animation: float-particle 14s infinite linear; left: 60%; animation-delay: -10s; }
-      .login-particle:nth-child(7) { animation: float-particle 22s infinite linear; left: 70%; animation-delay: -12s; }
-      .login-particle:nth-child(8) { animation: float-particle 19s infinite linear; left: 80%; animation-delay: -14s; }
-      .login-particle:nth-child(9) { animation: float-particle 13s infinite linear; left: 90%; animation-delay: -16s; }
-      .login-particle:nth-child(10) { animation: float-particle 17s infinite linear; left: 15%; animation-delay: -18s; }
-      .login-particle:nth-child(11) { animation: float-particle 21s infinite linear; left: 25%; animation-delay: -20s; }
-      .login-particle:nth-child(12) { animation: float-particle 11s infinite linear; left: 35%; animation-delay: -22s; }
-      .login-particle:nth-child(13) { animation: float-particle 23s infinite linear; left: 45%; animation-delay: -24s; }
-      .login-particle:nth-child(14) { animation: float-particle 15s infinite linear; left: 55%; animation-delay: -26s; }
-      .login-particle:nth-child(15) { animation: float-particle 18s infinite linear; left: 65%; animation-delay: -28s; }
-
-      @keyframes float-particle {
-        0% { transform: translateY(100vh) scale(0); opacity: 0; }
-        10% { opacity: 1; }
-        90% { opacity: 1; }
-        100% { transform: translateY(-10vh) scale(1); opacity: 0; }
-      }
-
-      /* Light streak */
-      .light-streak {
-        position: absolute;
-        top: 10%;
-        right: -50%;
-        width: 200%;
-        height: 2px;
-        background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.8), transparent);
-        transform: rotate(45deg);
-        animation: light-sweep 30s ease-in-out infinite;
-      }
-
-      @keyframes light-sweep {
-        0% { transform: rotate(45deg) translateX(-100%); opacity: 0; }
-        50% { opacity: 1; }
-        100% { transform: rotate(45deg) translateX(100%); opacity: 0; }
-      }
-
       .login-glass-card {
         background: rgba(28, 28, 28, 0.2);
         backdrop-filter: blur(24px);
@@ -565,6 +469,8 @@
         }
       }
     </script>
+
+<link rel="stylesheet" href="/index.css">
   <script type="importmap">
 {
   "imports": {
@@ -574,10 +480,9 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+  <script type="module" crossorigin src="/assets/index-CdZZb0g1.js"></script>
 </head>
   <body class="bg-[var(--bg-main)] font-inter">
-    <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
+    <div id="root"></div>
 </body>
 </html>
