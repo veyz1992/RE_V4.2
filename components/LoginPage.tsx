@@ -170,6 +170,12 @@ const LoginPage: React.FC = () => {
       </div>
       <footer className="absolute bottom-4 text-center text-gray-400 z-10">
         <p>&copy; {new Date().getFullYear()} RestorationExpertise. All Rights Reserved.</p>
+        <button
+          onClick={() => navigate('/admin/login')}
+          className="mt-2 text-xs text-gray-500 hover:text-gray-300 transition-colors underline"
+        >
+          Admin Login
+        </button>
       </footer>
     </div>
   );

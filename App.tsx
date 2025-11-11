@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import MemberDashboard from './components/Dashboard';
 import AdminDashboard from './components/admin/AdminDashboard';
 import LoginPage from './components/LoginPage';
+import AdminLoginPage from './components/AdminLoginPage';
 import AssessmentTool from './components/AssessmentTool';
 import ResultsPage from './components/ResultsPage';
 import SuccessPage from './components/SuccessPage';
@@ -53,11 +54,11 @@ const AdminRoute: React.FC = () => {
   }
 
   if (!session) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/admin/login" replace />;
   }
 
   if (!isAdmin) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/admin/login" replace />;
   }
 
   return <AdminDashboard />;
@@ -324,6 +325,7 @@ const AppRoutes: React.FC = () => {
     <Routes>
       <Route path="/" element={<LoginRoute />} />
       <Route path="/login" element={<LoginRoute />} />
+      <Route path="/admin/login" element={<AdminLoginPage />} />
       <Route
         path="/assessment"
         element={<AssessmentTool onComplete={handleAssessmentComplete} />}

@@ -104,6 +104,7 @@ interface AuthContextValue {
   isLoading: boolean;
   currentUser: User | null;
   login: (email: string) => Promise<void>;
+  adminLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateUser: (updatedUser: User) => void;
 }
@@ -435,6 +436,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const adminLogin = useCallback(async (email: string, password: string) => {
+    try {
+      // Authenticate with email and password
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError || !authData.user) {
+        return { success: false, error: 'Invalid email or password' };
+      }
+
+      // Check admin privileges
+      const { data: adminData, error: adminError } = await supabase
+        .from('admin_profiles')
+        .select('id, role, is_active')
+        .eq('id', authData.user.id)
+        .eq('role', 'admin')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (adminError && adminError.code !== 'PGRST116') {
+        await supabase.auth.signOut();
+        return { success: false, error: 'Access verification failed' };
+      }
+
+      if (!adminData) {
+        await supabase.auth.signOut();
+        return { success: false, error: 'Access denied. You do not have admin privileges.' };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Admin login error:', error);
+      return { success: false, error: 'An unexpected error occurred' };
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -462,10 +501,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isLoading: loading,
       currentUser,
       login,
+      adminLogin,
       logout,
       updateUser,
     }),
-    [session, user, isAdmin, loading, currentUser, login, logout, updateUser],
+    [session, user, isAdmin, loading, currentUser, login, adminLogin, logout, updateUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

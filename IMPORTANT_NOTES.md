@@ -115,6 +115,31 @@ This is a React + TypeScript application that helps real estate contractors get 
 - **Functions**: Netlify Functions (/.netlify/functions/*) remain unaffected
 - **Build**: Vite outputs to `dist/` directory with proper index.html
 
+## Authentication System ✅ DUAL LOGIN IMPLEMENTED
+
+### Member Authentication (Magic Link)
+- **Route**: `/login` (default login page)
+- **Method**: Magic link via `supabase.auth.signInWithOtp()`
+- **Flow**: Email → Magic link → Auto-login → Member dashboard
+- **Database**: Uses `public.profiles` table for member data
+
+### Admin Authentication (Email + Password) ✅ NEW
+- **Route**: `/admin/login` (dedicated admin login page)  
+- **Method**: Email + password via `supabase.auth.signInWithPassword()`
+- **Authorization**: Checks `public.admin_profiles` table:
+  - Must have `role = 'admin'`
+  - Must have `is_active = true`
+  - User ID must match `auth.users.id`
+- **Access Control**: Non-admin users get "Access denied" and are signed out
+- **Flow**: Credentials → Validation → Admin dashboard
+
+### Security Implementation
+- **Separation**: Members and admins use completely separate login flows
+- **No Password Exposure**: Admin passwords never logged or exposed
+- **Database Security**: Admin privileges verified via separate `admin_profiles` table
+- **Automatic Signout**: Failed admin verification immediately signs user out
+- **Route Protection**: `/admin/*` routes require verified admin status
+
 ## Security & Environment Rules
 
 ### DO:
