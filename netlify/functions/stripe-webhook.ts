@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
+import { TIER_CONFIG } from '../../constants';
 
 type Event = {
   httpMethod: string;
@@ -49,12 +50,15 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
   },
 });
 
-const PRICE_IDS: Record<string, string> = {
-  Bronze: process.env.STRIPE_PRICE_BRONZE!,
-  Silver: process.env.STRIPE_PRICE_SILVER!,
-  Gold: process.env.STRIPE_PRICE_GOLD!,
-  'Founding Member': process.env.STRIPE_PRICE_FOUNDING_MEMBER!,
-};
+// Build price mapping from centralized config
+const PRICE_IDS: Record<string, string> = {};
+Object.entries(TIER_CONFIG).forEach(([tierName, config]) => {
+  const envValue = process.env[config.stripeEnvKey];
+  if (!envValue) {
+    throw new Error(`Missing environment variable: ${config.stripeEnvKey}`);
+  }
+  PRICE_IDS[tierName] = envValue;
+});
 
 const PRICE_TO_TIER = Object.fromEntries(
   Object.entries(PRICE_IDS).map(([tier, priceId]) => [priceId, tier]),
@@ -105,24 +109,27 @@ const updateProfileMembership = async (
   subscriptionId: string,
   nextBillingDate: string | null,
 ) => {
-  const updates: Record<string, string | null> = {
+  // Update profiles table with Stripe linkage (no membership_tier field here)
+  const profileUpdates: Record<string, string | null> = {
     stripe_customer_id: customerId,
     stripe_subscription_id: subscriptionId,
-    membership_tier: tier,
   };
 
   if (nextBillingDate) {
-    updates.next_billing_date = nextBillingDate;
+    profileUpdates.next_billing_date = nextBillingDate;
   }
 
-  const { error } = await supabase
+  const { error: profileError } = await supabase
     .from('profiles')
-    .update(updates)
+    .update(profileUpdates)
     .eq('id', profileId);
 
-  if (error) {
-    throw error;
+  if (profileError) {
+    console.error('Error updating profile:', profileError);
+    throw profileError;
   }
+
+  console.log(`Updated profile ${profileId} with Stripe customer ${customerId}`);
 };
 
 const activatePendingMembership = async (profileId: string, tier: string) => {
@@ -139,21 +146,41 @@ const activatePendingMembership = async (profileId: string, tier: string) => {
     throw pendingError;
   }
 
-  if (!pending?.id) {
-    return;
-  }
+  if (pending?.id) {
+    const { error: updateError } = await supabase
+      .from('memberships')
+      .update({
+        status: 'active',
+        activated_at: new Date().toISOString(),
+        tier,
+      })
+      .eq('id', pending.id);
 
-  const { error: updateError } = await supabase
-    .from('memberships')
-    .update({
-      status: 'active',
-      activated_at: new Date().toISOString(),
-      tier,
-    })
-    .eq('id', pending.id);
+    if (updateError) {
+      console.error('Error activating membership:', updateError);
+      throw updateError;
+    }
+    
+    console.log(`Activated membership ${pending.id} for profile ${profileId} with tier ${tier}`);
+  } else {
+    // Create new membership if no pending one exists
+    const { error: createError } = await supabase
+      .from('memberships')
+      .insert({
+        profile_id: profileId,
+        tier,
+        status: 'active',
+        verification_status: 'pending',
+        badge_rating: null,
+        activated_at: new Date().toISOString(),
+      });
 
-  if (updateError) {
-    throw updateError;
+    if (createError) {
+      console.error('Error creating new membership:', createError);
+      throw createError;
+    }
+    
+    console.log(`Created new active membership for profile ${profileId} with tier ${tier}`);
   }
 };
 
@@ -228,11 +255,17 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
 
     // Helper function to get tier from price ID
     const getTierFromPriceId = (priceId: string): string => {
-      const tierEntry = Object.entries(PRICE_IDS).find(([_, id]) => id === priceId);
-      return tierEntry ? tierEntry[0] : 'Bronze'; // Default fallback
+      const tier = PRICE_TO_TIER[priceId];
+      if (!tier) {
+        console.warn(`Unknown price ID: ${priceId}, defaulting to Bronze`);
+        return 'Bronze';
+      }
+      return tier;
     };
 
     if (stripeEvent.type === 'checkout.session.completed') {
+      console.log('Processing checkout.session.completed event:', stripeEvent.id);
+      
       const session = stripeEvent.data.object as Stripe.Checkout.Session;
       const email = session.customer_details?.email ?? session.customer_email ?? undefined;
       const customerId = typeof session.customer === 'string'
@@ -242,19 +275,34 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
         ? session.subscription
         : session.subscription?.id;
 
+      console.log('Session details:', {
+        sessionId: session.id,
+        email: email ? '***' + email.slice(-10) : 'missing',
+        customerId,
+        subscriptionId,
+        metadata: session.metadata
+      });
+
       if (!email || !customerId || !subscriptionId) {
         console.warn('Missing key Stripe session details', {
-          email,
-          customerId,
-          subscriptionId,
+          email: !!email,
+          customerId: !!customerId,
+          subscriptionId: !!subscriptionId,
         });
         return jsonResponse(200, { received: true });
       }
 
       const subscription = await stripe.subscriptions.retrieve(subscriptionId);
       const priceId = subscription.items.data[0]?.price?.id;
-      const tierFromPrice = priceId ? PRICE_TO_TIER[priceId] : undefined;
+      const tierFromPrice = priceId ? getTierFromPriceId(priceId) : undefined;
       const tier = tierFromPrice ?? session.metadata?.tier ?? 'Bronze';
+
+      console.log('Tier determination:', {
+        priceId,
+        tierFromPrice,
+        metadataTier: session.metadata?.tier,
+        finalTier: tier
+      });
 
       const nextRenewal = subscription.current_period_end
         ? new Date(subscription.current_period_end * 1000).toISOString().split('T')[0]
@@ -269,63 +317,99 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
         stripe_subscription_id: subscriptionId,
         stripe_customer_id: customerId,
         status: subscription.status,
-        tier: tier as any, // Assuming tier enum matches
+        tier: tier,
         billing_cycle: subscription.items.data[0]?.price?.recurring?.interval || 'month',
         unit_amount_cents: subscription.items.data[0]?.price?.unit_amount || 0,
         current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
         current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
       });
+      
+      console.log(`Successfully processed checkout for profile ${profileId} with tier ${tier}`);
     }
 
     // Handle subscription created/updated
     if (stripeEvent.type === 'customer.subscription.created' || stripeEvent.type === 'customer.subscription.updated') {
+      console.log(`Processing ${stripeEvent.type} event:`, stripeEvent.id);
+      
       const subscription = stripeEvent.data.object as Stripe.Subscription;
       const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
       
+      console.log('Subscription event details:', {
+        subscriptionId: subscription.id,
+        customerId,
+        status: subscription.status
+      });
+      
       // Find profile by stripe_customer_id
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('id')
         .eq('stripe_customer_id', customerId)
         .single();
 
+      if (profileError) {
+        console.error('Error finding profile by customer ID:', profileError);
+        return jsonResponse(200, { received: true });
+      }
+
       if (profile?.id) {
         const priceId = subscription.items.data[0]?.price?.id;
         const tier = priceId ? getTierFromPriceId(priceId) : 'Bronze';
+        
+        console.log(`Updating subscription for profile ${profile.id} with tier ${tier}`);
         
         await upsertSubscription(profile.id, {
           stripe_subscription_id: subscription.id,
           stripe_customer_id: customerId,
           status: subscription.status,
-          tier: tier as any,
+          tier: tier,
           billing_cycle: subscription.items.data[0]?.price?.recurring?.interval || 'month',
           unit_amount_cents: subscription.items.data[0]?.price?.unit_amount || 0,
           current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
           current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
         });
+      } else {
+        console.warn(`No profile found for customer ID: ${customerId}`);
       }
     }
 
     // Handle subscription deleted (cancellation)
     if (stripeEvent.type === 'customer.subscription.deleted') {
+      console.log('Processing subscription cancellation:', stripeEvent.id);
+      
       const subscription = stripeEvent.data.object as Stripe.Subscription;
+      
+      console.log('Canceling subscription:', subscription.id);
       
       const { error } = await supabase
         .from('subscriptions')
-        .update({ status: 'canceled' })
+        .update({ 
+          status: 'canceled',
+          canceled_at: new Date().toISOString()
+        })
         .eq('stripe_subscription_id', subscription.id);
 
       if (error) {
         console.error('Error updating canceled subscription:', error);
+      } else {
+        console.log(`Successfully canceled subscription: ${subscription.id}`);
       }
     }
 
     // Handle successful payments
     if (stripeEvent.type === 'invoice.payment_succeeded') {
+      console.log('Processing successful payment:', stripeEvent.id);
+      
       const invoice = stripeEvent.data.object as Stripe.Invoice;
       const subscriptionId = typeof invoice.subscription === 'string' 
         ? invoice.subscription 
         : invoice.subscription?.id;
+
+      console.log('Invoice payment succeeded:', {
+        invoiceId: invoice.id,
+        subscriptionId,
+        amount: invoice.amount_paid
+      });
 
       if (subscriptionId) {
         const { error } = await supabase
@@ -335,16 +419,61 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
 
         if (error) {
           console.error('Error updating subscription after successful payment:', error);
+        } else {
+          console.log(`Updated subscription ${subscriptionId} to active status`);
+        }
+        
+        // Optionally store invoice record
+        try {
+          const { data: subscription } = await supabase
+            .from('subscriptions')
+            .select('profile_id')
+            .eq('stripe_subscription_id', subscriptionId)
+            .single();
+            
+          if (subscription?.profile_id) {
+            const { error: invoiceError } = await supabase
+              .from('invoices')
+              .upsert({
+                profile_id: subscription.profile_id,
+                subscription_id: null, // Will be set if we have internal subscription ID
+                stripe_invoice_id: invoice.id,
+                amount_cents: invoice.amount_paid || 0,
+                currency: invoice.currency || 'usd',
+                status: 'paid',
+                hosted_invoice_url: invoice.hosted_invoice_url,
+                pdf_url: invoice.invoice_pdf,
+                invoice_date: new Date(invoice.created * 1000).toISOString(),
+              }, {
+                onConflict: 'stripe_invoice_id'
+              });
+              
+            if (invoiceError) {
+              console.error('Error storing invoice record:', invoiceError);
+            } else {
+              console.log(`Stored invoice record for invoice ${invoice.id}`);
+            }
+          }
+        } catch (invoiceStoreError) {
+          console.error('Error storing invoice:', invoiceStoreError);
         }
       }
     }
 
     // Handle failed payments
     if (stripeEvent.type === 'invoice.payment_failed') {
+      console.log('Processing failed payment:', stripeEvent.id);
+      
       const invoice = stripeEvent.data.object as Stripe.Invoice;
       const subscriptionId = typeof invoice.subscription === 'string' 
         ? invoice.subscription 
         : invoice.subscription?.id;
+
+      console.log('Invoice payment failed:', {
+        invoiceId: invoice.id,
+        subscriptionId,
+        amount: invoice.amount_due
+      });
 
       if (subscriptionId) {
         const { error } = await supabase
@@ -354,6 +483,8 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
 
         if (error) {
           console.error('Error updating subscription after failed payment:', error);
+        } else {
+          console.log(`Updated subscription ${subscriptionId} to past_due status`);
         }
       }
     }

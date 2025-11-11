@@ -44,6 +44,32 @@ export const INITIAL_ANSWERS: Answers = {
 
 export const FOUNDING_MEMBER_SPOTS_REMAINING = 12;
 
+// Centralized tier mapping configuration
+export const TIER_CONFIG = {
+  'Bronze': {
+    displayName: 'Bronze',
+    stripeEnvKey: 'STRIPE_PRICE_BRONZE',
+    order: 1
+  },
+  'Silver': {
+    displayName: 'Silver', 
+    stripeEnvKey: 'STRIPE_PRICE_SILVER',
+    order: 2
+  },
+  'Gold': {
+    displayName: 'Gold',
+    stripeEnvKey: 'STRIPE_PRICE_GOLD', 
+    order: 3
+  },
+  'Founding Member': {
+    displayName: 'Founding Member',
+    stripeEnvKey: 'STRIPE_PRICE_FOUNDING_MEMBER',
+    order: 4
+  }
+} as const;
+
+export type TierName = keyof typeof TIER_CONFIG;
+
 export const REJECTION_REASONS = [
     "Proof of insurance does not meet the $1M minimum requirement.",
     "Submitted contractor license is expired or invalid.",

@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { TIER_CONFIG } from '../../constants';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
@@ -10,12 +11,18 @@ const stripe = new Stripe(stripeSecretKey, {
   apiVersion: '2022-11-15',
 });
 
-const PRICE_IDS: Record<string, string | undefined> = {
-  Bronze: process.env.STRIPE_PRICE_BRONZE,
-  Silver: process.env.STRIPE_PRICE_SILVER,
-  Gold: process.env.STRIPE_PRICE_GOLD,
-  'Founding Member': process.env.STRIPE_PRICE_FOUNDING_MEMBER,
-};
+// Build price mapping from centralized config
+const PRICE_IDS: Record<string, string | undefined> = {};
+const priceConfigLog: Record<string, boolean> = {};
+
+Object.entries(TIER_CONFIG).forEach(([tierName, config]) => {
+  const envValue = process.env[config.stripeEnvKey];
+  PRICE_IDS[tierName] = envValue;
+  priceConfigLog[tierName] = !!envValue;
+});
+
+// Log the price configuration for debugging
+console.log('Price configuration:', priceConfigLog);
 
 // Validate all price IDs are configured
 const missingPrices = Object.entries(PRICE_IDS)
@@ -98,23 +105,34 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
   }
 
   const { tier, email, assessmentId } = payload;
+  
+  // Log incoming payload for debugging (sanitized)
+  console.log('Checkout session request:', { 
+    tier, 
+    email: email ? '***' + email.slice(-10) : 'missing',
+    assessmentId 
+  });
 
   if (!tier || typeof tier !== 'string') {
+    console.error('Invalid tier provided:', tier);
     return jsonResponse(400, { error: 'Invalid or missing membership tier' });
   }
 
   if (!email || typeof email !== 'string') {
+    console.error('Invalid email provided');
     return jsonResponse(400, { error: 'Invalid or missing email address' });
   }
 
   const priceId = PRICE_IDS[tier];
 
   if (!priceId) {
-    console.error(`No Stripe price configured for tier: ${tier}`);
+    console.error(`No Stripe price configured for tier: ${tier}. Available tiers:`, Object.keys(PRICE_IDS));
     return jsonResponse(400, {
       error: `No Stripe price configured for ${tier}`,
     });
   }
+  
+  console.log(`Selected tier: ${tier} -> Price ID: ${priceId}`);
 
   const origin = getOriginFromHeaders(event.headers ?? {});
 
@@ -141,6 +159,7 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
       throw new Error('Stripe session did not include a redirect URL.');
     }
 
+    console.log(`Stripe checkout session created successfully: ${session.id}`);
     return jsonResponse(200, { url: session.url });
   } catch (error) {
     console.error('Failed to create Stripe Checkout Session', error);
