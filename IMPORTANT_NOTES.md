@@ -23,6 +23,10 @@ This is a React + TypeScript application that helps real estate contractors get 
 
 ### Recent Backend Changes ✅ COMPLETED
 - **Founding Member Flow**: Fully operational end-to-end (assessment → payment → verification)
+- **Dual Authentication System**: Separate magic link (members) and email/password (admins) flows
+- **Admin Verification Fix**: Resolved 400 error by removing problematic role filter in admin_profiles query
+- **Stripe Payment Routing**: Fixed success redirect from `/login?checkout=success` to `/success/{tier}`
+- **Netlify SPA Configuration**: Added proper deep link routing via netlify.toml
 - **Flexible Environment Configuration**: Removed global price validation, only selected tier needs configured price ID
 - **Bronze/Silver/Gold Support**: Can be "Coming Soon" without breaking checkout functionality
 - **Enhanced Logging**: Comprehensive logging in checkout and webhook functions
@@ -57,11 +61,22 @@ This is a React + TypeScript application that helps real estate contractors get 
 - `public.member_documents` - Uploaded verification documents
 - `public.service_requests` - Member service requests
 - `public.invoices` - Stripe payment records
-- `public.admin_users` - Admin authentication
+
+### Admin Tables ✅ UPDATED
+- `public.admin_profiles` - Admin authentication and authorization
+  - `id` (UUID, references auth.users.id)
+  - `role` (text, typically 'admin')
+  - `is_active` (boolean, must be true for access)
+  - Used for email/password admin login verification
 
 ### Key Relationships
-- `profiles.id` (UUID, references auth.users)
+- `profiles.id` (UUID, references auth.users.id)
+- `admin_profiles.id` (UUID, references auth.users.id)
 - All other tables reference `profiles.id` via foreign keys
+
+### Authentication Flow
+- **Members**: Use `auth.users` + `public.profiles` for magic link login
+- **Admins**: Use `auth.users` + `public.admin_profiles` for email/password login
 
 ## Payment Flow (Stripe → Supabase) ✅ WORKING
 
@@ -90,24 +105,30 @@ This is a React + TypeScript application that helps real estate contractors get 
 │   ├── admin/              # Admin dashboard (working)
 │   ├── AssessmentTool.tsx  # Multi-step form (working)
 │   ├── Dashboard.tsx       # Member dashboard (working)
+│   ├── LoginPage.tsx       # ✅ Member magic link login with animated background
+│   ├── AdminLoginPage.tsx  # ✅ Admin email/password login (NEW)
 │   ├── ResultsPage.tsx     # Payment selection (working)
 │   └── SuccessPage.tsx     # ✅ Post-payment success page (working)
 ├── netlify/functions/
 │   ├── create-checkout-session.ts  # ✅ Updated with correct success routing
 │   └── stripe-webhook.ts            # ✅ Enhanced logging and error handling
-├── App.tsx                 # ✅ React Router setup with /success/:plan route
+├── src/context/
+│   └── AuthContext.tsx     # ✅ Dual authentication system (magic link + password)
+├── App.tsx                 # ✅ React Router with dual login routes
 ├── constants.ts            # ✅ TIER_CONFIG for centralized tier management
+├── netlify.toml           # ✅ SPA configuration for deep link routing
 ├── types.ts               # TypeScript definitions
 └── src/lib/supabase.ts    # Database client
 ```
 
-### Routing Structure ✅ FIXED
+### Routing Structure ✅ UPDATED
 - `/assessment` - Business evaluation form
 - `/results` - Tier recommendation and payment selection
 - `/success/:plan` - Post-payment success page (e.g., `/success/founding-member`)
-- `/login` - Authentication page  
+- `/login` - Member magic link authentication
+- `/admin/login` - Admin email/password authentication ✅ NEW
 - `/member/dashboard` - Member portal
-- `/admin/*` - Admin dashboard routes
+- `/admin/*` - Admin dashboard routes (requires verified admin)
 
 ### Netlify SPA Configuration ✅ CONFIGURED
 - **netlify.toml**: Configured with SPA redirect rule (`/* → /index.html`)
@@ -123,22 +144,40 @@ This is a React + TypeScript application that helps real estate contractors get 
 - **Flow**: Email → Magic link → Auto-login → Member dashboard
 - **Database**: Uses `public.profiles` table for member data
 
-### Admin Authentication (Email + Password) ✅ NEW
+### Admin Authentication (Email + Password) ✅ WORKING
 - **Route**: `/admin/login` (dedicated admin login page)  
 - **Method**: Email + password via `supabase.auth.signInWithPassword()`
 - **Authorization**: Checks `public.admin_profiles` table:
-  - Must have `role = 'admin'`
   - Must have `is_active = true`
   - User ID must match `auth.users.id`
+  - **Fixed**: Removed problematic `role=eq.admin` filter that caused 400 errors
 - **Access Control**: Non-admin users get "Access denied" and are signed out
-- **Flow**: Credentials → Validation → Admin dashboard
+- **Flow**: Credentials → Profile verification → Admin dashboard
 
 ### Security Implementation
 - **Separation**: Members and admins use completely separate login flows
 - **No Password Exposure**: Admin passwords never logged or exposed
 - **Database Security**: Admin privileges verified via separate `admin_profiles` table
+- **Fixed Verification**: Query only checks `is_active=true` to avoid database enum conflicts
 - **Automatic Signout**: Failed admin verification immediately signs user out
 - **Route Protection**: `/admin/*` routes require verified admin status
+- **Access Fallback**: Unauthenticated admin routes redirect to `/admin/login`
+
+## Visual Features ✅ IMPLEMENTED
+
+### Animated Background System
+- **Aurora Effects**: Rotating golden gradient layers with screen blend mode
+- **Floating Particles**: 15 particles with three depth layers (close/medium/far)
+- **Light Streaks**: Diagonal sweeping light beams every 30 seconds
+- **Mobile Responsive**: Viewport-based sizing ensures visibility on all devices
+- **Performance Optimized**: GPU-accelerated animations with efficient CSS
+
+### Responsive Design
+- **Desktop**: Full 15-particle system with premium depth effects
+- **Tablet (≤768px)**: Enhanced brightness and larger particle sizes
+- **Mobile (≤480px)**: Reduced to 10 ultra-visible particles for performance
+- **Adaptive Blur**: Blur effects scale with screen size using viewport units
+- **Minimum Visibility**: Particles never shrink below visible threshold on small screens
 
 ## Security & Environment Rules
 
@@ -171,9 +210,38 @@ This is a React + TypeScript application that helps real estate contractors get 
 - Check admin dashboard shows new members properly
 
 ### Common Debugging
+
+#### Payment & Stripe Issues
 - Check Netlify function logs for checkout/webhook errors
 - Verify environment variables are set correctly per deployment
 - Confirm Stripe webhook endpoint is configured with correct URL
 - Test database permissions for profile updates
 
-This platform is production-ready for the Founding Member tier, with infrastructure in place to easily activate additional tiers when needed.
+#### Authentication Issues
+- **Member Login**: Check magic link delivery and email configuration
+- **Admin Login**: Verify user has active row in `admin_profiles` table
+- **Admin 400 Errors**: Ensure query doesn't filter by role (use `is_active=true` only)
+- **Route Protection**: Check `AuthContext` isAdmin state and route guards
+
+#### Frontend Issues
+- **Deep Links**: Verify `netlify.toml` SPA redirect configuration
+- **Particles Not Visible**: Check mobile viewport sizing and minimum particle sizes
+- **404 Errors**: Ensure Netlify SPA configuration is deployed
+
+#### Database Issues
+- **Profile Creation**: Check if Supabase triggers are working for new users
+- **Admin Access**: Verify `admin_profiles` table has correct user ID and `is_active=true`
+- **RLS Policies**: Ensure Row Level Security allows appropriate data access
+
+## Current Status & Readiness
+
+This platform is **production-ready** with:
+
+✅ **Complete Authentication**: Dual login system (magic link + email/password)
+✅ **Payment Processing**: Founding Member tier fully operational
+✅ **Admin Management**: Working admin dashboard with proper access controls
+✅ **Visual Polish**: Premium animated backgrounds with mobile responsiveness
+✅ **SPA Routing**: Proper deep link handling via Netlify configuration
+✅ **Scalable Architecture**: Infrastructure ready for additional membership tiers
+
+**Next Steps**: Activate Bronze/Silver/Gold tiers when business requirements are ready.
