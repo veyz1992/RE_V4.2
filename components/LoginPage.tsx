@@ -83,15 +83,14 @@ const LoginPage: React.FC = () => {
             className="w-40 h-40 md:w-52 md:h-52 mx-auto mb-4 animate-float-logo"
           />
           <h1 className="font-playfair text-xl md:text-2xl font-bold text-white">Restoration Expertise</h1>
-          <p className="text-lg text-gray-300 mt-2">The national trust network for professionals.</p>
+          <p className="text-lg text-gray-300 mt-2">The Restoration Network Homeowners Trust.</p>
         </div>
 
         <div className="login-glass-card p-8 rounded-2xl transition-all duration-500">
           {loginState === 'form' && (
             <div className="animate-fade-in space-y-6">
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="space-y-2 text-center">
-                  <h2 className="font-playfair text-3xl font-bold text-white">Welcome back</h2>
+                <div className="text-center mb-6">
                   <p className="text-gray-300">Enter your email to receive a secure magic link.</p>
                 </div>
 
@@ -117,7 +116,7 @@ const LoginPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitDisabled}
-                  className="w-full py-3 px-4 bg-[var(--accent)] text-[var(--accent-text)] font-bold text-lg rounded-lg shadow-lg hover:bg-[var(--accent-dark)] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[var(--accent)]/50 disabled:opacity-50"
+                  className="magic-link-button w-full py-3 px-4 bg-[var(--accent)] text-[var(--accent-text)] font-bold text-lg rounded-lg shadow-lg hover:bg-[var(--accent-dark)] transition-all transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-[var(--accent)]/50 disabled:opacity-50"
                 >
                   Send Magic Link
                 </button>
