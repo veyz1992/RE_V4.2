@@ -109,6 +109,12 @@ This is a React + TypeScript application that helps real estate contractors get 
 - `/member/dashboard` - Member portal
 - `/admin/*` - Admin dashboard routes
 
+### Netlify SPA Configuration ✅ CONFIGURED
+- **netlify.toml**: Configured with SPA redirect rule (`/* → /index.html`)
+- **Deep Links**: All non-file routes served by React Router
+- **Functions**: Netlify Functions (/.netlify/functions/*) remain unaffected
+- **Build**: Vite outputs to `dist/` directory with proper index.html
+
 ## Security & Environment Rules
 
 ### DO:
