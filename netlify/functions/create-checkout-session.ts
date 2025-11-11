@@ -126,6 +126,10 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
   console.log(`Selected tier: ${tier} -> Price ID: ${priceId}`);
 
   const origin = getOriginFromHeaders(event.headers ?? {});
+  
+  // Convert tier name to URL-friendly format for SuccessPage route
+  const tierSlug = tier.toLowerCase().replace(/\s+/g, '-');
+  console.log(`Tier slug for success URL: ${tierSlug}`);
 
   try {
     const session = await stripe.checkout.sessions.create({
@@ -142,7 +146,7 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
         email,
         assessmentId: assessmentId ? String(assessmentId) : '',
       },
-      success_url: `${origin}/login?checkout=success`,
+      success_url: `${origin}/success/${tierSlug}?checkout=success`,
       cancel_url: `${origin}/results?checkout=cancelled`,
     });
 
