@@ -453,7 +453,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('admin_profiles')
         .select('id, role, is_active')
         .eq('id', authData.user.id)
-        .eq('role', 'admin')
         .eq('is_active', true)
         .maybeSingle();
 
