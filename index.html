@@ -245,26 +245,86 @@
         box-shadow: 0 0 20px rgba(212, 175, 55, 0.4), 0 0 40px rgba(212, 175, 55, 0.2);
       }
 
-      /* Close particles (large, heavily blurred) */
-      .login-particle:nth-child(1) { width: 12px; height: 12px; filter: blur(3px); opacity: 0.4; animation: float-particle 25s infinite linear; left: 8%; animation-delay: 0s; }
-      .login-particle:nth-child(2) { width: 8px; height: 8px; filter: blur(2px); opacity: 0.5; animation: float-particle 22s infinite linear; left: 25%; animation-delay: -3s; }
-      .login-particle:nth-child(3) { width: 15px; height: 15px; filter: blur(4px); opacity: 0.3; animation: float-particle 28s infinite linear; left: 45%; animation-delay: -8s; }
-      .login-particle:nth-child(4) { width: 10px; height: 10px; filter: blur(2.5px); opacity: 0.4; animation: float-particle 24s infinite linear; left: 65%; animation-delay: -12s; }
-      .login-particle:nth-child(5) { width: 6px; height: 6px; filter: blur(1.5px); opacity: 0.6; animation: float-particle 20s infinite linear; left: 85%; animation-delay: -16s; }
+      /* Close particles (large, heavily blurred) - 30% bigger with responsive sizing */
+      .login-particle:nth-child(1) { 
+        width: max(16px, 2.2vw); height: max(16px, 2.2vw); 
+        filter: blur(max(3px, 0.4vw)); opacity: 0.5; 
+        animation: float-particle 25s infinite linear; left: 8%; animation-delay: 0s; 
+      }
+      .login-particle:nth-child(2) { 
+        width: max(10px, 1.6vw); height: max(10px, 1.6vw); 
+        filter: blur(max(2px, 0.3vw)); opacity: 0.6; 
+        animation: float-particle 22s infinite linear; left: 25%; animation-delay: -3s; 
+      }
+      .login-particle:nth-child(3) { 
+        width: max(20px, 2.6vw); height: max(20px, 2.6vw); 
+        filter: blur(max(4px, 0.5vw)); opacity: 0.4; 
+        animation: float-particle 28s infinite linear; left: 45%; animation-delay: -8s; 
+      }
+      .login-particle:nth-child(4) { 
+        width: max(13px, 1.8vw); height: max(13px, 1.8vw); 
+        filter: blur(max(2.5px, 0.35vw)); opacity: 0.5; 
+        animation: float-particle 24s infinite linear; left: 65%; animation-delay: -12s; 
+      }
 
-      /* Medium particles (medium size, moderate blur) */
-      .login-particle:nth-child(6) { width: 5px; height: 5px; filter: blur(1px); opacity: 0.7; animation: float-particle 18s infinite linear; left: 15%; animation-delay: -20s; }
-      .login-particle:nth-child(7) { width: 7px; height: 7px; filter: blur(1.5px); opacity: 0.5; animation: float-particle 21s infinite linear; left: 35%; animation-delay: -24s; }
-      .login-particle:nth-child(8) { width: 9px; height: 9px; filter: blur(2px); opacity: 0.4; animation: float-particle 26s infinite linear; left: 55%; animation-delay: -28s; }
-      .login-particle:nth-child(9) { width: 4px; height: 4px; filter: blur(0.8px); opacity: 0.8; animation: float-particle 16s infinite linear; left: 75%; animation-delay: -32s; }
-      .login-particle:nth-child(10) { width: 6px; height: 6px; filter: blur(1.2px); opacity: 0.6; animation: float-particle 19s infinite linear; left: 95%; animation-delay: -36s; }
+      /* Medium particles (medium size, moderate blur) - 30% bigger with responsive sizing */
+      .login-particle:nth-child(5) { 
+        width: max(8px, 1.4vw); height: max(8px, 1.4vw); 
+        filter: blur(max(1.5px, 0.25vw)); opacity: 0.7; 
+        animation: float-particle 20s infinite linear; left: 85%; animation-delay: -16s; 
+      }
+      .login-particle:nth-child(6) { 
+        width: max(7px, 1.2vw); height: max(7px, 1.2vw); 
+        filter: blur(max(1px, 0.2vw)); opacity: 0.8; 
+        animation: float-particle 18s infinite linear; left: 15%; animation-delay: -20s; 
+      }
+      .login-particle:nth-child(7) { 
+        width: max(9px, 1.5vw); height: max(9px, 1.5vw); 
+        filter: blur(max(1.5px, 0.25vw)); opacity: 0.6; 
+        animation: float-particle 21s infinite linear; left: 35%; animation-delay: -24s; 
+      }
+      .login-particle:nth-child(8) { 
+        width: max(12px, 1.7vw); height: max(12px, 1.7vw); 
+        filter: blur(max(2px, 0.3vw)); opacity: 0.5; 
+        animation: float-particle 26s infinite linear; left: 55%; animation-delay: -28s; 
+      }
+      .login-particle:nth-child(9) { 
+        width: max(5px, 1vw); height: max(5px, 1vw); 
+        filter: blur(max(0.8px, 0.15vw)); opacity: 0.9; 
+        animation: float-particle 16s infinite linear; left: 75%; animation-delay: -32s; 
+      }
 
-      /* Far particles (small, crisp) */
-      .login-particle:nth-child(11) { width: 3px; height: 3px; filter: blur(0.5px); opacity: 0.9; animation: float-particle 14s infinite linear; left: 12%; animation-delay: -40s; }
-      .login-particle:nth-child(12) { width: 2px; height: 2px; filter: blur(0.3px); opacity: 1; animation: float-particle 12s infinite linear; left: 32%; animation-delay: -44s; }
-      .login-particle:nth-child(13) { width: 4px; height: 4px; filter: blur(0.7px); opacity: 0.8; animation: float-particle 15s infinite linear; left: 52%; animation-delay: -48s; }
-      .login-particle:nth-child(14) { width: 3px; height: 3px; filter: blur(0.4px); opacity: 0.9; animation: float-particle 13s infinite linear; left: 72%; animation-delay: -52s; }
-      .login-particle:nth-child(15) { width: 2px; height: 2px; filter: blur(0.2px); opacity: 1; animation: float-particle 11s infinite linear; left: 92%; animation-delay: -56s; }
+      /* Far particles (small, crisp) - 30% bigger with responsive sizing */
+      .login-particle:nth-child(10) { 
+        width: max(8px, 1.3vw); height: max(8px, 1.3vw); 
+        filter: blur(max(1.2px, 0.2vw)); opacity: 0.7; 
+        animation: float-particle 19s infinite linear; left: 95%; animation-delay: -36s; 
+      }
+      .login-particle:nth-child(11) { 
+        width: max(4px, 0.8vw); height: max(4px, 0.8vw); 
+        filter: blur(max(0.5px, 0.1vw)); opacity: 1; 
+        animation: float-particle 14s infinite linear; left: 12%; animation-delay: -40s; 
+      }
+      .login-particle:nth-child(12) { 
+        width: max(3px, 0.6vw); height: max(3px, 0.6vw); 
+        filter: blur(max(0.3px, 0.08vw)); opacity: 1; 
+        animation: float-particle 12s infinite linear; left: 32%; animation-delay: -44s; 
+      }
+      .login-particle:nth-child(13) { 
+        width: max(5px, 0.9vw); height: max(5px, 0.9vw); 
+        filter: blur(max(0.7px, 0.12vw)); opacity: 0.9; 
+        animation: float-particle 15s infinite linear; left: 52%; animation-delay: -48s; 
+      }
+      .login-particle:nth-child(14) { 
+        width: max(4px, 0.7vw); height: max(4px, 0.7vw); 
+        filter: blur(max(0.4px, 0.09vw)); opacity: 1; 
+        animation: float-particle 13s infinite linear; left: 72%; animation-delay: -52s; 
+      }
+      .login-particle:nth-child(15) { 
+        width: max(3px, 0.5vw); height: max(3px, 0.5vw); 
+        filter: blur(max(0.2px, 0.06vw)); opacity: 1; 
+        animation: float-particle 11s infinite linear; left: 92%; animation-delay: -56s; 
+      }
 
       @keyframes float-particle {
         0% { transform: translateY(100vh) scale(0); opacity: 0; }
