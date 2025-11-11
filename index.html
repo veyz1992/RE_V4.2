@@ -236,30 +236,35 @@
         pointer-events: none;
       }
 
+      /* Layered particle system with depth */
       .login-particle {
         position: absolute;
-        width: 2px;
-        height: 2px;
-        background: rgba(212, 175, 55, 0.6);
+        background: radial-gradient(circle, rgba(212, 175, 55, 0.8) 0%, rgba(212, 175, 55, 0.3) 40%, transparent 70%);
         border-radius: 50%;
-        box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+        filter: blur(1px);
+        box-shadow: 0 0 20px rgba(212, 175, 55, 0.4), 0 0 40px rgba(212, 175, 55, 0.2);
       }
 
-      .login-particle:nth-child(1) { animation: float-particle 15s infinite linear; left: 10%; animation-delay: 0s; }
-      .login-particle:nth-child(2) { animation: float-particle 18s infinite linear; left: 20%; animation-delay: -2s; }
-      .login-particle:nth-child(3) { animation: float-particle 12s infinite linear; left: 30%; animation-delay: -4s; }
-      .login-particle:nth-child(4) { animation: float-particle 20s infinite linear; left: 40%; animation-delay: -6s; }
-      .login-particle:nth-child(5) { animation: float-particle 16s infinite linear; left: 50%; animation-delay: -8s; }
-      .login-particle:nth-child(6) { animation: float-particle 14s infinite linear; left: 60%; animation-delay: -10s; }
-      .login-particle:nth-child(7) { animation: float-particle 22s infinite linear; left: 70%; animation-delay: -12s; }
-      .login-particle:nth-child(8) { animation: float-particle 19s infinite linear; left: 80%; animation-delay: -14s; }
-      .login-particle:nth-child(9) { animation: float-particle 13s infinite linear; left: 90%; animation-delay: -16s; }
-      .login-particle:nth-child(10) { animation: float-particle 17s infinite linear; left: 15%; animation-delay: -18s; }
-      .login-particle:nth-child(11) { animation: float-particle 21s infinite linear; left: 25%; animation-delay: -20s; }
-      .login-particle:nth-child(12) { animation: float-particle 11s infinite linear; left: 35%; animation-delay: -22s; }
-      .login-particle:nth-child(13) { animation: float-particle 23s infinite linear; left: 45%; animation-delay: -24s; }
-      .login-particle:nth-child(14) { animation: float-particle 15s infinite linear; left: 55%; animation-delay: -26s; }
-      .login-particle:nth-child(15) { animation: float-particle 18s infinite linear; left: 65%; animation-delay: -28s; }
+      /* Close particles (large, heavily blurred) */
+      .login-particle:nth-child(1) { width: 12px; height: 12px; filter: blur(3px); opacity: 0.4; animation: float-particle 25s infinite linear; left: 8%; animation-delay: 0s; }
+      .login-particle:nth-child(2) { width: 8px; height: 8px; filter: blur(2px); opacity: 0.5; animation: float-particle 22s infinite linear; left: 25%; animation-delay: -3s; }
+      .login-particle:nth-child(3) { width: 15px; height: 15px; filter: blur(4px); opacity: 0.3; animation: float-particle 28s infinite linear; left: 45%; animation-delay: -8s; }
+      .login-particle:nth-child(4) { width: 10px; height: 10px; filter: blur(2.5px); opacity: 0.4; animation: float-particle 24s infinite linear; left: 65%; animation-delay: -12s; }
+      .login-particle:nth-child(5) { width: 6px; height: 6px; filter: blur(1.5px); opacity: 0.6; animation: float-particle 20s infinite linear; left: 85%; animation-delay: -16s; }
+
+      /* Medium particles (medium size, moderate blur) */
+      .login-particle:nth-child(6) { width: 5px; height: 5px; filter: blur(1px); opacity: 0.7; animation: float-particle 18s infinite linear; left: 15%; animation-delay: -20s; }
+      .login-particle:nth-child(7) { width: 7px; height: 7px; filter: blur(1.5px); opacity: 0.5; animation: float-particle 21s infinite linear; left: 35%; animation-delay: -24s; }
+      .login-particle:nth-child(8) { width: 9px; height: 9px; filter: blur(2px); opacity: 0.4; animation: float-particle 26s infinite linear; left: 55%; animation-delay: -28s; }
+      .login-particle:nth-child(9) { width: 4px; height: 4px; filter: blur(0.8px); opacity: 0.8; animation: float-particle 16s infinite linear; left: 75%; animation-delay: -32s; }
+      .login-particle:nth-child(10) { width: 6px; height: 6px; filter: blur(1.2px); opacity: 0.6; animation: float-particle 19s infinite linear; left: 95%; animation-delay: -36s; }
+
+      /* Far particles (small, crisp) */
+      .login-particle:nth-child(11) { width: 3px; height: 3px; filter: blur(0.5px); opacity: 0.9; animation: float-particle 14s infinite linear; left: 12%; animation-delay: -40s; }
+      .login-particle:nth-child(12) { width: 2px; height: 2px; filter: blur(0.3px); opacity: 1; animation: float-particle 12s infinite linear; left: 32%; animation-delay: -44s; }
+      .login-particle:nth-child(13) { width: 4px; height: 4px; filter: blur(0.7px); opacity: 0.8; animation: float-particle 15s infinite linear; left: 52%; animation-delay: -48s; }
+      .login-particle:nth-child(14) { width: 3px; height: 3px; filter: blur(0.4px); opacity: 0.9; animation: float-particle 13s infinite linear; left: 72%; animation-delay: -52s; }
+      .login-particle:nth-child(15) { width: 2px; height: 2px; filter: blur(0.2px); opacity: 1; animation: float-particle 11s infinite linear; left: 92%; animation-delay: -56s; }
 
       @keyframes float-particle {
         0% { transform: translateY(100vh) scale(0); opacity: 0; }
