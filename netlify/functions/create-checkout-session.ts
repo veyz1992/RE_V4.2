@@ -24,15 +24,6 @@ Object.entries(TIER_CONFIG).forEach(([tierName, config]) => {
 // Log the price configuration for debugging
 console.log('Price configuration:', priceConfigLog);
 
-// Validate all price IDs are configured
-const missingPrices = Object.entries(PRICE_IDS)
-  .filter(([tier, priceId]) => !priceId)
-  .map(([tier]) => tier);
-
-if (missingPrices.length > 0) {
-  throw new Error(`Missing Stripe price environment variables for: ${missingPrices.join(', ')}`);
-}
-
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
   headers: {

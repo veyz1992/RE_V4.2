@@ -103,6 +103,8 @@ These keys are currently used by the repo:
 - Any **client-side** code must only use `VITE_*` variables.  
 - Any **server-side** code (Netlify Functions) may use non-VITE secrets (Stripe secret key, Supabase service role key, webhook secret, etc.).  
 - **Never hardcode** Stripe price IDs, customer IDs, or secret keys in code. Always read from env.  
+- **Only the requested tier's price env var is required** - other tiers can have missing env vars while they are "Coming Soon".
+- The checkout function validates per-tier at request time, not at startup, allowing partial tier availability.
 - When adding a new membership tier / Stripe product:  
   1. Create product + price in Stripe.  
   2. Add new env var (e.g. `STRIPE_PRICE_GOLD`) in Netlify and `.env.example`.  
@@ -354,11 +356,13 @@ If you are an AI coding assistant (Rovo, Copilot Chat, etc.):
 3. **Logging:** Added comprehensive logging to both Netlify functions for easier debugging.
 4. **Error Handling:** Improved error handling in webhook function with proper profile lookups and fallbacks.
 5. **Invoice Storage:** Added invoice record creation in `invoices` table when payments succeed.
+6. **Optional Tier Env Vars:** Removed global validation of all price environment variables. Now only the requested tier's env var is required, allowing Bronze/Silver/Gold to be "Coming Soon" without blocking Founding Member flow.
 
 **Files Modified:**
-- `netlify/functions/create-checkout-session.ts` - Enhanced logging, centralized config
+- `netlify/functions/create-checkout-session.ts` - Enhanced logging, centralized config, removed global env validation
 - `netlify/functions/stripe-webhook.ts` - Fixed schema issues, improved error handling  
 - `constants.ts` - Added `TIER_CONFIG` for centralized tier management
+- `IMPORTANT_NOTES.md` - Updated env rules documentation
 
 ---
 
