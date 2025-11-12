@@ -138,7 +138,20 @@ const SuccessPage: React.FC = () => {
   // Move display variables above their first use to prevent TDZ issues
   const displayBusinessName = currentUser?.name ?? 'Your Business';
   const displayContactName = currentUser?.account?.ownerName ?? currentUser?.name ?? 'Your Name';
-  const displayEmail = stripeEmail || currentUser?.email || cachedEmail;
+  // Parse session_id once on mount
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isLoadingStripeEmail, setIsLoadingStripeEmail] = useState(false);
+
+  // Compute display email based on session_id presence
+  const displayEmail = useMemo(() => {
+    if (sessionId) {
+      // If session_id present: use stripeEmail only (or show loading)
+      return stripeEmail || null;
+    } else {
+      // If session_id missing: use fallback hierarchy
+      return currentUser?.email || cachedEmail;
+    }
+  }, [sessionId, stripeEmail, currentUser?.email, cachedEmail]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -151,54 +164,82 @@ const SuccessPage: React.FC = () => {
     window.localStorage.removeItem(PLAN_STORAGE_KEY);
   }, [navigate, planSlug]);
 
+  // Initialize session_id and clear cached email if session_id present
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
-    if (storedEmail) {
-      setCachedEmail(storedEmail);
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlSessionId = urlParams.get('session_id');
+    
+    setSessionId(urlSessionId);
+    console.log('[SuccessPage] session_id from URL:', urlSessionId);
+    
+    if (urlSessionId) {
+      // Clear cached email when session_id is present - we want fresh Stripe data
+      console.log('[SuccessPage] session_id present - clearing cached email');
+      window.localStorage.removeItem(EMAIL_STORAGE_KEY);
+      setCachedEmail('');
+    } else {
+      // Load cached email only when no session_id
+      const storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
+      if (storedEmail) {
+        setCachedEmail(storedEmail);
+      }
     }
   }, []);
 
   // Fetch email from Stripe session if session_id is provided
   useEffect(() => {
     const fetchStripeSessionEmail = async () => {
+      if (!sessionId || stripeEmail) return;
+      
       try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const sessionId = urlParams.get('session_id');
+        setIsLoadingStripeEmail(true);
+        console.log(`[SuccessPage] Fetching email from Stripe session: ${sessionId}`);
         
-        console.log('[SuccessPage] session_id from URL:', sessionId);
+        const response = await fetch(`${FUNCTION_ENDPOINTS.STRIPE_SESSION}?session_id=${sessionId}`);
         
-        if (sessionId && !stripeEmail) {
-          console.log(`[SuccessPage] Fetching email from Stripe session: ${sessionId}`);
-          
-          const response = await fetch(`${FUNCTION_ENDPOINTS.STRIPE_SESSION}?session_id=${sessionId}`);
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log('[SuccessPage] Stripe API response:', data);
-            if (data.email) {
-              setStripeEmail(data.email);
-              console.log(`[SuccessPage] ✅ Success! Email from Stripe: ${data.email}`);
-            } else {
-              console.warn('[SuccessPage] ⚠️ No email found in Stripe response');
-            }
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[SuccessPage] Stripe API response:', data);
+          if (data.email) {
+            setStripeEmail(data.email);
+            console.log(`[SuccessPage] ✅ Success! Email from Stripe: ${data.email}`);
           } else {
-            console.error('[SuccessPage] ❌ Failed to fetch session email:', response.status, response.statusText);
+            console.warn('[SuccessPage] ⚠️ No email found in Stripe response');
           }
-        } else if (!sessionId) {
-          console.log('[SuccessPage] ℹ️ No session_id in URL, using fallback email sources');
+        } else {
+          console.error('[SuccessPage] ❌ Failed to fetch session email:', response.status, response.statusText);
         }
       } catch (error) {
         console.error('[SuccessPage] ❌ Error fetching Stripe session email:', error);
+      } finally {
+        setIsLoadingStripeEmail(false);
       }
     };
     
     fetchStripeSessionEmail();
-  }, [stripeEmail]);
+  }, [sessionId, stripeEmail]);
 
   // Define triggerMagicLink before its first use to prevent TDZ issues
-  const triggerMagicLink = async (targetEmail: string) => {
-    if (!targetEmail) {
+  const triggerMagicLink = async (targetEmail?: string) => {
+    // Determine the email to use based on context
+    let emailToUse = targetEmail;
+    
+    if (sessionId) {
+      // If session_id present: only use stripeEmail, never cached
+      emailToUse = stripeEmail;
+      if (!emailToUse && !isLoadingStripeEmail) {
+        setActionState('error');
+        setActionMessage('We\'re still loading your email from Stripe. Please wait a moment.');
+        return;
+      }
+    } else {
+      // If session_id missing: use provided email or fallback hierarchy
+      emailToUse = targetEmail || currentUser?.email || cachedEmail;
+    }
+    
+    if (!emailToUse) {
       setActionState('error');
       setActionMessage('Please provide an email address to resend your login link.');
       return;
@@ -220,7 +261,7 @@ const SuccessPage: React.FC = () => {
       }
       
       const { error } = await supabase.auth.signInWithOtp({
-        email: targetEmail,
+        email: emailToUse,
         options: { 
           emailRedirectTo: `${window.location.origin}/auth/callback` 
         }
@@ -244,13 +285,14 @@ const SuccessPage: React.FC = () => {
       }
 
       setActionState('sent');
-      setActionMessage(`Magic link sent to ${targetEmail}. Check your inbox and Spam/Promotions folder if you don't see it.`);
+      setActionMessage(`Magic link sent to ${emailToUse}. Check your inbox and Spam/Promotions folder if you don't see it.`);
       setResendCooldown(60); // Start 60-second cooldown
       
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(EMAIL_STORAGE_KEY, targetEmail);
+      // Update localStorage only if we're not in session mode and email changed
+      if (typeof window !== 'undefined' && !sessionId) {
+        window.localStorage.setItem(EMAIL_STORAGE_KEY, emailToUse);
+        setCachedEmail(emailToUse);
       }
-      setCachedEmail(targetEmail);
     } catch (error) {
       setActionState('error');
       const message = error instanceof Error ? error.message : 'Unable to send a magic link right now. Please try again later.';
@@ -262,18 +304,25 @@ const SuccessPage: React.FC = () => {
   // Automatically send magic link on mount if we have an email
   useEffect(() => {
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const emailFromUrl = urlParams.get('email');
-      const targetEmail = emailFromUrl || cachedEmail || displayEmail;
-      
-      if (targetEmail && actionState === 'idle') {
-        // Automatically trigger magic link on first load
-        triggerMagicLink(targetEmail);
+      if (sessionId) {
+        // If session_id present: only trigger after stripeEmail is loaded
+        if (stripeEmail && actionState === 'idle') {
+          triggerMagicLink();
+        }
+      } else {
+        // If session_id missing: use fallback behavior
+        const urlParams = new URLSearchParams(window.location.search);
+        const emailFromUrl = urlParams.get('email');
+        const targetEmail = emailFromUrl || cachedEmail || displayEmail;
+        
+        if (targetEmail && actionState === 'idle') {
+          triggerMagicLink(targetEmail);
+        }
       }
     } catch (error) {
       console.error('Error in magic link auto-trigger:', error);
     }
-  }, [cachedEmail, displayEmail]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId, stripeEmail, cachedEmail, displayEmail, actionState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -396,7 +445,13 @@ const SuccessPage: React.FC = () => {
               We've sent a magic login link to your personal dashboard. Please check your inbox and click the link to access your account.
             </p>
             <div className="mt-4 bg-black/20 p-3 rounded-lg text-center text-white">
-              📧 Sent to: <strong>{displayEmail || 'checking...'}</strong>
+              📧 Sent to: <strong>
+                {sessionId ? (
+                  displayEmail || (isLoadingStripeEmail ? 'checking...' : 'We\'re preparing your access email...')
+                ) : (
+                  displayEmail || 'checking...'
+                )}
+              </strong>
             </div>
 
             {isUpdatingEmail ? (
@@ -423,7 +478,7 @@ const SuccessPage: React.FC = () => {
                   Wrong email? Update it here
                 </button>
                 <button 
-                  onClick={() => triggerMagicLink(displayEmail)} 
+                  onClick={() => triggerMagicLink()} 
                   disabled={resendCooldown > 0}
                   className={`font-semibold ${resendCooldown > 0 ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:underline'}`}
                 >

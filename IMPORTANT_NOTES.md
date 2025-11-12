@@ -718,9 +718,15 @@ const endpoint = FUNCTION_ENDPOINTS.CHECKOUT;
 ### Success Page Email Handling ✅ IMPLEMENTED
 **Success page email is fetched from Stripe via session_id. No hardcoded emails. Client must always create a new session for tests because Stripe caches success_url per session.**
 
-- **Email source priority**: `session.customer_details.email` → `session.customer.email` → `session.metadata.email_entered`
+**Email Precedence Logic:**
+- **If session_id present** → Stripe session email only, ignore localStorage/cached emails
+- **If session_id missing** → `currentUser?.email` || `localStorage[EMAIL_STORAGE_KEY]`
+
+**Technical Details:**
+- **Email source priority**: `session.customer_details.email` → `session.customer.email` → `session.metadata.email_entered`  
 - **Session ID**: Automatically appended as `&session_id={CHECKOUT_SESSION_ID}` to success URL
-- **Fallback behavior**: If Stripe API fails, shows "checking..." instead of hardcoded email
+- **Cache clearing**: localStorage email cleared when session_id detected to prevent stale data
+- **Magic link logic**: Always uses fresh Stripe email when session_id present, never cached
 - **Debug logging**: Console shows session_id and API call success/failure
 
 ### Testing & Debugging

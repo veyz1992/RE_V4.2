@@ -152,7 +152,7 @@ export const handler = async (event: any) => {
 
     // Resolve the correct base URL for this deployment context
     const baseUrl = resolveBaseUrl(event);
-    const success_url = `${baseUrl}/success/${tierSlug}?checkout=success`;
+    const success_url = `${baseUrl}/success/${tierSlug}?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
     const cancel_url = `${baseUrl}/results?checkout=cancelled`;
 
     // Safe logging without exposing secrets
@@ -160,11 +160,19 @@ export const handler = async (event: any) => {
 
     const stripe = new Stripe(secret, { apiVersion: '2024-06-20' });
 
+    // Get additional metadata from request body
+    const { profileId } = requestBody;
+
     const session = await stripe.checkout.sessions.create({
       mode,
       line_items: [{ price: priceId, quantity: 1 }],
       customer_email: customerEmail,
-      metadata: { tier: tierName, email: customerEmail, assessmentId: assessmentId ?? '' },
+      metadata: { 
+        email_entered: customerEmail,
+        plan: tierSlug,
+        profile_id: profileId || '',
+        assessment_id: assessmentId || ''
+      },
       success_url,
       cancel_url,
       // Optional: allow_promotion_codes: true,
