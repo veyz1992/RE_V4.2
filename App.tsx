@@ -175,12 +175,15 @@ const AppRoutes: React.FC = () => {
       result.isEligibleForCertification,
     );
 
-    // Use email from assessment inputs (collected in Step 1) or session
-    let emailEntered: string | null = 
-      result.emailEntered?.trim() || 
-      session?.user?.email ?? 
-      currentUser?.email ?? 
-      null;
+    // Normalize and avoid mixing ?? with || without parentheses
+    const typed = result.emailEntered?.trim();
+    const normalized = typed && typed.length > 0 ? typed : undefined;
+
+    const emailEntered: string | null =
+      normalized
+      ?? session?.user?.email
+      ?? currentUser?.email
+      ?? null;
 
     if (!emailEntered) {
       console.error('No email available from assessment or session - this should not happen');

@@ -190,12 +190,307 @@
         100% { transform: translate(50vw, 40vh) scale(1.1); }
       }
 
+      /* Aurora layers */
+      .aurora-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        filter: blur(80px);
+        opacity: 0.3;
+        mix-blend-mode: screen;
+      }
+
+      .aurora-layer.layer-1 {
+        background: radial-gradient(ellipse 60% 50% at 50% 20%, #d4af37, transparent);
+        animation: aurora-1 20s ease-in-out infinite alternate;
+      }
+
+      .aurora-layer.layer-2 {
+        background: radial-gradient(ellipse 40% 60% at 80% 70%, #ffd700, transparent);
+        animation: aurora-2 25s ease-in-out infinite alternate-reverse;
+      }
+
+      @keyframes aurora-1 {
+        0% { transform: rotate(0deg) scale(1) translate(-10%, -10%); opacity: 0.2; }
+        50% { transform: rotate(180deg) scale(1.2) translate(5%, 15%); opacity: 0.4; }
+        100% { transform: rotate(360deg) scale(0.9) translate(-5%, -20%); opacity: 0.3; }
+      }
+
+      @keyframes aurora-2 {
+        0% { transform: rotate(45deg) scale(1.1) translate(10%, 20%); opacity: 0.3; }
+        50% { transform: rotate(225deg) scale(0.8) translate(-15%, -5%); opacity: 0.2; }
+        100% { transform: rotate(405deg) scale(1.3) translate(20%, -10%); opacity: 0.4; }
+      }
+
+      /* Particle system */
+      .login-particle-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: visible;
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      /* Layered particle system with depth */
+      .login-particle {
+        position: absolute;
+        background: radial-gradient(circle, rgba(212, 175, 55, 0.9) 0%, rgba(212, 175, 55, 0.4) 40%, transparent 70%);
+        border-radius: 50%;
+        filter: blur(1px);
+        box-shadow: 0 0 25px rgba(212, 175, 55, 0.5), 0 0 50px rgba(212, 175, 55, 0.25);
+        will-change: transform;
+      }
+
+      /* Close particles (large, heavily blurred) - 30% bigger with responsive sizing */
+      .login-particle:nth-child(1) { 
+        width: max(16px, 2.2vw); height: max(16px, 2.2vw); 
+        filter: blur(max(3px, 0.4vw)); opacity: 0.5; 
+        animation: float-particle 25s infinite linear; left: 8%; animation-delay: 0s; 
+      }
+      .login-particle:nth-child(2) { 
+        width: max(10px, 1.6vw); height: max(10px, 1.6vw); 
+        filter: blur(max(2px, 0.3vw)); opacity: 0.6; 
+        animation: float-particle 22s infinite linear; left: 25%; animation-delay: -3s; 
+      }
+      .login-particle:nth-child(3) { 
+        width: max(20px, 2.6vw); height: max(20px, 2.6vw); 
+        filter: blur(max(4px, 0.5vw)); opacity: 0.4; 
+        animation: float-particle 28s infinite linear; left: 45%; animation-delay: -8s; 
+      }
+      .login-particle:nth-child(4) { 
+        width: max(13px, 1.8vw); height: max(13px, 1.8vw); 
+        filter: blur(max(2.5px, 0.35vw)); opacity: 0.5; 
+        animation: float-particle 24s infinite linear; left: 65%; animation-delay: -12s; 
+      }
+
+      /* Medium particles (medium size, moderate blur) - 30% bigger with responsive sizing */
+      .login-particle:nth-child(5) { 
+        width: max(8px, 1.4vw); height: max(8px, 1.4vw); 
+        filter: blur(max(1.5px, 0.25vw)); opacity: 0.7; 
+        animation: float-particle 20s infinite linear; left: 85%; animation-delay: -16s; 
+      }
+      .login-particle:nth-child(6) { 
+        width: max(7px, 1.2vw); height: max(7px, 1.2vw); 
+        filter: blur(max(1px, 0.2vw)); opacity: 0.8; 
+        animation: float-particle 18s infinite linear; left: 15%; animation-delay: -20s; 
+      }
+      .login-particle:nth-child(7) { 
+        width: max(9px, 1.5vw); height: max(9px, 1.5vw); 
+        filter: blur(max(1.5px, 0.25vw)); opacity: 0.6; 
+        animation: float-particle 21s infinite linear; left: 35%; animation-delay: -24s; 
+      }
+      .login-particle:nth-child(8) { 
+        width: max(12px, 1.7vw); height: max(12px, 1.7vw); 
+        filter: blur(max(2px, 0.3vw)); opacity: 0.5; 
+        animation: float-particle 26s infinite linear; left: 55%; animation-delay: -28s; 
+      }
+      .login-particle:nth-child(9) { 
+        width: max(5px, 1vw); height: max(5px, 1vw); 
+        filter: blur(max(0.8px, 0.15vw)); opacity: 0.9; 
+        animation: float-particle 16s infinite linear; left: 75%; animation-delay: -32s; 
+      }
+
+      /* Far particles (small, crisp) - 30% bigger with responsive sizing */
+      .login-particle:nth-child(10) { 
+        width: max(8px, 1.3vw); height: max(8px, 1.3vw); 
+        filter: blur(max(1.2px, 0.2vw)); opacity: 0.7; 
+        animation: float-particle 19s infinite linear; left: 95%; animation-delay: -36s; 
+      }
+      .login-particle:nth-child(11) { 
+        width: max(4px, 0.8vw); height: max(4px, 0.8vw); 
+        filter: blur(max(0.5px, 0.1vw)); opacity: 1; 
+        animation: float-particle 14s infinite linear; left: 12%; animation-delay: -40s; 
+      }
+      .login-particle:nth-child(12) { 
+        width: max(3px, 0.6vw); height: max(3px, 0.6vw); 
+        filter: blur(max(0.3px, 0.08vw)); opacity: 1; 
+        animation: float-particle 12s infinite linear; left: 32%; animation-delay: -44s; 
+      }
+      .login-particle:nth-child(13) { 
+        width: max(5px, 0.9vw); height: max(5px, 0.9vw); 
+        filter: blur(max(0.7px, 0.12vw)); opacity: 0.9; 
+        animation: float-particle 15s infinite linear; left: 52%; animation-delay: -48s; 
+      }
+      .login-particle:nth-child(14) { 
+        width: max(4px, 0.7vw); height: max(4px, 0.7vw); 
+        filter: blur(max(0.4px, 0.09vw)); opacity: 1; 
+        animation: float-particle 13s infinite linear; left: 72%; animation-delay: -52s; 
+      }
+      .login-particle:nth-child(15) { 
+        width: max(3px, 0.5vw); height: max(3px, 0.5vw); 
+        filter: blur(max(0.2px, 0.06vw)); opacity: 1; 
+        animation: float-particle 11s infinite linear; left: 92%; animation-delay: -56s; 
+      }
+
+      @keyframes float-particle {
+        0% { transform: translateY(100vh) scale(0); opacity: 0; }
+        10% { opacity: 1; }
+        90% { opacity: 1; }
+        100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+      }
+
+      /* Mobile-specific particle enhancements */
+      @media (max-width: 768px) {
+        .login-particle {
+          background: radial-gradient(circle, rgba(212, 175, 55, 1) 0%, rgba(212, 175, 55, 0.6) 40%, transparent 70%);
+          box-shadow: 0 0 35px rgba(212, 175, 55, 0.7), 0 0 70px rgba(212, 175, 55, 0.4);
+        }
+
+        /* Close particles - significantly larger and brighter on mobile */
+        .login-particle:nth-child(1) { 
+          width: max(22px, 6vw); height: max(22px, 6vw); 
+          filter: blur(max(4px, 1vw)); opacity: 0.7; 
+        }
+        .login-particle:nth-child(2) { 
+          width: max(16px, 4.5vw); height: max(16px, 4.5vw); 
+          filter: blur(max(3px, 0.8vw)); opacity: 0.8; 
+        }
+        .login-particle:nth-child(3) { 
+          width: max(26px, 7vw); height: max(26px, 7vw); 
+          filter: blur(max(5px, 1.2vw)); opacity: 0.6; 
+        }
+        .login-particle:nth-child(4) { 
+          width: max(18px, 5vw); height: max(18px, 5vw); 
+          filter: blur(max(3.5px, 0.9vw)); opacity: 0.7; 
+        }
+
+        /* Medium particles - enhanced for mobile */
+        .login-particle:nth-child(5) { 
+          width: max(12px, 3.5vw); height: max(12px, 3.5vw); 
+          filter: blur(max(2px, 0.6vw)); opacity: 0.9; 
+        }
+        .login-particle:nth-child(6) { 
+          width: max(10px, 3vw); height: max(10px, 3vw); 
+          filter: blur(max(1.5px, 0.5vw)); opacity: 1; 
+        }
+        .login-particle:nth-child(7) { 
+          width: max(14px, 4vw); height: max(14px, 4vw); 
+          filter: blur(max(2.5px, 0.7vw)); opacity: 0.8; 
+        }
+        .login-particle:nth-child(8) { 
+          width: max(16px, 4.5vw); height: max(16px, 4.5vw); 
+          filter: blur(max(3px, 0.8vw)); opacity: 0.7; 
+        }
+        .login-particle:nth-child(9) { 
+          width: max(8px, 2.5vw); height: max(8px, 2.5vw); 
+          filter: blur(max(1px, 0.3vw)); opacity: 1; 
+        }
+
+        /* Far particles - clearly visible on mobile */
+        .login-particle:nth-child(10) { 
+          width: max(12px, 3.5vw); height: max(12px, 3.5vw); 
+          filter: blur(max(2px, 0.6vw)); opacity: 0.9; 
+        }
+        .login-particle:nth-child(11) { 
+          width: max(7px, 2vw); height: max(7px, 2vw); 
+          filter: blur(max(0.8px, 0.25vw)); opacity: 1; 
+        }
+        .login-particle:nth-child(12) { 
+          width: max(6px, 1.8vw); height: max(6px, 1.8vw); 
+          filter: blur(max(0.5px, 0.2vw)); opacity: 1; 
+        }
+        .login-particle:nth-child(13) { 
+          width: max(8px, 2.2vw); height: max(8px, 2.2vw); 
+          filter: blur(max(1px, 0.3vw)); opacity: 1; 
+        }
+        .login-particle:nth-child(14) { 
+          width: max(7px, 2vw); height: max(7px, 2vw); 
+          filter: blur(max(0.7px, 0.25vw)); opacity: 1; 
+        }
+        .login-particle:nth-child(15) { 
+          width: max(6px, 1.5vw); height: max(6px, 1.5vw); 
+          filter: blur(max(0.4px, 0.15vw)); opacity: 1; 
+        }
+      }
+
+      /* Extra small mobile devices */
+      @media (max-width: 480px) {
+        .login-particle {
+          background: radial-gradient(circle, rgba(255, 215, 0, 1) 0%, rgba(212, 175, 55, 0.8) 40%, transparent 70%);
+          box-shadow: 0 0 40px rgba(255, 215, 0, 0.8), 0 0 80px rgba(212, 175, 55, 0.5);
+        }
+
+        /* Reduce particle count but make remaining ones very visible */
+        .login-particle:nth-child(n+11) { 
+          display: none; /* Hide smallest particles on very small screens */
+        }
+
+        /* Make remaining particles extra visible */
+        .login-particle:nth-child(1) { width: max(28px, 8vw); height: max(28px, 8vw); opacity: 0.8; }
+        .login-particle:nth-child(2) { width: max(20px, 6vw); height: max(20px, 6vw); opacity: 0.9; }
+        .login-particle:nth-child(3) { width: max(32px, 9vw); height: max(32px, 9vw); opacity: 0.7; }
+        .login-particle:nth-child(4) { width: max(24px, 7vw); height: max(24px, 7vw); opacity: 0.8; }
+        .login-particle:nth-child(5) { width: max(16px, 5vw); height: max(16px, 5vw); opacity: 1; }
+        .login-particle:nth-child(6) { width: max(14px, 4vw); height: max(14px, 4vw); opacity: 1; }
+        .login-particle:nth-child(7) { width: max(18px, 5.5vw); height: max(18px, 5.5vw); opacity: 0.9; }
+        .login-particle:nth-child(8) { width: max(20px, 6vw); height: max(20px, 6vw); opacity: 0.8; }
+        .login-particle:nth-child(9) { width: max(12px, 3.5vw); height: max(12px, 3.5vw); opacity: 1; }
+        .login-particle:nth-child(10) { width: max(16px, 4.5vw); height: max(16px, 4.5vw); opacity: 1; }
+      }
+
+      /* Light streak */
+      .light-streak {
+        position: absolute;
+        top: 10%;
+        right: -50%;
+        width: 200%;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.8), transparent);
+        transform: rotate(45deg);
+        animation: light-sweep 30s ease-in-out infinite;
+      }
+
+      @keyframes light-sweep {
+        0% { transform: rotate(45deg) translateX(-100%); opacity: 0; }
+        50% { opacity: 1; }
+        100% { transform: rotate(45deg) translateX(100%); opacity: 0; }
+      }
+
       .login-glass-card {
         background: rgba(28, 28, 28, 0.2);
         backdrop-filter: blur(24px);
         -webkit-backdrop-filter: blur(24px);
         border: 1px solid rgba(255, 255, 255, 0.1);
         box-shadow: 0 8px 32px rgba(0,0,0,0.37);
+      }
+
+      /* Magic Link Button Shine Animation */
+      .magic-link-button {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .magic-link-button::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+        animation: shine 4s ease-in-out infinite;
+        transition: all 0.3s ease;
+      }
+
+      .magic-link-button:hover::before {
+        background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+      }
+
+      .magic-link-button:hover {
+        box-shadow: 0 8px 25px rgba(177, 152, 102, 0.4), 0 0 20px rgba(212, 175, 55, 0.3);
+      }
+
+      @keyframes shine {
+        0% { left: -100%; }
+        20% { left: -100%; }
+        50% { left: 100%; }
+        100% { left: 100%; }
       }
 
 
@@ -480,7 +775,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="/assets/index-CdZZb0g1.js"></script>
+  <script type="module" crossorigin src="/assets/index-COUKS3ft.js"></script>
 </head>
   <body class="bg-[var(--bg-main)] font-inter">
     <div id="root"></div>
