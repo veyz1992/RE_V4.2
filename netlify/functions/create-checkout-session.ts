@@ -89,12 +89,8 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
     : event.body;
 
   let payload: { 
-    tier?: string; 
-    email?: string; 
     assessmentId?: string | number;
-    fullName?: string;
-    state?: string;
-    city?: string;
+    intendedTier: string;
   };
   try {
     payload = JSON.parse(rawBody);
@@ -102,57 +98,44 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
     return jsonResponse(400, { error: 'Invalid JSON body' });
   }
 
-  const { tier, email, assessmentId, fullName, state, city } = payload;
+  const { assessmentId, intendedTier } = payload;
   
   // Log incoming payload for debugging (sanitized)
   console.log('Checkout session request:', { 
-    tier, 
-    email: email ? '***' + email.slice(-10) : 'missing',
-    assessmentId,
-    hasFullName: !!fullName,
-    hasState: !!state,
-    hasCity: !!city
+    intendedTier,
+    assessmentId
   });
 
-  if (!tier || typeof tier !== 'string') {
-    console.error('Invalid tier provided:', tier);
+  if (!intendedTier || typeof intendedTier !== 'string') {
+    console.error('Invalid tier provided:', intendedTier);
     return jsonResponse(400, { error: 'Invalid or missing membership tier' });
   }
 
   // Guard: Only allow Founding Member tier while others are "coming soon"
-  if (tier !== 'Founding Member') {
-    console.error(`Tier "${tier}" is not yet available. Only Founding Member is active.`);
+  if (intendedTier !== 'Founding Member') {
+    console.error(`Tier "${intendedTier}" is not yet available. Only Founding Member is active.`);
     return jsonResponse(400, {
-      error: `${tier} membership is coming soon. Only Founding Member is currently available.`,
+      error: `${intendedTier} membership is coming soon. Only Founding Member is currently available.`,
     });
   }
 
-  if (!email || typeof email !== 'string') {
-    console.error('Invalid email provided');
-    return jsonResponse(400, { error: 'Invalid or missing email address' });
-  }
-
-  const priceId = PRICE_IDS[tier];
+  // Use environment variable for Founding Member price
+  const priceId = process.env.STRIPE_PRICE_FOUNDING_MEMBER;
 
   if (!priceId) {
-    console.error(`No Stripe price configured for tier: ${tier}. Available tiers:`, Object.keys(PRICE_IDS));
+    console.error('Missing STRIPE_PRICE_FOUNDING_MEMBER environment variable');
     return jsonResponse(400, {
-      error: `No Stripe price configured for ${tier}`,
+      error: 'Founding Member price not configured. Please contact support.',
     });
   }
   
-  console.log(`Selected tier: ${tier} -> Price ID: ${priceId}`);
+  console.log(`Selected tier: ${intendedTier} -> Price ID: ${priceId}`);
 
   const origin = getOriginFromHeaders(event.headers ?? {});
-  
-  // Convert tier name to URL-friendly format for SuccessPage route
-  const tierSlug = tier.toLowerCase().replace(/\s+/g, '-');
-  console.log(`Tier slug for success URL: ${tierSlug}`);
 
   try {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
-      customer_email: email,
       line_items: [
         {
           price: priceId,
@@ -161,14 +144,10 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
       ],
       metadata: {
         assessment_id: assessmentId ? String(assessmentId) : '',
-        email_entered: email,
-        full_name_entered: fullName || '',
-        state: state || '',
-        city: city || '',
         intended_tier: 'Founding Member',
       },
-      success_url: `${origin}/success/${tierSlug}?checkout=success`,
-      cancel_url: `${origin}/results?checkout=cancelled`,
+      success_url: 'https://dev3--resonant-sprite-4fa0fe.netlify.app/success/founding-member?checkout=success',
+      cancel_url: 'https://dev3--resonant-sprite-4fa0fe.netlify.app/pricing?checkout=cancelled',
     });
 
     if (!session.url) {

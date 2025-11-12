@@ -50,6 +50,14 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
   },
 });
 
+// Create admin client for user management
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+});
+
 // Build price mapping from centralized config
 const PRICE_IDS: Record<string, string> = {};
 Object.entries(TIER_CONFIG).forEach(([tierName, config]) => {
@@ -71,6 +79,43 @@ const jsonResponse = (statusCode: number, body: unknown) => ({
   },
   body: JSON.stringify(body),
 });
+
+// Find or create Supabase Auth user
+const findOrCreateAuthUser = async (email: string): Promise<string> => {
+  // First try to find existing user
+  const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+  
+  if (listError) {
+    console.error('Error listing users:', listError);
+    throw listError;
+  }
+
+  const existingUser = existingUsers.users.find(user => user.email === email);
+  
+  if (existingUser) {
+    console.log('Found existing auth user:', existingUser.id);
+    return existingUser.id;
+  }
+
+  // Create new user if not found
+  const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    email_confirm: true,
+    user_metadata: { source: 'stripe' }
+  });
+
+  if (createError) {
+    console.error('Error creating auth user:', createError);
+    throw createError;
+  }
+
+  if (!newUser.user) {
+    throw new Error('Failed to create auth user - no user returned');
+  }
+
+  console.log('Created new auth user:', newUser.user.id);
+  return newUser.user.id;
+};
 
 const ensureProfileForEmail = async (email: string) => {
   const { data: existing, error: fetchError } = await supabase
@@ -313,20 +358,13 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
       console.log('Processing checkout.session.completed event:', stripeEvent.id);
       
       const session = stripeEvent.data.object as Stripe.Checkout.Session;
-      const email = session.customer_details?.email ?? session.customer_email ?? undefined;
-      const customerId = typeof session.customer === 'string'
-        ? session.customer
-        : session.customer?.id;
-      const subscriptionId = typeof session.subscription === 'string'
-        ? session.subscription
+      const email = session.customer_details?.email || session.customer_email;
+      const assessmentId = session.metadata?.assessment_id || null;
+      const tier = session.metadata?.intended_tier || 'Founding Member';
+      const checkoutId = session.id;
+      const subscriptionId = typeof session.subscription === 'string' 
+        ? session.subscription 
         : session.subscription?.id;
-
-      // Extract metadata
-      const metadata = session.metadata || {};
-      const assessmentId = metadata.assessment_id;
-      const fullNameEntered = metadata.full_name_entered;
-      const state = metadata.state;
-      const city = metadata.city;
 
       console.log('event', stripeEvent.type, { 
         hasEmail: !!email, 
@@ -334,52 +372,107 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
         assessment_id: assessmentId 
       });
 
-      if (!email || !customerId || !subscriptionId) {
-        console.warn('Missing key Stripe session details', {
-          email: !!email,
-          customerId: !!customerId,
-          subscriptionId: !!subscriptionId,
-        });
+      if (!email) {
+        console.warn('No email found in session - cannot proceed');
         return jsonResponse(200, { received: true });
       }
 
+      if (!subscriptionId) {
+        console.warn('No subscription ID found - cannot proceed');
+        return jsonResponse(200, { received: true });
+      }
+
+      // Idempotency check - see if we've already processed this subscription
+      const { data: existingSubscription } = await supabase
+        .from('subscriptions')
+        .select('id')
+        .eq('stripe_subscription_id', subscriptionId)
+        .maybeSingle();
+
+      if (existingSubscription) {
+        console.log('Subscription already processed, returning 200 OK');
+        return jsonResponse(200, { received: true, message: 'Already processed' });
+      }
+
+      // Create or find Supabase Auth user
+      const userId = await findOrCreateAuthUser(email);
+
+      // Upsert profiles table with Auth user ID
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({ 
+          id: userId, 
+          email 
+        }, { 
+          onConflict: 'id' 
+        });
+
+      if (profileError) {
+        console.error('Error upserting profile:', profileError);
+        throw profileError;
+      }
+
+      // Get subscription details
       const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-      const priceId = subscription.items.data[0]?.price?.id;
-      const tierFromPrice = priceId ? getTierFromPriceId(priceId) : undefined;
-      const tier = tierFromPrice ?? session.metadata?.tier ?? 'Bronze';
+      const customerId = typeof subscription.customer === 'string' 
+        ? subscription.customer 
+        : subscription.customer?.id || '';
 
-      console.log('Tier determination:', {
-        priceId,
-        tierFromPrice,
-        metadataTier: session.metadata?.tier,
-        finalTier: tier
-      });
+      // Upsert memberships table
+      const { error: membershipError } = await supabase
+        .from('memberships')
+        .upsert({
+          profile_id: userId,
+          tier,
+          status: 'active',
+          assessment_id: assessmentId
+        }, {
+          onConflict: 'profile_id'
+        });
 
-      const nextRenewal = subscription.current_period_end
-        ? new Date(subscription.current_period_end * 1000).toISOString().split('T')[0]
-        : null;
+      if (membershipError) {
+        console.error('Error upserting membership:', membershipError);
+        throw membershipError;
+      }
 
-      const profileId = await ensureProfileForEmail(email);
-      
-      // Upsert profile with new fields
-      await upsertProfileWithFields(email, fullNameEntered, state, city, customerId);
-      
-      await updateProfileMembership(profileId, tier, customerId, subscriptionId, nextRenewal);
-      await activatePendingMembership(profileId, tier);
+      // Upsert subscriptions table
+      const { error: subscriptionError } = await supabase
+        .from('subscriptions')
+        .upsert({
+          profile_id: userId,
+          stripe_subscription_id: subscriptionId,
+          stripe_customer_id: customerId,
+          status: subscription.status,
+          tier,
+          billing_cycle: subscription.items.data[0]?.price?.recurring?.interval || 'month',
+          unit_amount_cents: subscription.items.data[0]?.price?.unit_amount || 0,
+          current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+          current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        }, {
+          onConflict: 'stripe_subscription_id'
+        });
 
-      // Create subscription entry
-      await upsertSubscription(profileId, {
-        stripe_subscription_id: subscriptionId,
-        stripe_customer_id: customerId,
-        status: subscription.status,
-        tier: tier,
-        billing_cycle: subscription.items.data[0]?.price?.recurring?.interval || 'month',
-        unit_amount_cents: subscription.items.data[0]?.price?.unit_amount || 0,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-      });
-      
-      console.log(`Successfully processed checkout for profile ${profileId} with tier ${tier}`);
+      if (subscriptionError) {
+        console.error('Error upserting subscription:', subscriptionError);
+        throw subscriptionError;
+      }
+
+      // Link assessment if present
+      if (assessmentId) {
+        // Update profile with last assessment
+        await supabase
+          .from('profiles')
+          .update({ last_assessment_id: assessmentId })
+          .eq('id', userId);
+
+        // Update assessment with user_id if column exists and is nullable
+        await supabase
+          .from('assessments')
+          .update({ user_id: userId })
+          .eq('id', assessmentId);
+      }
+
+      console.log(`Successfully auto-provisioned account for ${email} with user ID ${userId}`);
     }
 
     // Handle subscription created/updated

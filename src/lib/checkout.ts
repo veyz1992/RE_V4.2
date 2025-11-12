@@ -1,34 +1,21 @@
 export interface CheckoutPayload {
-  tier: string;
-  email: string;
   assessmentId?: string | number;
-  fullName?: string;
-  state?: string;
-  city?: string;
+  intendedTier: string;
 }
 
 const CHECKOUT_ENDPOINT = '/.netlify/functions/create-checkout-session';
 
 export const startCheckout = async (
-  tier: string,
-  email: string,
   assessmentId?: string | number,
-  fullName?: string,
-  state?: string,
-  city?: string,
+  intendedTier: string = 'Founding Member',
 ): Promise<void> => {
   const payload: CheckoutPayload = {
-    tier,
-    email,
+    intendedTier,
   };
 
   if (typeof assessmentId !== 'undefined' && assessmentId !== null) {
     payload.assessmentId = assessmentId;
   }
-  
-  if (fullName) payload.fullName = fullName;
-  if (state) payload.state = state;
-  if (city) payload.city = city;
 
   const response = await fetch(CHECKOUT_ENDPOINT, {
     method: 'POST',

@@ -182,27 +182,12 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
         }
     }, [isEligibleForCertification]);
 
-    const beginCheckout = async (tier: string) => {
-        const email = result.emailEntered?.trim();
-
-        if (!email) {
-            console.error('Email missing from assessment result - this should not happen');
-            return;
-        }
-
+    const beginCheckout = async () => {
         try {
             if (typeof window !== 'undefined') {
-                window.localStorage.setItem(PLAN_STORAGE_KEY, tier);
-                window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
+                window.localStorage.setItem(PLAN_STORAGE_KEY, 'Founding Member');
             }
-            await startCheckout(
-              tier, 
-              email, 
-              result.id,
-              result.fullNameEntered,
-              result.state,
-              result.cityEntered
-            );
+            await startCheckout(result.id, 'Founding Member');
         } catch (error) {
             if (typeof window !== 'undefined') {
                 window.localStorage.removeItem(PLAN_STORAGE_KEY);
@@ -214,7 +199,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
 
     const handleClaimAndJoin = () => {
         setIsModalOpen(false);
-        beginCheckout('Founding Member').catch(() => {
+        beginCheckout().catch(() => {
             /* Error surface handled inside beginCheckout */
         });
     };

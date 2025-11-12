@@ -307,8 +307,57 @@ CREATE INDEX IF NOT EXISTS idx_assessments_state ON public.assessments (state);
 
 ### Webhook Secret Context Mapping
 - **Dev Branch**: Uses development webhook endpoint secret
-- **Production**: Uses production webhook endpoint secret
+- **Production**: Uses production webhook endpoint secret  
 - Each environment needs its own webhook secret from Stripe dashboard
+
+## Pay-First Auto-Provision Flow (RE_V4.2)
+
+### Implementation Overview
+- **Frictionless checkout**: No login or email prompts before payment
+- **Stripe email collection**: Customer email collected during Stripe checkout
+- **Auto-account creation**: Webhook creates Supabase Auth user and provisions account
+- **Assessment linking**: Links recent assessment data to new user account
+- **Idempotent processing**: Safe to replay webhook events without duplicates
+
+### Events Handled
+- **checkout.session.completed**: Primary auto-provision trigger
+  - Creates/finds Supabase Auth user by email from Stripe
+  - Upserts profiles, memberships, subscriptions tables
+  - Links assessment data if present
+  - Returns 200 for all processed events
+
+### Idempotency Implementation
+- **Primary key**: `stripe_subscription_id` in subscriptions table
+- **Check**: Before processing, verify subscription doesn't already exist
+- **Safe replay**: Multiple webhook deliveries won't create duplicates
+- **Logging**: Non-sensitive context logging for debugging
+
+### Required Environment Variables (dev3)
+- **STRIPE_SECRET_KEY**: `sk_test_...` (Stripe secret key)
+- **STRIPE_WEBHOOK_SECRET**: `whsec_...` (dev3 endpoint webhook secret)
+- **STRIPE_PRICE_FOUNDING_MEMBER**: `price_...` (Founding Member price ID)
+- **SUPABASE_SERVICE_ROLE_KEY**: Service role key for user creation
+- **VITE_SUPABASE_URL**: `https://[project].supabase.co`
+- **VITE_SUPABASE_ANON_KEY**: Anonymous key for client operations
+
+### Webhook Target URL
+- **Dev3**: `https://dev3--resonant-sprite-4fa0fe.netlify.app/.netlify/functions/stripe-webhook`
+
+### Database Tables Touched
+- **Auth Users**: Created via `supabaseAdmin.auth.admin.createUser()`
+- **profiles**: Upserted with user ID and email
+- **memberships**: Upserted with tier='Founding Member', status='active'
+- **subscriptions**: Upserted with Stripe subscription details
+- **assessments**: Linked via user_id if assessment_id present
+
+### Data Flow
+1. **Assessment completion** → Save with assessment ID
+2. **Claim Spot button** → Call checkout function with assessment ID
+3. **Stripe checkout** → Customer enters email and payment info
+4. **Payment success** → Webhook receives checkout.session.completed
+5. **Auto-provision** → Create user, upsert profile/membership/subscription
+6. **Assessment link** → Connect assessment to new user account
+7. **Redirect success** → User lands on success page with active account
 
 ---
 
