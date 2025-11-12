@@ -20,9 +20,9 @@ const TIER_TO_ENV: Record<string, string> = {
 // helper: choose the correct origin for this deploy
 function resolveBaseUrl(event: any): string {
   const raw =
-    process.env.DEPLOY_URL ||          // exact URL of this deploy
-    process.env.URL ||                 // context URL
-    process.env.DEPLOY_PRIME_URL ||    // deploy previews
+    process.env.DEPLOY_URL ||
+    process.env.URL ||
+    process.env.DEPLOY_PRIME_URL ||
     (event?.headers?.origin ?? process.env.SITE_URL);
 
   if (!raw) {
@@ -33,6 +33,12 @@ function resolveBaseUrl(event: any): string {
 
 export const handler = async (event: any) => {
   try {
+    // Debug mode - GET request with debug=1 query parameter
+    if (event.httpMethod === 'GET' && event.queryStringParameters?.debug === '1') {
+      const baseUrl = resolveBaseUrl(event);
+      return json(200, { baseUrl });
+    }
+    
     if (event.httpMethod !== 'POST') {
       return json(405, { error: 'METHOD_NOT_ALLOWED' });
     }

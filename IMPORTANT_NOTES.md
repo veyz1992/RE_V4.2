@@ -652,4 +652,17 @@ Each context requires proper environment variables set in Netlify dashboard:
   const value = normalized ?? session?.field ?? fallback;
   ```
 
+## Stripe URL Resolution ✅ FIXED
+
+**Stripe success/cancel URLs are resolved dynamically from:**
+- `DEPLOY_URL` → `URL` → `DEPLOY_PRIME_URL` → `origin` → `SITE_URL`
+- **Always test with a fresh Stripe session after changes.**
+
+The checkout function automatically detects the deployment context and builds correct redirect URLs:
+- **Dev3 branch**: `https://dev3--site.netlify.app/success/...`
+- **Production**: `https://app.restorationexpertise.com/success/...` 
+- **Deploy previews**: `https://deploy-preview-123--site.netlify.app/success/...`
+
+**Debug endpoint available**: `/.netlify/functions/create-checkout-session?debug=1`
+
 This file serves as the **single source of truth** for backend and frontend setup. Always update after making changes to maintain system reliability and developer efficiency.
