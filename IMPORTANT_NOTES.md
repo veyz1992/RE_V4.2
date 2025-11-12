@@ -432,4 +432,22 @@ Each context requires proper environment variables set in Netlify dashboard:
 - **Review webhook security** and signature verification
 - **Monitor access logs** for unusual database activity
 
+---
+
+## Frontend Logic Conventions
+
+### TypeScript Best Practices:
+- **Avoid mixing `??` and `||` without parentheses** to prevent precedence errors
+- Prefer one operator family or normalize the `||` side: `(expr || undefined) ?? fallback...`
+- Example of correct pattern:
+  ```typescript
+  // ❌ Avoid: Mixed operators without parentheses
+  const value = result.field?.trim() || session?.field ?? fallback;
+  
+  // ✅ Preferred: Normalize then use nullish coalescing
+  const typed = result.field?.trim();
+  const normalized = typed && typed.length > 0 ? typed : undefined;
+  const value = normalized ?? session?.field ?? fallback;
+  ```
+
 This file serves as the **single source of truth** for backend and frontend setup. Always update after making changes to maintain system reliability and developer efficiency.
