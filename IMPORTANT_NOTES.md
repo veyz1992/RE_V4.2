@@ -654,15 +654,31 @@ Each context requires proper environment variables set in Netlify dashboard:
 
 ## Stripe URL Resolution ✅ FIXED
 
+### Core Rule
+**🚨 CLIENT CALLS FUNCTIONS VIA RELATIVE PATHS; STRIPE CACHES SUCCESS_URL PER SESSION 🚨**
+
+### URL Resolution Priority
 **Stripe success/cancel URLs are resolved dynamically from:**
-- `DEPLOY_URL` → `URL` → `DEPLOY_PRIME_URL` → `origin` → `SITE_URL`
+- `DEPLOY_URL` → `URL` → `DEPLOY_PRIME_URL` → `event.headers.origin` → `SITE_URL`
 - **Always test with a fresh Stripe session after changes.**
 
-The checkout function automatically detects the deployment context and builds correct redirect URLs:
-- **Dev3 branch**: `https://dev3--site.netlify.app/success/...`
-- **Production**: `https://app.restorationexpertise.com/success/...` 
-- **Deploy previews**: `https://deploy-preview-123--site.netlify.app/success/...`
+### Deployment Context Detection
+The checkout function automatically detects deployment context and builds correct redirect URLs:
+- **Dev3 branch**: `https://dev3--site.netlify.app/success/founding-member?checkout=success`
+- **Production**: `https://app.restorationexpertise.com/success/founding-member?checkout=success` 
+- **Deploy previews**: `https://deploy-preview-123--site.netlify.app/success/founding-member?checkout=success`
 
-**Debug endpoint available**: `/.netlify/functions/create-checkout-session?debug=1`
+### Function Path Standardization
+All function calls use the `FN()` utility from `src/lib/functions.ts`:
+```typescript
+import { FUNCTION_ENDPOINTS } from './functions';
+// Uses: /.netlify/functions/create-checkout-session
+const endpoint = FUNCTION_ENDPOINTS.CHECKOUT;
+```
+
+### Testing & Debugging
+- **Debug endpoint**: `/.netlify/functions/create-checkout-session?debug=1`
+- **Returns**: `{ "baseUrl": "https://dev3--site.netlify.app" }`
+- **Critical**: Old Stripe sessions cache the original success_url - always create fresh sessions for testing
 
 This file serves as the **single source of truth** for backend and frontend setup. Always update after making changes to maintain system reliability and developer efficiency.
