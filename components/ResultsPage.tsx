@@ -186,7 +186,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
         const email = result.emailEntered?.trim();
 
         if (!email) {
-            alert('Email is required to continue to secure checkout. Please retake the assessment.');
+            console.error('Email missing from assessment result - this should not happen');
             return;
         }
 

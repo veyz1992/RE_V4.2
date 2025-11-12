@@ -161,7 +161,7 @@ const AppRoutes: React.FC = () => {
   };
 
   const handleAssessmentComplete = async (
-    result: ScoreBreakdown & { answers: Answers },
+    result: ScoreBreakdown & { answers: Answers; emailEntered?: string; fullNameEntered?: string; state?: string; cityEntered?: string },
   ) => {
     if (isSavingAssessment) {
       return;
@@ -175,23 +175,16 @@ const AppRoutes: React.FC = () => {
       result.isEligibleForCertification,
     );
 
-    let emailEntered: string | null =
-      session?.user?.email ?? currentUser?.email ?? null;
+    // Use email from assessment inputs (collected in Step 1) or session
+    let emailEntered: string | null = 
+      result.emailEntered?.trim() || 
+      session?.user?.email ?? 
+      currentUser?.email ?? 
+      null;
 
-    if (!session) {
-      emailEntered = emailEntered?.trim() || null;
-      if (!emailEntered) {
-        const promptValue = window
-          .prompt('Where should we send your assessment results?')
-          ?.trim();
-
-        if (!promptValue) {
-          alert('Please enter an email address to receive your results.');
-          return;
-        }
-
-        emailEntered = promptValue;
-      }
+    if (!emailEntered) {
+      console.error('No email available from assessment or session - this should not happen');
+      return;
     }
 
     setIsSavingAssessment(true);
@@ -216,6 +209,9 @@ const AppRoutes: React.FC = () => {
           user_id: session?.user?.id ?? null,
           profile_id: profile?.id ?? null,
           email_entered: emailEntered,
+          full_name_entered: result.fullNameEntered?.trim() || null,
+          state: result.state?.trim() || null,
+          city: result.cityEntered?.trim() || null,
           answers: result.answers,
           total_score: result.total,
           operational_score: result.operational,
@@ -240,6 +236,9 @@ const AppRoutes: React.FC = () => {
         user_id?: string | null;
         profile_id?: string | null;
         email_entered?: string | null;
+        full_name_entered?: string | null;
+        state?: string | null;
+        city?: string | null;
         answers?: Answers;
         total_score?: number;
         operational_score?: number;
@@ -300,6 +299,9 @@ const AppRoutes: React.FC = () => {
         createdAt: row.created_at,
         userId: row.user_id ?? session?.user?.id ?? null,
         emailEntered: row.email_entered ?? emailEntered,
+        fullNameEntered: row.full_name_entered ?? result.fullNameEntered,
+        state: row.state ?? result.state,
+        cityEntered: row.city ?? result.cityEntered,
       };
 
       setAssessmentResult(storedResult);
