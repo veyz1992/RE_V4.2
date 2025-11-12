@@ -426,13 +426,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const redirectUrl = getMagicLinkRedirectUrl();
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: redirectUrl
-        ? { emailRedirectTo: redirectUrl }
-        : undefined,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: redirectUrl || `${window.location.origin}/member`
+      },
     });
 
     if (error) {
-      throw error;
+      // Show a member-only message instead of raw error
+      throw new Error("We couldn't find a member with that email. Please use the email you joined with.");
     }
   }, []);
 

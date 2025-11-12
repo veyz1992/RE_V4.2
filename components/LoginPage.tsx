@@ -92,6 +92,7 @@ const LoginPage: React.FC = () => {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="text-center mb-6">
                   <p className="text-gray-300">Enter your email to receive a secure magic link.</p>
+                  <p className="text-sm text-gray-400 mt-2">Members only. Use the email you joined with.</p>
                 </div>
 
                 {isLoading && (
@@ -158,7 +159,7 @@ const LoginPage: React.FC = () => {
               <CheckCircleIcon className="mx-auto h-16 w-16 text-success" />
               <h2 className="font-playfair text-3xl font-bold text-white">Magic link sent!</h2>
               <p className="text-gray-300">
-                Check your email to finish signing in. The link will bring you back to {window.location.origin}.
+                Check your inbox for your secure login link.
               </p>
               <div className="h-2.5 w-full rounded-full bg-white/10">
                 <div className="h-2.5 animate-pulse rounded-full bg-[var(--accent)]" />
