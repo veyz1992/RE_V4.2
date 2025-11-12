@@ -183,20 +183,11 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
     }, [isEligibleForCertification]);
 
     const beginCheckout = async (tier: string) => {
-        const trimmedStoredEmail = result.emailEntered?.trim() ?? '';
-        let email = trimmedStoredEmail;
+        const email = result.emailEntered?.trim();
 
         if (!email) {
-            const promptValue = window
-                .prompt('Where should we send your receipt and member access link?')
-                ?.trim();
-
-            if (!promptValue) {
-                alert('Email is required to continue to secure checkout.');
-                return;
-            }
-
-            email = promptValue;
+            alert('Email is required to continue to secure checkout. Please retake the assessment.');
+            return;
         }
 
         try {
@@ -204,7 +195,14 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
                 window.localStorage.setItem(PLAN_STORAGE_KEY, tier);
                 window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
             }
-            await startCheckout(tier, email, result.id);
+            await startCheckout(
+              tier, 
+              email, 
+              result.id,
+              result.fullNameEntered,
+              result.state,
+              result.cityEntered
+            );
         } catch (error) {
             if (typeof window !== 'undefined') {
                 window.localStorage.removeItem(PLAN_STORAGE_KEY);

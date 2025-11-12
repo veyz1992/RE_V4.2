@@ -2,9 +2,10 @@
 
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Answers, ScoreBreakdown, Opportunity } from '../types';
-import { ASSESSMENT_STEPS, MAX_SCORES, INITIAL_ANSWERS } from '../constants';
+import { Answers, ScoreBreakdown, Opportunity, AssessmentInputs } from '../types';
+import { ASSESSMENT_STEPS, MAX_SCORES, INITIAL_ANSWERS, US_STATES } from '../constants';
 import { CheckCircleIcon, BriefcaseIcon, ShieldCheckIcon, ClipboardDocumentCheckIcon, StarIcon, TrophyIcon, LightBulbIcon } from './icons';
+import { supabase } from '../src/lib/supabase';
 
 // Refactored scoring logic to use a linear normalization for a 0-100 score.
 const RAW_MAX = {
@@ -465,7 +466,8 @@ const MobileBottomBar: React.FC<{
   onScoreClick: () => void;
   onBack: () => void;
   onNext: () => void;
-}> = ({ step, score, onScoreClick, onBack, onNext }) => {
+  canProceed: boolean;
+}> = ({ step, score, onScoreClick, onBack, onNext, canProceed }) => {
     const progress = ((step + 1) / ASSESSMENT_STEPS.length) * 100;
     return (
         <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-gray-border z-20 md:hidden">
@@ -488,7 +490,12 @@ const MobileBottomBar: React.FC<{
                 </button>
                 <button 
                     onClick={onNext}
-                    className="flex-grow py-3 px-8 bg-brand-accent text-charcoal font-bold text-lg rounded-lg shadow-lg hover:bg-brand-accent-dark"
+                    disabled={!canProceed}
+                    className={`flex-grow py-3 px-8 font-bold text-lg rounded-lg shadow-lg ${
+                      canProceed 
+                        ? 'bg-brand-accent text-charcoal hover:bg-brand-accent-dark' 
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
                 >
                     {step === ASSESSMENT_STEPS.length - 1 ? 'Finish' : 'Continue'}
                 </button>
@@ -519,6 +526,12 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Answers>(INITIAL_ANSWERS);
+  const [assessmentInputs, setAssessmentInputs] = useState<AssessmentInputs>({
+    full_name_entered: '',
+    email_entered: '',
+    state: '',
+    city: ''
+  });
   const [isScorePopupOpen, setIsScorePopupOpen] = useState(false);
   const [animationClass, setAnimationClass] = useState('animate-fade-in');
   const [contentKey, setContentKey] = useState(0);
@@ -526,6 +539,10 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
   const scoreData = useMemo(() => calculateScore(answers), [answers]);
 
   const handleNext = () => {
+    if (!canProceed()) {
+      return;
+    }
+
     if (step < ASSESSMENT_STEPS.length - 1) {
         setAnimationClass('animate-slide-out-left');
         setTimeout(() => {
@@ -534,7 +551,19 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
             setAnimationClass('animate-slide-in-from-right');
         }, 300);
     } else {
-        onComplete({ ...scoreData, answers });
+        const result = { 
+          ...scoreData, 
+          answers,
+          emailEntered: assessmentInputs.email_entered,
+          fullNameEntered: assessmentInputs.full_name_entered,
+          state: assessmentInputs.state,
+          cityEntered: assessmentInputs.city
+        };
+        
+        // Save assessment data to Supabase
+        saveAssessmentData(result);
+        
+        onComplete(result);
     }
   };
 
@@ -555,6 +584,61 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
     setAnswers(prev => ({ ...prev, [key]: value }));
   };
 
+  const updateAssessmentInput = <K extends keyof AssessmentInputs,>(key: K, value: AssessmentInputs[K]) => {
+    setAssessmentInputs(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Email validation function
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Check if current step can proceed
+  const canProceed = () => {
+    if (step === 0) {
+      // Business Basics step - require new fields
+      return assessmentInputs.full_name_entered.trim() !== '' &&
+             assessmentInputs.email_entered.trim() !== '' &&
+             isValidEmail(assessmentInputs.email_entered.trim()) &&
+             assessmentInputs.state !== '' &&
+             assessmentInputs.city.trim() !== '';
+    }
+    return true;
+  };
+
+  // Save assessment data to Supabase
+  const saveAssessmentData = async (assessmentData: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('assessments')
+        .upsert({
+          ...assessmentData,
+          full_name_entered: assessmentInputs.full_name_entered,
+          email_entered: assessmentInputs.email_entered,
+          state: assessmentInputs.state,
+          city: assessmentInputs.city,
+        }, {
+          onConflict: 'id'
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error saving assessment data:', error);
+        console.log('Assessment save failed due to RLS or other issue. Continuing without persistence.');
+        return null;
+      }
+
+      console.log('Assessment data saved successfully');
+      return data;
+    } catch (error) {
+      console.error('Failed to save assessment:', error);
+      console.log('Assessment save failed. Continuing without persistence.');
+      return null;
+    }
+  };
+
   const updateNestedAnswer = <K extends 'services' | 'certifications' | 'otherPlatforms', NK extends keyof Answers[K]>(key: K, nestedKey: NK, value: Answers[K][NK]) => {
       setAnswers(prev => ({
           ...prev,
@@ -572,6 +656,60 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
         case 0: // Business Basics
             return (
                 <div className="space-y-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray">Full Name <span className="text-red-500">*</span></label>
+                        <input 
+                          type="text" 
+                          value={assessmentInputs.full_name_entered} 
+                          onChange={e => updateAssessmentInput('full_name_entered', e.target.value)} 
+                          className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)]"
+                          placeholder="Enter your full name"
+                          required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray">Business Email <span className="text-red-500">*</span></label>
+                        <input 
+                          type="email" 
+                          value={assessmentInputs.email_entered} 
+                          onChange={e => updateAssessmentInput('email_entered', e.target.value)} 
+                          className={`mt-1 block w-full p-3 border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)] ${
+                            assessmentInputs.email_entered && !isValidEmail(assessmentInputs.email_entered) ? 'border-red-500' : 'border-gray-border'
+                          }`}
+                          placeholder="Enter your business email"
+                          required
+                        />
+                        {assessmentInputs.email_entered && !isValidEmail(assessmentInputs.email_entered) && (
+                          <p className="mt-1 text-sm text-red-500">Please enter a valid email address</p>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray">State <span className="text-red-500">*</span></label>
+                            <select 
+                              value={assessmentInputs.state} 
+                              onChange={e => updateAssessmentInput('state', e.target.value)} 
+                              className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)]"
+                              required
+                            >
+                                <option value="">Select State</option>
+                                {US_STATES.map(state => (
+                                    <option key={state} value={state}>{state}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray">City <span className="text-red-500">*</span></label>
+                            <input 
+                              type="text" 
+                              value={assessmentInputs.city} 
+                              onChange={e => updateAssessmentInput('city', e.target.value)} 
+                              className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)]"
+                              placeholder="Enter your city"
+                              required
+                            />
+                        </div>
+                    </div>
                     <div>
                         <label className="block text-sm font-medium text-gray">Business Name</label>
                         <input type="text" value={answers.businessName} onChange={e => updateAnswer('businessName', e.target.value)} className="mt-1 block w-full p-3 border border-gray-border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)]"/>
@@ -770,7 +908,12 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
                 </button>
                 <button 
                     onClick={handleNext}
-                    className="py-3 px-8 bg-brand-accent text-charcoal font-bold text-lg rounded-lg shadow-lg hover:bg-brand-accent-dark transition-transform transform hover:scale-105"
+                    disabled={!canProceed()}
+                    className={`py-3 px-8 font-bold text-lg rounded-lg shadow-lg transition-transform transform ${
+                      canProceed() 
+                        ? 'bg-brand-accent text-charcoal hover:bg-brand-accent-dark hover:scale-105' 
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
                 >
                     {step === ASSESSMENT_STEPS.length - 1 ? 'Finish & See Results' : 'Continue'}
                 </button>
@@ -783,6 +926,7 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
                     onScoreClick={() => setIsScorePopupOpen(true)}
                     onBack={handleBack}
                     onNext={handleNext}
+                    canProceed={canProceed()}
                 />
                 <LiveScorePopup
                     isOpen={isScorePopupOpen}

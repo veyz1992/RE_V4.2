@@ -88,25 +88,43 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
     ? Buffer.from(event.body, 'base64').toString('utf8')
     : event.body;
 
-  let payload: { tier?: string; email?: string; assessmentId?: string | number };
+  let payload: { 
+    tier?: string; 
+    email?: string; 
+    assessmentId?: string | number;
+    fullName?: string;
+    state?: string;
+    city?: string;
+  };
   try {
     payload = JSON.parse(rawBody);
   } catch (error) {
     return jsonResponse(400, { error: 'Invalid JSON body' });
   }
 
-  const { tier, email, assessmentId } = payload;
+  const { tier, email, assessmentId, fullName, state, city } = payload;
   
   // Log incoming payload for debugging (sanitized)
   console.log('Checkout session request:', { 
     tier, 
     email: email ? '***' + email.slice(-10) : 'missing',
-    assessmentId 
+    assessmentId,
+    hasFullName: !!fullName,
+    hasState: !!state,
+    hasCity: !!city
   });
 
   if (!tier || typeof tier !== 'string') {
     console.error('Invalid tier provided:', tier);
     return jsonResponse(400, { error: 'Invalid or missing membership tier' });
+  }
+
+  // Guard: Only allow Founding Member tier while others are "coming soon"
+  if (tier !== 'Founding Member') {
+    console.error(`Tier "${tier}" is not yet available. Only Founding Member is active.`);
+    return jsonResponse(400, {
+      error: `${tier} membership is coming soon. Only Founding Member is currently available.`,
+    });
   }
 
   if (!email || typeof email !== 'string') {
@@ -142,9 +160,12 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
         },
       ],
       metadata: {
-        tier,
-        email,
-        assessmentId: assessmentId ? String(assessmentId) : '',
+        assessment_id: assessmentId ? String(assessmentId) : '',
+        email_entered: email,
+        full_name_entered: fullName || '',
+        state: state || '',
+        city: city || '',
+        intended_tier: 'Founding Member',
       },
       success_url: `${origin}/success/${tierSlug}?checkout=success`,
       cancel_url: `${origin}/results?checkout=cancelled`,

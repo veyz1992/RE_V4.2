@@ -102,6 +102,52 @@ const ensureProfileForEmail = async (email: string) => {
   return inserted.id as string;
 };
 
+const upsertProfileWithFields = async (
+  email: string,
+  fullNameEntered?: string,
+  state?: string,
+  city?: string,
+  stripeCustomerId?: string
+) => {
+  try {
+    // Build update object with only non-empty values
+    const updateData: Record<string, string> = {
+      email
+    };
+
+    if (fullNameEntered?.trim()) {
+      updateData.full_name = fullNameEntered.trim();
+    }
+    if (state?.trim()) {
+      updateData.state = state.trim();
+    }
+    if (city?.trim()) {
+      updateData.city = city.trim();
+    }
+    if (stripeCustomerId?.trim()) {
+      updateData.stripe_customer_id = stripeCustomerId.trim();
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .upsert(updateData, { 
+        onConflict: 'email',
+        ignoreDuplicates: false 
+      });
+
+    if (error) {
+      console.error('Error upserting profile with fields:', error);
+      // Don't throw - this shouldn't break the webhook
+      console.log('Profile upsert failed, but continuing webhook processing');
+    } else {
+      console.log('Successfully upserted profile for email:', email);
+    }
+  } catch (error) {
+    console.error('Failed to upsert profile:', error);
+    // Don't throw - this shouldn't break the webhook
+  }
+};
+
 const updateProfileMembership = async (
   profileId: string,
   tier: string,
@@ -275,12 +321,17 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
         ? session.subscription
         : session.subscription?.id;
 
-      console.log('Session details:', {
-        sessionId: session.id,
-        email: email ? '***' + email.slice(-10) : 'missing',
-        customerId,
-        subscriptionId,
-        metadata: session.metadata
+      // Extract metadata
+      const metadata = session.metadata || {};
+      const assessmentId = metadata.assessment_id;
+      const fullNameEntered = metadata.full_name_entered;
+      const state = metadata.state;
+      const city = metadata.city;
+
+      console.log('event', stripeEvent.type, { 
+        hasEmail: !!email, 
+        hasMeta: !!session?.metadata, 
+        assessment_id: assessmentId 
       });
 
       if (!email || !customerId || !subscriptionId) {
@@ -309,6 +360,10 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
         : null;
 
       const profileId = await ensureProfileForEmail(email);
+      
+      // Upsert profile with new fields
+      await upsertProfileWithFields(email, fullNameEntered, state, city, customerId);
+      
       await updateProfileMembership(profileId, tier, customerId, subscriptionId, nextRenewal);
       await activatePendingMembership(profileId, tier);
 

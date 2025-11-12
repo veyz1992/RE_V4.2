@@ -256,3 +256,180 @@ This platform is **production-ready** with:
 ✅ **Scalable Architecture**: Infrastructure ready for additional membership tiers
 
 **Next Steps**: Activate Bronze/Silver/Gold tiers when business requirements are ready.
+
+## Recent Changes (RE_V4.2) - User Information Collection
+
+### New Fields Collected in Step 1
+- **Full Name** (required) - User's full name
+- **Business Email** (required, validated) - User's business email address  
+- **State** (required) - US states dropdown selection
+- **City** (required) - City text input with auto-suggest capability
+
+### Database Schema Changes
+Added new columns to `public.assessments` table:
+```sql
+ALTER TABLE public.assessments
+  ADD COLUMN IF NOT EXISTS full_name_entered text,
+  ADD COLUMN IF NOT EXISTS state text,
+  ADD COLUMN IF NOT EXISTS city text;
+
+-- Performance indices
+CREATE INDEX IF NOT EXISTS idx_assessments_email_entered ON public.assessments (email_entered);
+CREATE INDEX IF NOT EXISTS idx_assessments_full_name ON public.assessments (full_name_entered);
+CREATE INDEX IF NOT EXISTS idx_assessments_state ON public.assessments (state);
+```
+
+### Stripe Integration Updates
+- **create-checkout-session**: Now sends collected fields in metadata as:
+  - `assessment_id`
+  - `email_entered` 
+  - `full_name_entered`
+  - `state`
+  - `city` 
+  - `intended_tier: 'Founding Member'`
+- **Price Guard**: Only Founding Member tier is active; other tiers return 400 error
+- **Customer Email**: Uses collected email as `customer_email` in Stripe session
+
+### Webhook Processing  
+- **stripe-webhook**: Uses `SUPABASE_SERVICE_ROLE_KEY` for server-side operations
+- **Profile Upsert**: On `checkout.session.completed`, upserts profiles table with:
+  - `email` (unique key)
+  - `full_name` (if provided and profile.full_name is null)
+  - `city`, `state` (fills if empty)
+  - `stripe_customer_id` (if available)
+- **Assessment Linking**: Links `last_assessment_id` if present
+- **Logging**: Non-sensitive context logging with `console.log('event', event.type, { hasEmail: !!email, hasMeta: !!session?.metadata, assessment_id })`
+
+### Environment Variables Required
+- `STRIPE_SECRET_KEY` (sk_test/live)
+- `STRIPE_WEBHOOK_SECRET` (whsec_ for this endpoint)
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only, never VITE_)
+
+### Webhook Secret Context Mapping
+- **Dev Branch**: Uses development webhook endpoint secret
+- **Production**: Uses production webhook endpoint secret
+- Each environment needs its own webhook secret from Stripe dashboard
+
+---
+
+## RLS (Row Level Security) Overview
+
+**RLS is enabled on all public tables** to ensure data access control and user privacy.
+
+### Policy Summary:
+- **`profiles`** → Members can access their own rows only (filtered by auth.uid() = id)
+- **`admin_profiles`** → Only active admins can access admin profile data
+- **`assessments`** → Members can manage their own assessments; webhooks use service role to bypass RLS
+- **`member_documents`** → Restricted to profile owner or admin users only
+- **`service_requests`** → Restricted to profile owner or admin users only
+- **`subscriptions`** → Members can view their own subscription data; admins can view all
+
+### Key Security Notes:
+- **Server functions** (Netlify Functions) use `SUPABASE_SERVICE_ROLE_KEY` to bypass RLS safely for system operations
+- **Client code** must only use the anonymous key (`VITE_SUPABASE_ANON_KEY`) and respect RLS policies
+- **Webhook operations** require service role access to upsert profiles and link data across tables
+- **Admin operations** validate admin status before allowing privileged access
+
+---
+
+## Supabase Project & Connection Setup
+
+| Context  | Key                        | Purpose                    | Notes                           |
+|----------|----------------------------|----------------------------|---------------------------------|
+| Frontend | VITE_SUPABASE_URL         | Project URL                | Public, safe for client bundle |
+| Frontend | VITE_SUPABASE_ANON_KEY    | Anonymous client key       | Used for login and read-only ops|
+| Backend  | SUPABASE_SERVICE_ROLE_KEY | Server key                 | Used in Netlify Functions only |
+| All Envs | SUPABASE_URL              | Shared alias               | Must match VITE_SUPABASE_URL   |
+
+### Critical Security Requirements:
+- **Service role key** must **NEVER** appear in any client bundle (avoid `VITE_` prefix)
+- **Anonymous key** is safe for client-side use and respects RLS policies
+- **URL endpoints** can be public but should match between environments
+
+### Environment Connections:
+- **dev3 branch** → Supabase test project → Stripe test keys
+- **main branch** → Supabase production project → Stripe live keys
+- **preview deployments** → No database connection (intentionally isolated)
+
+---
+
+## Supabase Maintenance Procedures
+
+### Migration Best Practices:
+- **Use SQL migrations only** - avoid full schema dumps or GUI-generated changes
+- **Test migrations** on development environment before applying to production
+- **Document all changes** in this file's "Recent Changes" section
+- **Use `IF NOT EXISTS`** clauses to make migrations safe to re-run
+- **Add indices** for performance on commonly queried columns
+
+### New Schema Change Workflow:
+1. **Create migration script** with safe SQL (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`)
+2. **Test on development** Supabase project first
+3. **Update types.ts** and relevant TypeScript interfaces
+4. **Test RLS access** for new columns with both anonymous and service role keys
+5. **Document changes** in IMPORTANT_NOTES.md "Recent Changes" section
+6. **Apply to production** after thorough testing
+
+### Testing Procedures:
+- **RLS Verification**: Test that anonymous users can only access their own data
+- **Service Role Testing**: Verify webhooks and admin functions work with service role
+- **Client Integration**: Confirm frontend can read/write new fields appropriately
+- **Performance Testing**: Monitor query performance after adding new indices
+
+### Future Considerations:
+- **Database triggers**: Document any triggers added for automated data processing
+- **Database functions**: Log any PostgreSQL functions created for complex operations
+- **Backup procedures**: Maintain regular backups before major schema changes
+
+---
+
+## Environment Context Mapping
+
+| Deployment | Netlify Context | Supabase Env     | Stripe Env    | Notes              |
+|------------|----------------|------------------|---------------|--------------------|
+| Dev        | dev3           | test project     | test keys     | Active development |
+| Production | main           | live project     | live keys     | Live customer data |
+| Preview    | —              | none             | none          | Intentionally empty|
+
+### Environment Synchronization:
+- **dev3**: Uses Supabase test project for safe development and testing
+- **main**: Connected to production Supabase with live customer data
+- **preview**: No database connections to prevent accidental data access
+- **local development**: Should use test project credentials
+
+### Netlify Environment Variables:
+Each context requires proper environment variables set in Netlify dashboard:
+- **Supabase**: URL and keys matching the target environment
+- **Stripe**: API keys and webhook secrets for the corresponding environment
+- **Custom**: Any application-specific configuration variables
+
+### Verification Checklist:
+- [ ] Environment variables in Netlify match current Supabase setup
+- [ ] Stripe webhook endpoints point to correct Netlify function URLs
+- [ ] Database schema is synchronized between test and production
+- [ ] RLS policies are consistent across environments
+- [ ] All secrets are properly secured and rotated regularly
+
+---
+
+## General Maintenance Reminders
+
+### File Synchronization:
+- **Keep IMPORTANT_NOTES.md updated** after each significant change
+- **Document all environment variables** and their purposes
+- **Track database schema changes** in "Recent Changes" sections
+- **Maintain deployment procedures** and troubleshooting notes
+
+### Integration Alignment:
+- **Verify Stripe integration** works across all environments
+- **Test Supabase connections** regularly for both anonymous and service role access
+- **Monitor Netlify function** performance and error rates
+- **Ensure GitHub workflows** remain functional with environment changes
+
+### Security Best Practices:
+- **Rotate service role keys** periodically
+- **Audit RLS policies** when adding new tables or columns
+- **Review webhook security** and signature verification
+- **Monitor access logs** for unusual database activity
+
+This file serves as the **single source of truth** for backend and frontend setup. Always update after making changes to maintain system reliability and developer efficiency.

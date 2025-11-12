@@ -332,6 +332,14 @@ export interface BlueprintStep {
 }
 
 
+// --- ASSESSMENT INPUT TYPES ---
+export interface AssessmentInputs {
+  full_name_entered: string;
+  email_entered: string;
+  state: string;
+  city: string;
+}
+
 // --- EXISTING ASSESSMENT TYPES ---
 export interface Answers {
   // Business Basics
@@ -394,6 +402,9 @@ export interface StoredAssessmentResult extends ScoreBreakdown {
   createdAt?: string;
   userId?: string | null;
   emailEntered?: string | null;
+  fullNameEntered?: string | null;
+  state?: string | null;
+  cityEntered?: string | null;
   scenario?: string | null;
   pciRating?: string | null;
   intendedMembershipTier?: string | null;
