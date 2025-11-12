@@ -3,7 +3,9 @@ export interface CheckoutPayload {
   intendedTier: string;
 }
 
-const CHECKOUT_ENDPOINT = '/.netlify/functions/create-checkout-session';
+import { FUNCTION_ENDPOINTS } from './functions';
+
+const CHECKOUT_ENDPOINT = FUNCTION_ENDPOINTS.CHECKOUT;
 
 export const startCheckout = async (
   assessmentId?: string | number,
