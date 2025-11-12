@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { PLAN_STORAGE_KEY, EMAIL_STORAGE_KEY, normalizePlan, type Plan } from '../src/shared/config';
+import { FUNCTION_ENDPOINTS } from '../src/lib/functions';
 import {
   AnimatedCheckmarkIcon,
   UsersIcon,
@@ -168,7 +169,7 @@ const SuccessPage: React.FC = () => {
         if (sessionId && !stripeEmail) {
           console.log(`Fetching email from Stripe session: ${sessionId}`);
           
-          const response = await fetch(`/.netlify/functions/get-stripe-session?session_id=${sessionId}`);
+          const response = await fetch(`${FUNCTION_ENDPOINTS.STRIPE_SESSION}?session_id=${sessionId}`);
           
           if (response.ok) {
             const data = await response.json();

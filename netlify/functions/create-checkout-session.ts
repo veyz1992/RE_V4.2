@@ -19,15 +19,30 @@ const TIER_TO_ENV: Record<string, string> = {
 
 // helper: choose the correct origin for this deploy
 function resolveBaseUrl(event: any): string {
-  const raw =
-    process.env.DEPLOY_URL ||
-    process.env.URL ||
-    process.env.DEPLOY_PRIME_URL ||
-    (event?.headers?.origin ?? process.env.SITE_URL);
+  // Prefer the live request origin first
+  const fromRaw = (() => {
+    try {
+      if (event?.rawUrl) return new URL(event.rawUrl).origin;
+      const proto =
+        event?.headers?.["x-forwarded-proto"] ||
+        event?.headers?.["x-forwarded-protocol"] ||
+        "https";
+      const host =
+        event?.headers?.["x-forwarded-host"] ||
+        event?.headers?.host;
+      if (host) return `${proto}://${host}`;
+      return null;
+    } catch { return null; }
+  })();
 
-  if (!raw) {
-    throw new Error("MISSING_BASE_URL");
-  }
+  const raw =
+    fromRaw ||
+    process.env.DEPLOY_URL ||        // branch/preview exact URL
+    process.env.DEPLOY_PRIME_URL ||  // preview URL
+    process.env.URL ||               // may be primary custom domain
+    process.env.SITE_URL;            // usually primary custom domain
+
+  if (!raw) throw new Error("MISSING_BASE_URL");
   return String(raw).replace(/\/+$/, "");
 }
 

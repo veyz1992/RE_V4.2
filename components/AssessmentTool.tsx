@@ -6,6 +6,7 @@ import { Answers, ScoreBreakdown, Opportunity, AssessmentInputs } from '../types
 import { ASSESSMENT_STEPS, MAX_SCORES, INITIAL_ANSWERS, US_STATES } from '../constants';
 import { CheckCircleIcon, BriefcaseIcon, ShieldCheckIcon, ClipboardDocumentCheckIcon, StarIcon, TrophyIcon, LightBulbIcon } from './icons';
 import { supabase } from '../src/lib/supabase';
+import { FUNCTION_ENDPOINTS } from '../src/lib/functions';
 
 // Refactored scoring logic to use a linear normalization for a 0-100 score.
 const RAW_MAX = {
@@ -562,7 +563,7 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
     setEmailEligibilityState(prev => ({ ...prev, checking: true, eligible: null, reason: null, message: null }));
 
     try {
-      const response = await fetch('/.netlify/functions/check-email-eligibility', {
+      const response = await fetch(FUNCTION_ENDPOINTS.EMAIL_ELIGIBILITY, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
