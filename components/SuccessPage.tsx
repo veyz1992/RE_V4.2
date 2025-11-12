@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 import {
   AnimatedCheckmarkIcon,
   UsersIcon,
@@ -124,6 +125,7 @@ const SuccessPage: React.FC = () => {
   const [actionState, setActionState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [actionMessage, setActionMessage] = useState<string>('');
   const [cachedEmail, setCachedEmail] = useState<string>('');
+  const [resendCooldown, setResendCooldown] = useState<number>(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -144,6 +146,18 @@ const SuccessPage: React.FC = () => {
     }
   }, []);
 
+  // Automatically send magic link on mount if we have an email
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const emailFromUrl = urlParams.get('email');
+    const targetEmail = emailFromUrl || cachedEmail || displayEmail;
+    
+    if (targetEmail && actionState === 'idle') {
+      // Automatically trigger magic link on first load
+      triggerMagicLink(targetEmail);
+    }
+  }, [cachedEmail, displayEmail]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (typeof document === 'undefined') {
       return;
@@ -158,6 +172,16 @@ const SuccessPage: React.FC = () => {
   const displayContactName = currentUser?.account?.ownerName ?? currentUser?.name ?? 'Your Name';
   const displayEmail = currentUser?.email ?? cachedEmail;
 
+  // Start cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setInterval(() => {
+        setResendCooldown(prev => prev - 1);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [resendCooldown]);
+
   const triggerMagicLink = async (targetEmail: string) => {
     if (!targetEmail) {
       setActionState('error');
@@ -165,12 +189,44 @@ const SuccessPage: React.FC = () => {
       return;
     }
 
+    if (resendCooldown > 0) {
+      setActionState('error');
+      setActionMessage(`Please wait ${resendCooldown} seconds before resending.`);
+      return;
+    }
+
     try {
       setActionState('sending');
       setActionMessage('Sending a fresh magic link…');
-      await login(targetEmail);
+      
+      const { error } = await supabase.auth.signInWithOtp({
+        email: targetEmail,
+        options: { 
+          emailRedirectTo: `${window.location.origin}/auth/callback` 
+        }
+      });
+
+      if (error) {
+        if (error.message.includes('redirect_to not allowed')) {
+          setActionState('error');
+          setActionMessage('⚠️ Dev Configuration: Please add this domain to Supabase Auth → URL Configuration → Redirect URLs');
+          console.error('Supabase Auth redirect URL not configured:', `${window.location.origin}/auth/callback`);
+        } else if (error.message.includes('rate')) {
+          setActionState('error');
+          setActionMessage('Rate limit reached. Please wait a moment before trying again.');
+          setResendCooldown(60);
+        } else {
+          setActionState('error');
+          setActionMessage(error.message);
+        }
+        console.error('Magic link error:', error);
+        return;
+      }
+
       setActionState('sent');
-      setActionMessage(`We just sent a magic link to ${targetEmail}. Check your inbox.`);
+      setActionMessage(`Magic link sent to ${targetEmail}. Check your inbox and Spam/Promotions folder if you don't see it.`);
+      setResendCooldown(60); // Start 60-second cooldown
+      
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(EMAIL_STORAGE_KEY, targetEmail);
       }
@@ -179,6 +235,7 @@ const SuccessPage: React.FC = () => {
       setActionState('error');
       const message = error instanceof Error ? error.message : 'Unable to send a magic link right now. Please try again later.';
       setActionMessage(message);
+      console.error('Magic link error:', error);
     }
   };
 
@@ -263,8 +320,12 @@ const SuccessPage: React.FC = () => {
                 <button onClick={() => setIsUpdatingEmail(true)} className="font-semibold text-gray-400 hover:text-white hover:underline">
                   Wrong email? Update it here
                 </button>
-                <button onClick={() => triggerMagicLink(displayEmail)} className="font-semibold text-gray-400 hover:text-white hover:underline">
-                  Resend login link
+                <button 
+                  onClick={() => triggerMagicLink(displayEmail)} 
+                  disabled={resendCooldown > 0}
+                  className={`font-semibold ${resendCooldown > 0 ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:underline'}`}
+                >
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend login link'}
                 </button>
               </div>
             )}

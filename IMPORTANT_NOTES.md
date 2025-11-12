@@ -353,11 +353,63 @@ CREATE INDEX IF NOT EXISTS idx_assessments_state ON public.assessments (state);
 ### Data Flow
 1. **Assessment completion** → Save with assessment ID
 2. **Claim Spot button** → Call checkout function with assessment ID
-3. **Stripe checkout** → Customer enters email and payment info
+3. **Stripe checkout** → Customer enters email and payment info (frictionless - no login required)
 4. **Payment success** → Webhook receives checkout.session.completed
-5. **Auto-provision** → Create user, upsert profile/membership/subscription
+5. **Auto-provision** → Create/find Supabase Auth user, upsert profile/membership/subscription
 6. **Assessment link** → Connect assessment to new user account
-7. **Redirect success** → User lands on success page with active account
+7. **Onboarding invitation** → Send magic link to dashboard (optional)
+8. **Redirect success** → User lands on success page with active account
+
+### Webhook Implementation Details
+- **Signature verification**: Uses raw body + `stripe.webhooks.constructEvent` with `STRIPE_WEBHOOK_SECRET`
+- **Auth user creation**: `supabaseAdmin.auth.admin.createUser()` with email confirmation enabled
+- **Idempotency key**: `stripe_subscription_id` in subscriptions table prevents duplicates
+- **Table upserts**: profiles (id conflict), memberships (profile_id conflict), subscriptions (stripe_subscription_id conflict)
+- **Assessment linking**: Updates `profiles.last_assessment_id` and `assessments.user_id` when present
+- **Onboarding**: Sends `inviteUserByEmail()` with dashboard redirect (non-blocking if fails)
+- **Event handling**: Returns 200 for all event types, only processes `checkout.session.completed`
+- **Safe logging**: Logs event type, hasEmail, checkoutId - never logs secrets
+
+### Required Environment Variables (dev3 Branch)
+```
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_dev3_...
+STRIPE_PRICE_FOUNDING_MEMBER=price_test_...
+SUPABASE_URL=https://[project].supabase.co
+SUPABASE_SERVICE_ROLE_KEY=service_role_...
+VITE_SUPABASE_URL=https://[project].supabase.co  
+VITE_SUPABASE_ANON_KEY=public_anon_...
+```
+
+### Webhook Target URL
+- **Dev3**: `https://dev3--resonant-sprite-4fa0fe.netlify.app/.netlify/functions/stripe-webhook`
+
+### Database Relations & Auto-Provisioning
+- **Auth Users**: Created via `supabaseAdmin.auth.admin` with source='stripe' metadata
+- **profiles**: `{ id: userId, email, updated_at }` - uses Auth user ID as primary key
+- **memberships**: `{ profile_id: userId, tier: 'Founding Member', status: 'active', assessment_id }`
+- **subscriptions**: `{ profile_id: userId, stripe_subscription_id, stripe_customer_id, status: 'active', billing_details }`
+- **assessments**: Linked via `user_id` field and `profiles.last_assessment_id` when assessment present
+
+### Idempotency & Safety
+- **Primary check**: Subscription with `stripe_subscription_id` already exists → return 200 OK
+- **Safe replays**: Multiple webhook deliveries won't create duplicate records
+- **Non-blocking failures**: Onboarding invitation failure doesn't break auto-provision flow
+- **Error handling**: Individual upsert failures are logged but don't cascade
+
+### Magic Link Implementation (Success Page)
+- **Automatic trigger**: Sends magic link on success page mount using payer email
+- **Email sources**: URL query param, localStorage cache, or user input fallback
+- **Supabase Auth**: Uses `supabase.auth.signInWithOtp()` with emailRedirectTo callback
+- **Cooldown system**: 60-second resend prevention with visual countdown
+- **Error handling**: Specific messages for redirect URL config and rate limiting
+- **Auth callback**: `/auth/callback` route handles `SIGNED_IN` event → redirect to dashboard
+- **User experience**: No manual auth user creation until magic link clicked successfully
+
+### Required Supabase Auth Configuration
+- **Email OTP**: Enabled in Supabase Auth settings
+- **Redirect URLs**: Add `https://dev3--resonant-sprite-4fa0fe.netlify.app/auth/callback` to allowed URLs
+- **Email templates**: Configure magic link email template (optional customization)
 
 ---
 

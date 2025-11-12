@@ -7,6 +7,7 @@ import AdminLoginPage from './components/AdminLoginPage';
 import AssessmentTool from './components/AssessmentTool';
 import ResultsPage from './components/ResultsPage';
 import SuccessPage from './components/SuccessPage';
+import AuthCallback from './components/AuthCallback';
 import { ThemeProvider } from './components/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -350,6 +351,7 @@ const AppRoutes: React.FC = () => {
         }
       />
       <Route path="/success/:plan" element={<SuccessPage />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/member/dashboard" element={<MemberRoute />} />
       <Route path="/admin/*" element={<AdminRoute />} />
       <Route path="*" element={<Navigate to="/" replace />} />
