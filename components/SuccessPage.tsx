@@ -98,6 +98,9 @@ const SuccessPage: React.FC = () => {
   const { plan: planSlug } = useParams<{ plan: string }>();
   const navigate = useNavigate();
   
+  // Safe param access with defaults
+  const plan = planSlug ?? 'founding-member';
+  
   // Safely access auth context with fallback
   let currentUser: any = null;
   let login: any = null;
@@ -111,12 +114,12 @@ const SuccessPage: React.FC = () => {
 
   const resolvedPlan = useMemo(() => {
     try {
-      return normalizePlan(planSlug);
+      return normalizePlan(plan);
     } catch (error) {
       console.error('Error normalizing plan:', error);
       return 'founding-member';
     }
-  }, [planSlug]);
+  }, [plan]);
   
   const planConfig = planDetails[resolvedPlan];
   const isFounding = resolvedPlan === 'founding-member';
@@ -127,6 +130,11 @@ const SuccessPage: React.FC = () => {
   const [actionMessage, setActionMessage] = useState<string>('');
   const [cachedEmail, setCachedEmail] = useState<string>('');
   const [resendCooldown, setResendCooldown] = useState<number>(0);
+
+  // Move display variables above their first use to prevent TDZ issues
+  const displayBusinessName = currentUser?.name ?? 'Your Business';
+  const displayContactName = currentUser?.account?.ownerName ?? currentUser?.name ?? 'Your Name';
+  const displayEmail = currentUser?.email ?? cachedEmail;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -147,46 +155,7 @@ const SuccessPage: React.FC = () => {
     }
   }, []);
 
-  // Automatically send magic link on mount if we have an email
-  useEffect(() => {
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const emailFromUrl = urlParams.get('email');
-      const targetEmail = emailFromUrl || cachedEmail || displayEmail;
-      
-      if (targetEmail && actionState === 'idle') {
-        // Automatically trigger magic link on first load
-        triggerMagicLink(targetEmail);
-      }
-    } catch (error) {
-      console.error('Error in magic link auto-trigger:', error);
-    }
-  }, [cachedEmail, displayEmail]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return;
-    }
-    document.body.dataset.plan = resolvedPlan;
-    return () => {
-      delete document.body.dataset.plan;
-    };
-  }, [resolvedPlan]);
-
-  const displayBusinessName = currentUser?.name ?? 'Your Business';
-  const displayContactName = currentUser?.account?.ownerName ?? currentUser?.name ?? 'Your Name';
-  const displayEmail = currentUser?.email ?? cachedEmail;
-
-  // Start cooldown timer
-  useEffect(() => {
-    if (resendCooldown > 0) {
-      const timer = setInterval(() => {
-        setResendCooldown(prev => prev - 1);
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [resendCooldown]);
-
+  // Define triggerMagicLink before its first use to prevent TDZ issues
   const triggerMagicLink = async (targetEmail: string) => {
     if (!targetEmail) {
       setActionState('error');
@@ -248,6 +217,42 @@ const SuccessPage: React.FC = () => {
       console.error('Magic link error:', error);
     }
   };
+
+  // Automatically send magic link on mount if we have an email
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const emailFromUrl = urlParams.get('email');
+      const targetEmail = emailFromUrl || cachedEmail || displayEmail;
+      
+      if (targetEmail && actionState === 'idle') {
+        // Automatically trigger magic link on first load
+        triggerMagicLink(targetEmail);
+      }
+    } catch (error) {
+      console.error('Error in magic link auto-trigger:', error);
+    }
+  }, [cachedEmail, displayEmail]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    document.body.dataset.plan = resolvedPlan;
+    return () => {
+      delete document.body.dataset.plan;
+    };
+  }, [resolvedPlan]);
+
+  // Start cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setInterval(() => {
+        setResendCooldown(prev => prev - 1);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [resendCooldown]);
 
   const handleUpdateEmail = async () => {
     if (!newEmail) {
