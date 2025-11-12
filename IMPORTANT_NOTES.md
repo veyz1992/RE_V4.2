@@ -676,9 +676,22 @@ import { FUNCTION_ENDPOINTS } from './functions';
 const endpoint = FUNCTION_ENDPOINTS.CHECKOUT;
 ```
 
+### Base URL Resolution Order ✅ ENHANCED
+**New Priority (request-origin-first):**
+1. **request.origin** (rawUrl/x-forwarded-host) - Live request context
+2. **DEPLOY_URL** - Branch/preview exact URL  
+3. **DEPLOY_PRIME_URL** - Preview URL
+4. **URL** - May be primary custom domain
+5. **SITE_URL** - Usually primary custom domain
+
+### Client Function Calls ✅ STANDARDIZED
+- **Client must call functions via relative paths**
+- All calls use `FUNCTION_ENDPOINTS` from `src/lib/functions.ts`
+- **No hardcoded absolute URLs** in client code
+
 ### Testing & Debugging
 - **Debug endpoint**: `/.netlify/functions/create-checkout-session?debug=1`
 - **Returns**: `{ "baseUrl": "https://dev3--site.netlify.app" }`
-- **Critical**: Old Stripe sessions cache the original success_url - always create fresh sessions for testing
+- **Critical**: **Stripe caches success_url per session—always test with a new session after changes**
 
 This file serves as the **single source of truth** for backend and frontend setup. Always update after making changes to maintain system reliability and developer efficiency.
