@@ -714,30 +714,66 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
     return true;
   };
 
+  // Helper function to convert to integer
+  const toInt = (value: any): number => {
+    if (typeof value === 'number') {
+      return isNaN(value) ? 0 : Math.round(value);
+    }
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      return isNaN(parsed) ? 0 : Math.round(parsed);
+    }
+    return 0;
+  };
+
   // Save assessment data to Supabase
   const saveAssessmentData = async (assessmentData: any) => {
     try {
+      // Normalize payload to match database schema exactly
+      const normalizedPayload = {
+        email_entered: assessmentInputs.email_entered.trim().toLowerCase(),
+        full_name_entered: assessmentInputs.full_name_entered.trim(),
+        state: assessmentInputs.state,
+        city: assessmentInputs.city.trim(),
+        answers: assessmentData.answers, // This should be valid JSONB
+        // Ensure all score fields are integers and match DB columns exactly
+        operational_score: toInt(assessmentData.operational),
+        licensing_score: toInt(assessmentData.licensing),
+        feedback_score: toInt(assessmentData.feedback),
+        certifications_score: toInt(assessmentData.certifications), // NOT "certifications"
+        digital_score: toInt(assessmentData.digital),
+        total_score: toInt(assessmentData.total),
+        scenario: assessmentData.scenario || null,
+        // Optional fields if they exist in the result
+        ...(assessmentData.grade && { pci_rating: assessmentData.grade }),
+        ...(assessmentData.isEligibleForCertification !== undefined && { 
+          scenario: assessmentData.isEligibleForCertification ? 'eligible' : 'not_eligible' 
+        })
+      };
+
+      console.log('Saving assessment with normalized payload:', {
+        keys: Object.keys(normalizedPayload),
+        types: Object.entries(normalizedPayload).reduce((acc, [key, value]) => {
+          acc[key] = typeof value;
+          return acc;
+        }, {} as Record<string, string>)
+      });
+
+      // Use insert instead of upsert since we don't have an existing ID
       const { data, error } = await supabase
         .from('assessments')
-        .upsert({
-          ...assessmentData,
-          full_name_entered: assessmentInputs.full_name_entered,
-          email_entered: assessmentInputs.email_entered,
-          state: assessmentInputs.state,
-          city: assessmentInputs.city,
-        }, {
-          onConflict: 'id'
-        })
+        .insert(normalizedPayload)
         .select()
         .single();
 
       if (error) {
         console.error('Error saving assessment data:', error);
-        console.log('Assessment save failed due to RLS or other issue. Continuing without persistence.');
+        console.error('Payload that failed:', normalizedPayload);
+        console.log('Assessment save failed due to error. Continuing without persistence.');
         return null;
       }
 
-      console.log('Assessment data saved successfully');
+      console.log('Assessment data saved successfully:', data);
       return data;
     } catch (error) {
       console.error('Failed to save assessment:', error);

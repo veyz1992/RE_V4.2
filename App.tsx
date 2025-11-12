@@ -206,31 +206,64 @@ const AppRoutes: React.FC = () => {
       }
     }
 
+    // Helper function to convert to integer
+    const toInt = (value: any): number => {
+      if (typeof value === 'number') {
+        return isNaN(value) ? 0 : Math.round(value);
+      }
+      if (typeof value === 'string') {
+        const parsed = parseFloat(value);
+        return isNaN(parsed) ? 0 : Math.round(parsed);
+      }
+      return 0;
+    };
+
     try {
+      // Normalize payload to match database schema exactly
+      const normalizedPayload = {
+        user_id: session?.user?.id ?? null,
+        profile_id: profile?.id ?? null,
+        email_entered: emailEntered,
+        full_name_entered: result.fullNameEntered?.trim() || null,
+        state: result.state?.trim() || null,
+        city: result.cityEntered?.trim() || null,
+        answers: result.answers, // This should be valid JSONB
+        // Ensure all score fields are integers and match DB columns exactly
+        total_score: toInt(result.total),
+        operational_score: toInt(result.operational),
+        licensing_score: toInt(result.licensing),
+        feedback_score: toInt(result.feedback),
+        certifications_score: toInt(result.certifications), // NOT "certifications"
+        digital_score: toInt(result.digital),
+        scenario,
+        pci_rating: result.grade,
+        intended_membership_tier: intendedMembershipTier,
+      };
+
+      console.log('Saving assessment (App.tsx) with normalized payload:', {
+        keys: Object.keys(normalizedPayload),
+        types: Object.entries(normalizedPayload).reduce((acc, [key, value]) => {
+          acc[key] = typeof value;
+          return acc;
+        }, {} as Record<string, string>)
+      });
+
       const { data, error } = await supabase
         .from('assessments')
-        .insert({
-          user_id: session?.user?.id ?? null,
-          profile_id: profile?.id ?? null,
-          email_entered: emailEntered,
-          full_name_entered: result.fullNameEntered?.trim() || null,
-          state: result.state?.trim() || null,
-          city: result.cityEntered?.trim() || null,
-          answers: result.answers,
-          total_score: result.total,
-          operational_score: result.operational,
-          licensing_score: result.licensing,
-          feedback_score: result.feedback,
-          certifications_score: result.certifications,
-          digital_score: result.digital,
-          scenario,
-          pci_rating: result.grade,
-          intended_membership_tier: intendedMembershipTier,
-        })
+        .insert(normalizedPayload)
         .select()
         .single();
 
       if (error) {
+        console.error('Assessment insert failed:', error);
+        console.error('Failed payload details:', {
+          payload: normalizedPayload,
+          payloadKeys: Object.keys(normalizedPayload),
+          payloadTypes: Object.entries(normalizedPayload).reduce((acc, [key, value]) => {
+            acc[key] = typeof value;
+            return acc;
+          }, {} as Record<string, string>)
+        });
         throw error;
       }
 
