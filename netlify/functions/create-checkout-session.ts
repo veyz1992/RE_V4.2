@@ -17,11 +17,12 @@ const TIER_TO_ENV: Record<string, string> = {
   'gold': 'STRIPE_PRICE_GOLD',
 };
 
-// Helper function to resolve the correct base URL for redirects
+// helper: choose the correct origin for this deploy
 function resolveBaseUrl(event: any): string {
   const raw =
-    process.env.URL ||
-    process.env.DEPLOY_PRIME_URL ||
+    process.env.DEPLOY_URL ||          // exact URL of this deploy
+    process.env.URL ||                 // context URL
+    process.env.DEPLOY_PRIME_URL ||    // deploy previews
     (event?.headers?.origin ?? process.env.SITE_URL);
 
   if (!raw) {

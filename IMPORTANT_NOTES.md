@@ -114,6 +114,12 @@ The checkout function automatically resolves the correct base URL for success/ca
 - Production deploys redirect to production domain automatically
 - No 404s when testing on different deployment contexts
 
+**Base URL resolution order:** DEPLOY_URL → URL → DEPLOY_PRIME_URL → event.headers.origin → SITE_URL.
+
+**Reason:** Stripe stores success_url at session creation. Always build from the active deploy.
+
+**Reminder:** Always test with a fresh session after code changes.
+
 ### 2. Webhook Processing (`netlify/functions/stripe-webhook.ts`) ✅ FULLY REFACTORED
 - **Complete Event Handling**: checkout.session.completed, customer.subscription.*, invoice.payment.*, payment_method.attached
 - **Full Data Mirroring**: Profiles, memberships, subscriptions, invoices tables fully synced
