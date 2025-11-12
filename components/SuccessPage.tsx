@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { PLAN_STORAGE_KEY, EMAIL_STORAGE_KEY, normalizePlan, type Plan } from '../src/shared/config';
 import {
   AnimatedCheckmarkIcon,
   UsersIcon,
@@ -19,10 +20,6 @@ import {
   PhoneIcon,
 } from './icons';
 
-const PLAN_STORAGE_KEY = 'restorationexpertise:last-plan';
-const EMAIL_STORAGE_KEY = 'restorationexpertise:last-email';
-
-type Plan = 'bronze' | 'silver' | 'gold' | 'founding-member';
 
 type PlanDetails = {
   badgeText: string;
@@ -78,20 +75,6 @@ const planDetails: Record<Plan, PlanDetails> = {
   },
 };
 
-const normalizePlan = (input?: string | null): Plan => {
-  switch (input?.toLowerCase()) {
-    case 'bronze':
-      return 'bronze';
-    case 'silver':
-      return 'silver';
-    case 'gold':
-      return 'gold';
-    case 'founding-member':
-      return 'founding-member';
-    default:
-      return 'founding-member';
-  }
-};
 
 const ParticleEffects: React.FC = () => (
   <div className="success-particles">
@@ -114,9 +97,27 @@ const ParticleEffects: React.FC = () => (
 const SuccessPage: React.FC = () => {
   const { plan: planSlug } = useParams<{ plan: string }>();
   const navigate = useNavigate();
-  const { currentUser, login } = useAuth();
+  
+  // Safely access auth context with fallback
+  let currentUser: any = null;
+  let login: any = null;
+  try {
+    const auth = useAuth();
+    currentUser = auth.currentUser;
+    login = auth.login;
+  } catch (error) {
+    console.warn('Auth context not available:', error);
+  }
 
-  const resolvedPlan = useMemo(() => normalizePlan(planSlug), [planSlug]);
+  const resolvedPlan = useMemo(() => {
+    try {
+      return normalizePlan(planSlug);
+    } catch (error) {
+      console.error('Error normalizing plan:', error);
+      return 'founding-member';
+    }
+  }, [planSlug]);
+  
   const planConfig = planDetails[resolvedPlan];
   const isFounding = resolvedPlan === 'founding-member';
 
@@ -148,13 +149,17 @@ const SuccessPage: React.FC = () => {
 
   // Automatically send magic link on mount if we have an email
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const emailFromUrl = urlParams.get('email');
-    const targetEmail = emailFromUrl || cachedEmail || displayEmail;
-    
-    if (targetEmail && actionState === 'idle') {
-      // Automatically trigger magic link on first load
-      triggerMagicLink(targetEmail);
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const emailFromUrl = urlParams.get('email');
+      const targetEmail = emailFromUrl || cachedEmail || displayEmail;
+      
+      if (targetEmail && actionState === 'idle') {
+        // Automatically trigger magic link on first load
+        triggerMagicLink(targetEmail);
+      }
+    } catch (error) {
+      console.error('Error in magic link auto-trigger:', error);
     }
   }, [cachedEmail, displayEmail]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -198,6 +203,11 @@ const SuccessPage: React.FC = () => {
     try {
       setActionState('sending');
       setActionMessage('Sending a fresh magic link…');
+      
+      // Check if supabase is available
+      if (!supabase || !supabase.auth) {
+        throw new Error('Supabase client not available');
+      }
       
       const { error } = await supabase.auth.signInWithOtp({
         email: targetEmail,
@@ -252,11 +262,57 @@ const SuccessPage: React.FC = () => {
 
   const title = 'Welcome to the Biggest Restoration Community Homeowners Trust';
 
-  return (
+  // Minimal fallback content for critical errors
+  const renderFallbackContent = (error?: string) => (
     <div className="success-page-container">
-      <ParticleEffects />
-      {isFounding && <div className="fm-light-ray"></div>}
-      <main className="relative z-10 w-full max-w-4xl mx-auto animate-fade-in-up">
+      <main className="relative z-10 w-full max-w-4xl mx-auto">
+        <div className="mb-8 text-center">
+          <div className="text-6xl mb-4">✅</div>
+          <h1 className="font-bold text-2xl md:text-3xl max-w-2xl mx-auto text-white">
+            Welcome to the Biggest Restoration Community Homeowners Trust
+          </h1>
+          <p className="mt-4 text-lg md:text-xl text-gray-300">
+            Your payment was successful. You're officially a member!
+          </p>
+        </div>
+        
+        <div className="mb-8">
+          <div className="w-full max-w-xl mx-auto p-6 rounded-2xl shadow-xl bg-black/20 border border-white/20">
+            <h2 className="font-bold text-xl text-white mb-3">Check Your Email to Log In</h2>
+            <p className="text-gray-300 mb-4">
+              We've sent a magic login link to your email. Please check your inbox and click the link to access your account.
+            </p>
+            <div className="text-center">
+              <a 
+                href="/login" 
+                className="inline-block px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+              >
+                Go to Login Page
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center text-gray-300">
+          <p>
+            Need help? <a className="text-blue-400 hover:underline" href="mailto:support@restorationexpertise.com">Contact support</a>
+          </p>
+          {error && (
+            <div className="mt-4 p-3 bg-red-900/50 text-red-200 text-sm rounded border border-red-500/50">
+              Debug: {error}
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+
+  try {
+    return (
+      <div className="success-page-container">
+        <ParticleEffects />
+        {isFounding && <div className="fm-light-ray"></div>}
+        <main className="relative z-10 w-full max-w-4xl mx-auto animate-fade-in-up">
         <div className="mb-8">
           <AnimatedCheckmarkIcon className="text-gold" />
           {isFounding ? (
@@ -419,7 +475,11 @@ const SuccessPage: React.FC = () => {
         </div>
       </main>
     </div>
-  );
+    );
+  } catch (error) {
+    console.error('Critical error in SuccessPage:', error);
+    return renderFallbackContent(error instanceof Error ? error.message : 'Unknown rendering error');
+  }
 };
 
 export default SuccessPage;

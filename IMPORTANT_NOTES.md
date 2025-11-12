@@ -239,6 +239,36 @@ This is a React + TypeScript application that helps real estate contractors get 
 - **Particles Not Visible**: Check mobile viewport sizing and minimum particle sizes
 - **404 Errors**: Ensure Netlify SPA configuration is deployed
 
+#### Frontend Build & Imports
+
+**Issue Fixed**: Production bundle error "Cannot access 'L' before initialization" on success page after Stripe checkout redirect.
+
+**Root Cause**: Potential circular imports or temporal dead zone (TDZ) issues in the production bundle, even though madge didn't detect circular dependencies.
+
+**Solution Implemented**:
+1. **Source Maps Enabled**: Added `build: { sourcemap: true }` to `vite.config.ts` for better production debugging
+2. **Shared Constants**: Moved shared constants (`PLAN_STORAGE_KEY`, `EMAIL_STORAGE_KEY`, `normalizePlan`, `Plan` type) to `src/shared/config.ts` to prevent import cycles
+3. **Error Boundaries**: Added comprehensive try-catch blocks and fallback rendering in `SuccessPage.tsx`:
+   - Safe auth context access with fallback
+   - Error handling for plan normalization  
+   - Critical error boundary with minimal fallback content
+   - Protected supabase client access
+4. **Build Analysis**: Added `npm run analyze:cycles` script using madge to detect circular dependencies
+5. **Hardened Success Flow**: Created fallback content that always renders, preventing blank page on script failures
+
+**Verification Commands**:
+```bash
+npm run build                    # Build with source maps
+npx serve dist                   # Test production bundle locally  
+npm run analyze:cycles           # Check for circular dependencies
+```
+
+**Success Flow Guard Rails**:
+- Minimal static success message renders first
+- Enhanced features load progressively with error handling
+- Fallback login link provided even if dynamic features fail
+- Error messages displayed in development for debugging
+
 #### Database Issues
 - **Profile Creation**: Check if Supabase triggers are working for new users
 - **Admin Access**: Verify `admin_profiles` table has correct user ID and `is_active=true`
