@@ -10,4 +10,5 @@ export const FUNCTION_ENDPOINTS = {
   EMAIL_ELIGIBILITY: FN('check-email-eligibility'),
   CHECKOUT_HEALTH: FN('checkout-health'),
   STRIPE_SESSION: FN('get-stripe-session'),
+  SAVE_ASSESSMENT: FN('save-assessment'),
 } as const;

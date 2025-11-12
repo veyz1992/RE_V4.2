@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom';
 import { Answers, ScoreBreakdown, Opportunity, AssessmentInputs } from '../types';
 import { ASSESSMENT_STEPS, MAX_SCORES, INITIAL_ANSWERS, US_STATES } from '../constants';
 import { CheckCircleIcon, BriefcaseIcon, ShieldCheckIcon, ClipboardDocumentCheckIcon, StarIcon, TrophyIcon, LightBulbIcon } from './icons';
-import { supabase } from '../src/lib/supabase';
 import { FUNCTION_ENDPOINTS } from '../src/lib/functions';
 
 // Refactored scoring logic to use a linear normalization for a 0-100 score.
@@ -615,18 +614,22 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
     setEmailEligibilityState(prev => ({ ...prev, magicLinkError: null }));
 
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { 
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-          shouldCreateUser: false 
-        },
+      // Call server-side auth function instead of direct Supabase
+      const response = await fetch('/api/auth/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email,
+          redirectTo: `${window.location.origin}/dashboard`
+        })
       });
 
-      if (error) {
+      const result = await response.json();
+
+      if (!response.ok) {
         setEmailEligibilityState(prev => ({ 
           ...prev, 
-          magicLinkError: error.message || 'Failed to send magic link' 
+          magicLinkError: result.error || 'Failed to send magic link' 
         }));
       } else {
         setEmailEligibilityState(prev => ({ ...prev, magicLinkSent: true }));
@@ -727,55 +730,55 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
     return 0;
   };
 
-  // Save assessment data to Supabase
+  // Save assessment data via server-side function
   const saveAssessmentData = async (assessmentData: any) => {
     try {
-      // Normalize payload to match database schema exactly
-      const normalizedPayload = {
-        email_entered: assessmentInputs.email_entered.trim().toLowerCase(),
-        full_name_entered: assessmentInputs.full_name_entered.trim(),
-        state: assessmentInputs.state,
-        city: assessmentInputs.city.trim(),
-        answers: assessmentData.answers, // This should be valid JSONB
-        // Ensure all score fields are integers and match DB columns exactly
-        operational_score: toInt(assessmentData.operational),
-        licensing_score: toInt(assessmentData.licensing),
-        feedback_score: toInt(assessmentData.feedback),
-        certifications_score: toInt(assessmentData.certifications), // NOT "certifications"
-        digital_score: toInt(assessmentData.digital),
-        total_score: toInt(assessmentData.total),
-        scenario: assessmentData.scenario || null,
-        // Optional fields if they exist in the result
-        ...(assessmentData.grade && { pci_rating: assessmentData.grade }),
-        ...(assessmentData.isEligibleForCertification !== undefined && { 
-          scenario: assessmentData.isEligibleForCertification ? 'eligible' : 'not_eligible' 
-        })
+      const payload = {
+        assessmentInputs: {
+          full_name_entered: assessmentInputs.full_name_entered.trim(),
+          email_entered: assessmentInputs.email_entered.trim().toLowerCase(),
+          state: assessmentInputs.state,
+          city: assessmentInputs.city.trim()
+        },
+        answers: assessmentData.answers,
+        scores: {
+          operational: toInt(assessmentData.operational),
+          licensing: toInt(assessmentData.licensing),
+          feedback: toInt(assessmentData.feedback),
+          certifications: toInt(assessmentData.certifications),
+          digital: toInt(assessmentData.digital),
+          total: toInt(assessmentData.total),
+          grade: assessmentData.grade,
+          isEligibleForCertification: assessmentData.isEligibleForCertification,
+          eligibilityReasons: assessmentData.eligibilityReasons || [],
+          opportunities: assessmentData.opportunities || []
+        },
+        planSlug: 'founding-member'
       };
 
-      console.log('Saving assessment with normalized payload:', {
-        keys: Object.keys(normalizedPayload),
-        types: Object.entries(normalizedPayload).reduce((acc, [key, value]) => {
-          acc[key] = typeof value;
-          return acc;
-        }, {} as Record<string, string>)
+      console.log('[AssessmentTool] Saving assessment via server function:', {
+        email: payload.assessmentInputs.email_entered,
+        scores: payload.scores
       });
 
-      // Use insert instead of upsert since we don't have an existing ID
-      const { data, error } = await supabase
-        .from('assessments')
-        .insert(normalizedPayload)
-        .select()
-        .single();
+      const response = await fetch(FUNCTION_ENDPOINTS.SAVE_ASSESSMENT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
 
-      if (error) {
-        console.error('Error saving assessment data:', error);
-        console.error('Payload that failed:', normalizedPayload);
-        console.log('Assessment save failed due to error. Continuing without persistence.');
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('Assessment save failed:', result);
+        console.log('Assessment save failed due to server error. Continuing without persistence.');
         return null;
       }
 
-      console.log('Assessment data saved successfully:', data);
-      return data;
+      console.log('[AssessmentTool] Assessment saved successfully:', result);
+      return result;
     } catch (error) {
       console.error('Failed to save assessment:', error);
       console.log('Assessment save failed. Continuing without persistence.');

@@ -689,8 +689,35 @@ const endpoint = FUNCTION_ENDPOINTS.CHECKOUT;
 - All calls use `FUNCTION_ENDPOINTS` from `src/lib/functions.ts`
 - **No hardcoded absolute URLs** in client code
 
+## Assessment Data Pipeline ✅ IMPLEMENTED
+
+### End-to-End Data Flow
+**UI → save-assessment → profiles/assessments → Stripe → success page**
+
+1. **Client Collection**: Assessment UI captures all fields via `AssessmentTool.tsx`
+2. **Server Validation**: `/.netlify/functions/save-assessment` validates with strict schema
+3. **Profile Upsert**: Normalizes and upserts `profiles` table by email
+4. **Assessment Insert**: Creates new `assessments` record with full JSONB snapshot
+5. **Stripe Handoff**: Optionally creates checkout session with metadata
+6. **Success Retrieval**: `/.netlify/functions/get-checkout-session` fetches real email from Stripe
+
+### Base URL Resolution Order ✅ ENHANCED
+**Request-origin-first priority:**
+1. **rawUrl/x-forwarded-host** - Live request context 
+2. **DEPLOY_URL** - Branch/preview exact URL
+3. **DEPLOY_PRIME_URL** - Preview URL  
+4. **URL** - Primary custom domain
+5. **SITE_URL** - Fallback site URL
+
+### RLS Policy Summary
+- **Service role**: Full access for server-side operations
+- **Authenticated users**: Read own rows (email match or profile_id join)
+- **Profiles indexed**: by email for fast lookups
+- **Required columns**: `eligibility_reasons JSONB`, `opportunities JSONB`, `pci_rating TEXT`, `scenario TEXT`, `years_in_business INT`, `services JSONB`
+
 ### Testing & Debugging
-- **Debug endpoint**: `/.netlify/functions/create-checkout-session?debug=1`
+- **Debug endpoint**: `/.netlify/functions/save-assessment?debug=1`
+- **Checkout debug**: `/.netlify/functions/create-checkout-session?debug=1`
 - **Returns**: `{ "baseUrl": "https://dev3--site.netlify.app" }`
 - **Critical**: **Stripe caches success_url per session—always test with a new session after changes**
 
