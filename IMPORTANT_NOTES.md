@@ -91,11 +91,19 @@ This is a React + TypeScript application that helps real estate contractors get 
 ### 2. Webhook Processing (`netlify/functions/stripe-webhook.ts`) ✅ FULLY REFACTORED
 - **Complete Event Handling**: checkout.session.completed, customer.subscription.*, invoice.payment.*, payment_method.attached
 - **Full Data Mirroring**: Profiles, memberships, subscriptions, invoices tables fully synced
+- **Assessment Back-fill**: Automatically enriches profiles from recent assessments (48h window)
 - **Idempotency Protection**: processed_events table prevents duplicate processing
 - **Environment Variables**: Uses STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET
 - **Error Handling**: Minimal logging with graceful failure recovery
 - **Invoice Management**: Automatic creation with hosted_invoice_url, pdf_url, invoice_date
-- **Payment Method Tracking**: Card details (brand, last4, expiry) stored on profiles
+- **Payment Method Tracking**: Card details (brand, last4, expiry) stored on profiles and subscriptions
+
+#### Webhooks → Profile Back-fill
+- **Assessment Matching**: Queries `assessments` table where `email_entered = email` and `created_at >= now() - interval '48 hours'`
+- **Fields Back-filled**: `full_name_entered` → `full_name`, `state`, `city`, `phone`, `company_name`, `website`
+- **Membership Setup**: Sets `membership_tier` from Stripe price mapping and `verification_status = 'pending'`
+- **Graceful Fallback**: Continues without enrichment if no assessment found; logs warning but returns 200
+- **RLS Safe**: Uses `SUPABASE_SERVICE_ROLE_KEY` for server-side writes to bypass RLS restrictions
 - Comprehensive error handling and logging
 
 ### 3. Member Profile Updates

@@ -114,6 +114,57 @@ const markEventAsProcessed = async (eventId: string): Promise<void> => {
     .ignoreDuplicates();
 };
 
+// Find latest assessment for email within 48 hours
+const findLatestAssessment = async (email: string): Promise<any | null> => {
+  const { data, error } = await supabase
+    .from('assessments')
+    .select('*')
+    .eq('email_entered', email)
+    .gte('created_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()) // 48 hours ago
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error querying assessments:', error);
+    return null;
+  }
+
+  if (!data) {
+    console.log(`No assessment found for email ${email} within 48 hours`);
+    return null;
+  }
+
+  console.log(`Found assessment for email ${email} from ${data.created_at}`);
+  return data;
+};
+
+// Map Stripe price/metadata to membership tier
+const mapPriceToTier = (priceId: string, metadata?: Record<string, string>): string => {
+  // Check metadata first for explicit tier mapping
+  if (metadata?.tier) {
+    return metadata.tier;
+  }
+
+  // Fallback to price ID mapping from TIER_CONFIG
+  const tier = getTierFromPriceId(priceId);
+  
+  // Map tier names to database values
+  switch (tier.toLowerCase()) {
+    case 'founding member':
+    case 'founding-member':
+      return 'gold';
+    case 'gold':
+      return 'gold';
+    case 'silver':
+      return 'silver';
+    case 'bronze':
+      return 'bronze';
+    default:
+      return 'gold'; // Default for unknown tiers
+  }
+};
+
 // Find or create Supabase Auth user
 const findOrCreateAuthUser = async (email: string): Promise<string> => {
   // First try to find existing user
@@ -151,12 +202,14 @@ const findOrCreateAuthUser = async (email: string): Promise<string> => {
   return newUser.user.id;
 };
 
-// Upsert profile with Stripe data
-const upsertProfile = async (
+// Upsert profile with assessment back-fill and Stripe data
+const upsertProfileWithBackfill = async (
   userId: string,
   email: string,
   stripeCustomerId?: string,
-  customerData?: Stripe.Customer
+  customerData?: Stripe.Customer,
+  assessmentData?: any,
+  membershipTier?: string
 ): Promise<void> => {
   const profileData: any = {
     id: userId,
@@ -165,7 +218,31 @@ const upsertProfile = async (
     updated_at: new Date().toISOString()
   };
 
-  // Add customer data if available
+  // Back-fill from assessment data if available
+  if (assessmentData) {
+    console.log('Back-filling profile from assessment data');
+    
+    if (assessmentData.full_name_entered) {
+      profileData.full_name = assessmentData.full_name_entered;
+    }
+    if (assessmentData.state) {
+      profileData.state = assessmentData.state;
+    }
+    if (assessmentData.city) {
+      profileData.city = assessmentData.city;
+    }
+    if (assessmentData.phone) {
+      profileData.phone = assessmentData.phone;
+    }
+    if (assessmentData.company_name) {
+      profileData.company_name = assessmentData.company_name;
+    }
+    if (assessmentData.website) {
+      profileData.website = assessmentData.website;
+    }
+  }
+
+  // Add customer data from Stripe (may override assessment data)
   if (customerData) {
     if (customerData.name) {
       profileData.full_name = customerData.name;
@@ -176,6 +253,25 @@ const upsertProfile = async (
     if (customerData.address?.state) {
       profileData.state = customerData.address.state;
     }
+    if (customerData.phone) {
+      profileData.phone = customerData.phone;
+    }
+  }
+
+  // Set membership tier and verification status if provided
+  if (membershipTier) {
+    profileData.membership_tier = membershipTier;
+    
+    // Set verification status to pending if not already set
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('verification_status')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!existingProfile?.verification_status) {
+      profileData.verification_status = 'pending';
+    }
   }
 
   const { error } = await supabase
@@ -185,11 +281,15 @@ const upsertProfile = async (
     });
 
   if (error) {
-    console.error('Error upserting profile:', error);
+    console.error('Error upserting profile with back-fill:', error);
+    console.error('Profile data:', profileData);
     throw error;
   }
 
   console.log('Successfully upserted profile for user:', userId);
+  if (assessmentData) {
+    console.log('Profile enriched with assessment data');
+  }
 };
 
 // Upsert membership
@@ -228,16 +328,17 @@ const upsertMembership = async (
   console.log(`Successfully upserted membership for profile ${profileId} with tier ${tier}`);
 };
 
-// Upsert subscription with full Stripe data
+// Upsert subscription with full Stripe data including payment method
 const upsertSubscription = async (
   profileId: string,
-  subscription: Stripe.Subscription
+  subscription: Stripe.Subscription,
+  paymentMethod?: Stripe.PaymentMethod
 ): Promise<void> => {
   const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id;
   const priceId = subscription.items.data[0]?.price?.id;
   const tier = priceId ? getTierFromPriceId(priceId) : 'Bronze';
 
-  const subscriptionData = {
+  const subscriptionData: any = {
     profile_id: profileId,
     stripe_subscription_id: subscription.id,
     stripe_customer_id: customerId,
@@ -254,6 +355,12 @@ const upsertSubscription = async (
     updated_at: new Date().toISOString()
   };
 
+  // Add payment method details if available
+  if (paymentMethod?.type === 'card' && paymentMethod.card) {
+    subscriptionData.payment_method_brand = paymentMethod.card.brand;
+    subscriptionData.payment_method_last4 = paymentMethod.card.last4;
+  }
+
   const { error } = await supabase
     .from('subscriptions')
     .upsert(subscriptionData, {
@@ -262,6 +369,7 @@ const upsertSubscription = async (
 
   if (error) {
     console.error('Error upserting subscription:', error);
+    console.error('Subscription data:', subscriptionData);
     throw error;
   }
 
@@ -383,49 +491,127 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
     switch (stripeEvent.type) {
       case 'checkout.session.completed': {
         const session = stripeEvent.data.object as Stripe.Checkout.Session;
-        const email = session.customer_details?.email || session.customer_email;
-        const assessmentId = session.metadata?.assessment_id || null;
-        const tier = session.metadata?.intended_tier || 'Founding Member';
-        const subscriptionId = typeof session.subscription === 'string' 
-          ? session.subscription 
-          : session.subscription?.id;
+        
+        // Extract email from session - try multiple sources
+        let email = session.customer_details?.email || session.customer_email;
         const customerId = typeof session.customer === 'string' 
           ? session.customer 
           : session.customer?.id;
-
-        if (!email) {
-          console.warn('No email found in checkout session');
-          break;
-        }
-
-        if (!subscriptionId) {
-          console.warn('No subscription ID found in checkout session');
-          break;
-        }
-
-        // Create/find auth user and profile
-        const userId = await findOrCreateAuthUser(email);
         
-        // Get customer data for additional profile info
-        let customerData: Stripe.Customer | undefined;
-        if (customerId) {
+        // If no email in session, try to get it from customer
+        if (!email && customerId) {
           try {
-            customerData = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+            const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+            email = customer.email;
           } catch (error) {
-            console.warn('Could not retrieve customer data:', error);
+            console.warn('Could not retrieve customer email:', error);
           }
         }
 
-        await upsertProfile(userId, email, customerId, customerData);
-        
-        // Get subscription data
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-        
-        // Upsert membership and subscription
-        await upsertMembership(userId, tier, 'active', assessmentId || undefined);
-        await upsertSubscription(userId, subscription);
+        if (!email) {
+          console.error('No email found in checkout session or customer');
+          break;
+        }
 
-        console.log(`Successfully processed checkout completion for ${email}`);
+        console.log(`Processing checkout completion for email: ${email}`);
+
+        const subscriptionId = typeof session.subscription === 'string' 
+          ? session.subscription 
+          : session.subscription?.id;
+
+        if (!subscriptionId) {
+          console.error('No subscription ID found in checkout session');
+          break;
+        }
+
+        try {
+          // Step 1: Get or create auth user
+          const userId = await findOrCreateAuthUser(email);
+          console.log(`Auth user resolved: ${userId}`);
+
+          // Step 2: Look for recent assessment to back-fill profile
+          let assessmentData: any = null;
+          let assessmentWarning: string | null = null;
+
+          try {
+            assessmentData = await findLatestAssessment(email);
+            if (!assessmentData) {
+              assessmentWarning = `No assessment found for ${email} within 48 hours - proceeding without profile enrichment`;
+              console.warn(assessmentWarning);
+            }
+          } catch (error) {
+            assessmentWarning = `Failed to query assessments: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            console.warn(assessmentWarning);
+          }
+
+          // Step 3: Get subscription and payment method details
+          let subscription: Stripe.Subscription;
+          let paymentMethod: Stripe.PaymentMethod | undefined;
+
+          try {
+            subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+              expand: ['default_payment_method']
+            });
+            
+            if (subscription.default_payment_method) {
+              paymentMethod = subscription.default_payment_method as Stripe.PaymentMethod;
+            }
+          } catch (error) {
+            console.error('Failed to retrieve subscription:', error);
+            throw error;
+          }
+
+          // Step 4: Determine membership tier from subscription
+          const priceId = subscription.items.data[0]?.price?.id;
+          const membershipTier = priceId ? mapPriceToTier(priceId, session.metadata || {}) : 'gold';
+          console.log(`Mapped price ${priceId} to tier: ${membershipTier}`);
+
+          // Step 5: Get customer data for additional profile info
+          let customerData: Stripe.Customer | undefined;
+          if (customerId) {
+            try {
+              customerData = await stripe.customers.retrieve(customerId) as Stripe.Customer;
+            } catch (error) {
+              console.warn('Could not retrieve customer data:', error);
+            }
+          }
+
+          // Step 6: Upsert profile with assessment back-fill
+          await upsertProfileWithBackfill(
+            userId,
+            email,
+            customerId,
+            customerData,
+            assessmentData,
+            membershipTier
+          );
+
+          // Step 7: Upsert membership
+          await upsertMembership(
+            userId,
+            membershipTier,
+            'active',
+            assessmentData?.id
+          );
+
+          // Step 8: Upsert subscription with payment method
+          await upsertSubscription(userId, subscription, paymentMethod);
+
+          console.log(`Successfully processed checkout completion for ${email}`);
+          
+          // Log any warnings
+          if (assessmentWarning) {
+            console.warn(`Profile enrichment warning: ${assessmentWarning}`);
+          }
+
+        } catch (error) {
+          console.error(`Error processing checkout for ${email}:`, error instanceof Error ? error.message : 'Unknown error');
+          if (error instanceof Error) {
+            console.error('Full error details:', error.stack);
+          }
+          // Continue to return 200 - don't fail the webhook for profile issues
+        }
+
         break;
       }
 
