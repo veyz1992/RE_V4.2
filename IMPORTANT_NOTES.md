@@ -715,9 +715,18 @@ const endpoint = FUNCTION_ENDPOINTS.CHECKOUT;
 - **Profiles indexed**: by email for fast lookups
 - **Required columns**: `eligibility_reasons JSONB`, `opportunities JSONB`, `pci_rating TEXT`, `scenario TEXT`, `years_in_business INT`, `services JSONB`
 
+### Success Page Email Handling ✅ IMPLEMENTED
+**Success page email is fetched from Stripe via session_id. No hardcoded emails. Client must always create a new session for tests because Stripe caches success_url per session.**
+
+- **Email source priority**: `session.customer_details.email` → `session.customer.email` → `session.metadata.email_entered`
+- **Session ID**: Automatically appended as `&session_id={CHECKOUT_SESSION_ID}` to success URL
+- **Fallback behavior**: If Stripe API fails, shows "checking..." instead of hardcoded email
+- **Debug logging**: Console shows session_id and API call success/failure
+
 ### Testing & Debugging
 - **Debug endpoint**: `/.netlify/functions/save-assessment?debug=1`
-- **Checkout debug**: `/.netlify/functions/create-checkout-session?debug=1`
+- **Checkout debug**: `/.netlify/functions/create-checkout-session?debug=1`  
+- **Session debug**: `/.netlify/functions/get-stripe-session?debug=1`
 - **Returns**: `{ "baseUrl": "https://dev3--site.netlify.app" }`
 - **Critical**: **Stripe caches success_url per session—always test with a new session after changes**
 

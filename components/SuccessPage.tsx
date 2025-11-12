@@ -166,23 +166,30 @@ const SuccessPage: React.FC = () => {
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get('session_id');
         
+        console.log('[SuccessPage] session_id from URL:', sessionId);
+        
         if (sessionId && !stripeEmail) {
-          console.log(`Fetching email from Stripe session: ${sessionId}`);
+          console.log(`[SuccessPage] Fetching email from Stripe session: ${sessionId}`);
           
           const response = await fetch(`${FUNCTION_ENDPOINTS.STRIPE_SESSION}?session_id=${sessionId}`);
           
           if (response.ok) {
             const data = await response.json();
+            console.log('[SuccessPage] Stripe API response:', data);
             if (data.email) {
               setStripeEmail(data.email);
-              console.log(`Success page email from Stripe: ${data.email}`);
+              console.log(`[SuccessPage] ✅ Success! Email from Stripe: ${data.email}`);
+            } else {
+              console.warn('[SuccessPage] ⚠️ No email found in Stripe response');
             }
           } else {
-            console.error('Failed to fetch session email:', response.statusText);
+            console.error('[SuccessPage] ❌ Failed to fetch session email:', response.status, response.statusText);
           }
+        } else if (!sessionId) {
+          console.log('[SuccessPage] ℹ️ No session_id in URL, using fallback email sources');
         }
       } catch (error) {
-        console.error('Error fetching Stripe session email:', error);
+        console.error('[SuccessPage] ❌ Error fetching Stripe session email:', error);
       }
     };
     
@@ -389,7 +396,7 @@ const SuccessPage: React.FC = () => {
               We've sent a magic login link to your personal dashboard. Please check your inbox and click the link to access your account.
             </p>
             <div className="mt-4 bg-black/20 p-3 rounded-lg text-center text-white">
-              📧 Sent to: <strong>{displayEmail || 'your email'}</strong>
+              📧 Sent to: <strong>{displayEmail || 'checking...'}</strong>
             </div>
 
             {isUpdatingEmail ? (

@@ -74,7 +74,7 @@ const AdminLoginPage: React.FC = () => {
               className={`w-full px-4 py-3 rounded-xl border bg-white/10 backdrop-blur-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${
                 error ? 'border-red-400 focus:ring-red-400' : 'border-white/20 focus:ring-gold focus:border-gold'
               }`}
-              placeholder="admin@example.com"
+              placeholder="admin@company.com"
               disabled={loading}
             />
           </div>

@@ -315,7 +315,8 @@ export const handler = async (event: any) => {
           metadata: {
             profile_id: profileId,
             assessment_id: assessment.id,
-            email_entered: normalizedEmail
+            email_entered: normalizedEmail,
+            plan: planSlug
           }
         });
 
