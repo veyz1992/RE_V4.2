@@ -402,7 +402,8 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
         .from('profiles')
         .upsert({ 
           id: userId, 
-          email 
+          email,
+          updated_at: new Date().toISOString()
         }, { 
           onConflict: 'id' 
         });
@@ -470,6 +471,17 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
           .from('assessments')
           .update({ user_id: userId })
           .eq('id', assessmentId);
+      }
+
+      // Optional: Send onboarding invitation (recommended)
+      try {
+        await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+          redirectTo: 'https://dev3--resonant-sprite-4fa0fe.netlify.app/dashboard'
+        });
+        console.log(`Sent onboarding invitation to ${email}`);
+      } catch (inviteError) {
+        // Don't break the webhook if invitation fails
+        console.warn('Failed to send onboarding invitation:', inviteError);
       }
 
       console.log(`Successfully auto-provisioned account for ${email} with user ID ${userId}`);
