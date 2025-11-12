@@ -81,14 +81,15 @@ This is a React + TypeScript application that helps real estate contractors get 
 
 ## Payment Flow (Stripe → Supabase) ✅ WORKING
 
-### 1. Checkout Session Creation (`netlify/functions/create-checkout-session.ts`)
-- Validates tier against `TIER_CONFIG` mapping
-- **Per-tier validation**: Only checks if the requested tier has a price ID configured
-- **NEW - Duplicate Prevention**: Server-side eligibility check prevents existing members from creating duplicate subscriptions
-  - Checks if email exists in `auth.users` table
-  - Validates no active subscriptions (`active`, `trialing`, `past_due`)
-  - Returns 409 status with `EXISTING_MEMBER` code if already a member
-  - Graceful fallback on API errors (allows checkout to proceed)
+### 1. Checkout Session Creation (`netlify/functions/create-checkout-session.ts`) ✅ HARDENED
+- **NEW - Comprehensive Error Handling**: Returns explicit error codes instead of generic 500s
+- **Upfront Validation**: Validates environment variables, request body, and required parameters
+- **Price ID Resolution**: Maps tier names to environment variables with fallbacks
+- **Email Handling**: Supports direct email or assessment lookup with proper error messages
+- **Backward Compatible**: Accepts both `tier` and `intendedTier` parameters
+- **Health Check Available**: `/checkout-health` endpoint shows environment status
+- **Error Codes**: `MISSING_ENV`, `MISSING_PRICE_ID`, `ASSESSMENT_NOT_FOUND`, etc.
+- **Safe Logging**: Detailed error context without exposing secrets
 - Creates Stripe session with metadata (tier, email, assessmentId)
 - **Success redirect**: Routes to `/success/{tier-slug}` (e.g., `/success/founding-member`)
 - Returns checkout URL for redirect
