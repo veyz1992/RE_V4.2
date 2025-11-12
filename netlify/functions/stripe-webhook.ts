@@ -513,7 +513,7 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
           break;
         }
 
-        console.log(`Processing checkout completion for email: ${email}`);
+        console.log(`Webhook email used: ${email}`);
 
         const subscriptionId = typeof session.subscription === 'string' 
           ? session.subscription 

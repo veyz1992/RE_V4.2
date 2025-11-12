@@ -112,6 +112,9 @@ const SuccessPage: React.FC = () => {
     console.warn('Auth context not available:', error);
   }
 
+  // State for email from Stripe session
+  const [stripeEmail, setStripeEmail] = useState<string>('');
+
   const resolvedPlan = useMemo(() => {
     try {
       return normalizePlan(plan);
@@ -134,7 +137,7 @@ const SuccessPage: React.FC = () => {
   // Move display variables above their first use to prevent TDZ issues
   const displayBusinessName = currentUser?.name ?? 'Your Business';
   const displayContactName = currentUser?.account?.ownerName ?? currentUser?.name ?? 'Your Name';
-  const displayEmail = currentUser?.email ?? cachedEmail;
+  const displayEmail = stripeEmail || currentUser?.email || cachedEmail;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -154,6 +157,36 @@ const SuccessPage: React.FC = () => {
       setCachedEmail(storedEmail);
     }
   }, []);
+
+  // Fetch email from Stripe session if session_id is provided
+  useEffect(() => {
+    const fetchStripeSessionEmail = async () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('session_id');
+        
+        if (sessionId && !stripeEmail) {
+          console.log(`Fetching email from Stripe session: ${sessionId}`);
+          
+          const response = await fetch(`/.netlify/functions/get-stripe-session?session_id=${sessionId}`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.email) {
+              setStripeEmail(data.email);
+              console.log(`Success page email from Stripe: ${data.email}`);
+            }
+          } else {
+            console.error('Failed to fetch session email:', response.statusText);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching Stripe session email:', error);
+      }
+    };
+    
+    fetchStripeSessionEmail();
+  }, [stripeEmail]);
 
   // Define triggerMagicLink before its first use to prevent TDZ issues
   const triggerMagicLink = async (targetEmail: string) => {

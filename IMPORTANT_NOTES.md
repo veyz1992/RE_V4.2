@@ -84,6 +84,11 @@ This is a React + TypeScript application that helps real estate contractors get 
 ### 1. Checkout Session Creation (`netlify/functions/create-checkout-session.ts`)
 - Validates tier against `TIER_CONFIG` mapping
 - **Per-tier validation**: Only checks if the requested tier has a price ID configured
+- **NEW - Duplicate Prevention**: Server-side eligibility check prevents existing members from creating duplicate subscriptions
+  - Checks if email exists in `auth.users` table
+  - Validates no active subscriptions (`active`, `trialing`, `past_due`)
+  - Returns 409 status with `EXISTING_MEMBER` code if already a member
+  - Graceful fallback on API errors (allows checkout to proceed)
 - Creates Stripe session with metadata (tier, email, assessmentId)
 - **Success redirect**: Routes to `/success/{tier-slug}` (e.g., `/success/founding-member`)
 - Returns checkout URL for redirect
@@ -116,14 +121,15 @@ This is a React + TypeScript application that helps real estate contractors get 
 ```
 ├── components/
 │   ├── admin/              # Admin dashboard (working)
-│   ├── AssessmentTool.tsx  # Multi-step form (working)
+│   ├── AssessmentTool.tsx  # ✅ Multi-step form with duplicate prevention integration
 │   ├── Dashboard.tsx       # Member dashboard (working)
 │   ├── LoginPage.tsx       # ✅ Member magic link login with animated background
 │   ├── AdminLoginPage.tsx  # ✅ Admin email/password login (NEW)
 │   ├── ResultsPage.tsx     # Payment selection (working)
 │   └── SuccessPage.tsx     # ✅ Post-payment success page (working)
 ├── netlify/functions/
-│   ├── create-checkout-session.ts  # ✅ Updated with correct success routing
+│   ├── check-email-eligibility.ts   # ✅ NEW - Email eligibility validation
+│   ├── create-checkout-session.ts   # ✅ Updated with duplicate prevention
 │   └── stripe-webhook.ts            # ✅ Enhanced logging and error handling
 ├── src/context/
 │   └── AuthContext.tsx     # ✅ Dual authentication system (magic link + password)
@@ -154,6 +160,22 @@ This is a React + TypeScript application that helps real estate contractors get 
 ### Member Authentication (Magic Link) ✅ WORKING
 - **Route**: `/login` (landing page email form)
 - **Method**: Magic link via `supabase.auth.signInWithOtp()` with `shouldCreateUser: false`
+
+### Email Eligibility & Duplicate Prevention ✅ WORKING
+- **Function**: `netlify/functions/check-email-eligibility.ts`
+- **Purpose**: Prevents existing members from starting new assessments or purchasing additional plans
+- **Integration**: Called from AssessmentTool.tsx on email blur event
+- **Server Protection**: Additional validation in `create-checkout-session.ts` before Stripe
+- **Database Logic**:
+  - Checks `auth.users` table for existing email
+  - Validates no active subscriptions (`active`, `trialing`, `past_due`)
+  - Prevents duplicate assessments within 30-day window
+  - Returns eligibility status with reason codes
+- **User Flow**:
+  - New users: Green checkmark → proceed with assessment
+  - Existing members: Blue notification → magic link option → dashboard access
+  - Recent assessment (30-day): Yellow warning → contact support message
+- **Magic Link Integration**: Seamless transition for existing members to access their accounts
 - **Security**: **Members only** - restricts magic links to existing users only
 - **Flow**: Email → Magic link → Auto-login → Member dashboard (/member)
 - **Database**: Uses `public.profiles` table for member data
@@ -352,7 +374,9 @@ CREATE INDEX IF NOT EXISTS idx_assessments_state ON public.assessments (state);
 ### Environment Variables Required
 - `STRIPE_SECRET_KEY` (sk_test/live)
 - `STRIPE_WEBHOOK_SECRET` (whsec_ for this endpoint)
-- `SUPABASE_SERVICE_ROLE_KEY` (server-only, never VITE_)
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only, never VITE_) - **Required for duplicate prevention**
+- `VITE_SUPABASE_URL` (client-side Supabase URL)
+- `VITE_SUPABASE_ANON_KEY` (client-side anon key)
 
 ### Webhook Secret Context Mapping
 - **Dev Branch**: Uses development webhook endpoint secret

@@ -535,6 +535,108 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
   const [isScorePopupOpen, setIsScorePopupOpen] = useState(false);
   const [animationClass, setAnimationClass] = useState('animate-fade-in');
   const [contentKey, setContentKey] = useState(0);
+  
+  // Email eligibility state
+  const [emailEligibilityState, setEmailEligibilityState] = useState<{
+    checking: boolean;
+    eligible: boolean | null;
+    reason: string | null;
+    message: string | null;
+    showingMagicLinkForm: boolean;
+    magicLinkSent: boolean;
+    magicLinkError: string | null;
+  }>({
+    checking: false,
+    eligible: null,
+    reason: null,
+    message: null,
+    showingMagicLinkForm: false,
+    magicLinkSent: false,
+    magicLinkError: null,
+  });
+
+  // Check email eligibility
+  const checkEmailEligibility = async (email: string) => {
+    if (!isValidEmail(email)) return;
+
+    setEmailEligibilityState(prev => ({ ...prev, checking: true, eligible: null, reason: null, message: null }));
+
+    try {
+      const response = await fetch('/.netlify/functions/check-email-eligibility', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setEmailEligibilityState(prev => ({
+          ...prev,
+          checking: false,
+          eligible: result.eligible,
+          reason: result.reason || null,
+          message: result.message || null,
+        }));
+
+        // If not eligible and is existing member, show magic link option
+        if (!result.eligible && result.reason === 'member') {
+          setEmailEligibilityState(prev => ({ ...prev, showingMagicLinkForm: true }));
+        }
+      } else {
+        console.error('Email eligibility check failed:', result);
+        setEmailEligibilityState(prev => ({
+          ...prev,
+          checking: false,
+          eligible: true, // Allow to proceed on API error
+          reason: null,
+          message: null,
+        }));
+      }
+    } catch (error) {
+      console.error('Error checking email eligibility:', error);
+      setEmailEligibilityState(prev => ({
+        ...prev,
+        checking: false,
+        eligible: true, // Allow to proceed on network error
+        reason: null,
+        message: null,
+      }));
+    }
+  };
+
+  // Send magic link to existing member
+  const sendMagicLink = async () => {
+    const email = assessmentInputs.email_entered.trim().toLowerCase();
+    
+    setEmailEligibilityState(prev => ({ ...prev, magicLinkError: null }));
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { 
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+          shouldCreateUser: false 
+        },
+      });
+
+      if (error) {
+        setEmailEligibilityState(prev => ({ 
+          ...prev, 
+          magicLinkError: error.message || 'Failed to send magic link' 
+        }));
+      } else {
+        setEmailEligibilityState(prev => ({ ...prev, magicLinkSent: true }));
+      }
+    } catch (error) {
+      setEmailEligibilityState(prev => ({ 
+        ...prev, 
+        magicLinkError: 'Network error. Please try again.' 
+      }));
+    }
+  };
 
   const scoreData = useMemo(() => calculateScore(answers), [answers]);
 
@@ -597,12 +699,17 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
   // Check if current step can proceed
   const canProceed = () => {
     if (step === 0) {
-      // Business Basics step - require new fields
-      return assessmentInputs.full_name_entered.trim() !== '' &&
+      // Business Basics step - require new fields and email eligibility
+      const basicFieldsValid = assessmentInputs.full_name_entered.trim() !== '' &&
              assessmentInputs.email_entered.trim() !== '' &&
              isValidEmail(assessmentInputs.email_entered.trim()) &&
              assessmentInputs.state !== '' &&
              assessmentInputs.city.trim() !== '';
+      
+      // Also check email eligibility - don't allow proceeding if ineligible
+      const emailEligible = emailEligibilityState.eligible !== false;
+      
+      return basicFieldsValid && emailEligible && !emailEligibilityState.checking;
     }
     return true;
   };
@@ -672,15 +779,109 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
                         <input 
                           type="email" 
                           value={assessmentInputs.email_entered} 
-                          onChange={e => updateAssessmentInput('email_entered', e.target.value)} 
+                          onChange={e => {
+                            const newEmail = e.target.value;
+                            updateAssessmentInput('email_entered', newEmail);
+                            
+                            // Reset eligibility state when email changes
+                            setEmailEligibilityState(prev => ({
+                              ...prev,
+                              eligible: null,
+                              reason: null,
+                              message: null,
+                              showingMagicLinkForm: false,
+                              magicLinkSent: false,
+                              magicLinkError: null,
+                            }));
+                          }}
+                          onBlur={() => {
+                            if (assessmentInputs.email_entered.trim()) {
+                              checkEmailEligibility(assessmentInputs.email_entered.trim());
+                            }
+                          }}
                           className={`mt-1 block w-full p-3 border rounded-lg shadow-sm focus:ring-brand-accent focus:border-brand-accent bg-[var(--bg-input)] text-[var(--text-main)] ${
-                            assessmentInputs.email_entered && !isValidEmail(assessmentInputs.email_entered) ? 'border-red-500' : 'border-gray-border'
+                            assessmentInputs.email_entered && !isValidEmail(assessmentInputs.email_entered) ? 'border-red-500' : 
+                            emailEligibilityState.eligible === false ? 'border-red-500' :
+                            emailEligibilityState.eligible === true ? 'border-green-500' :
+                            'border-gray-border'
                           }`}
                           placeholder="Enter your business email"
                           required
                         />
+                        
+                        {/* Email validation error */}
                         {assessmentInputs.email_entered && !isValidEmail(assessmentInputs.email_entered) && (
                           <p className="mt-1 text-sm text-red-500">Please enter a valid email address</p>
+                        )}
+                        
+                        {/* Email eligibility checking */}
+                        {emailEligibilityState.checking && (
+                          <div className="mt-2 flex items-center text-sm text-gray-600">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-brand-accent mr-2"></div>
+                            Checking email eligibility...
+                          </div>
+                        )}
+                        
+                        {/* Email eligibility results */}
+                        {emailEligibilityState.eligible === false && emailEligibilityState.reason === 'member' && (
+                          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-sm text-blue-800 font-medium mb-2">
+                              {emailEligibilityState.message || "This email is already a member."}
+                            </p>
+                            {!emailEligibilityState.showingMagicLinkForm ? (
+                              <button
+                                type="button"
+                                onClick={() => setEmailEligibilityState(prev => ({ ...prev, showingMagicLinkForm: true }))}
+                                className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                              >
+                                Send Magic Link to Access Your Account
+                              </button>
+                            ) : emailEligibilityState.magicLinkSent ? (
+                              <div className="text-sm text-green-700">
+                                ✅ Magic link sent! Check your inbox and click the link to access your Member Hub.
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <p className="text-sm text-blue-700">
+                                  We'll send you a magic link to access your Member Hub.
+                                </p>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={sendMagicLink}
+                                    className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                                  >
+                                    Send Magic Link
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEmailEligibilityState(prev => ({ ...prev, showingMagicLinkForm: false }))}
+                                    className="text-sm bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                                {emailEligibilityState.magicLinkError && (
+                                  <p className="text-sm text-red-600">{emailEligibilityState.magicLinkError}</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {emailEligibilityState.eligible === false && emailEligibilityState.reason === 'recent-assessment' && (
+                          <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <p className="text-sm text-yellow-800">
+                              {emailEligibilityState.message || "You've recently completed an assessment. Please check your inbox or contact support."}
+                            </p>
+                          </div>
+                        )}
+                        
+                        {emailEligibilityState.eligible === true && (
+                          <div className="mt-2 flex items-center text-sm text-green-600">
+                            <CheckCircleIcon className="w-4 h-4 mr-2" />
+                            Email is eligible for assessment
+                          </div>
                         )}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
