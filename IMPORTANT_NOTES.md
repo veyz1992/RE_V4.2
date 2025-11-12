@@ -90,9 +90,29 @@ This is a React + TypeScript application that helps real estate contractors get 
 - **Health Check Available**: `/checkout-health` endpoint shows environment status
 - **Error Codes**: `MISSING_ENV`, `MISSING_PRICE_ID`, `ASSESSMENT_NOT_FOUND`, etc.
 - **Safe Logging**: Detailed error context without exposing secrets
+- **Smart URL Resolution**: Automatically detects correct deployment URL for redirects
 - Creates Stripe session with metadata (tier, email, assessmentId)
 - **Success redirect**: Routes to `/success/{tier-slug}` (e.g., `/success/founding-member`)
 - Returns checkout URL for redirect
+
+#### Base URL Resolution Logic
+The checkout function automatically resolves the correct base URL for success/cancel redirects using this precedence:
+
+1. `process.env.URL` - Netlify's primary deploy URL
+2. `process.env.DEPLOY_PRIME_URL` - Deploy preview URL (for branch deploys like dev3)
+3. `event.headers.origin` - Request origin header
+4. `process.env.SITE_URL` - Fallback site URL
+
+**Environment Variables Netlify Sets:**
+- `URL`: Main deploy URL (e.g., `https://dev3--site-name.netlify.app`)
+- `DEPLOY_PRIME_URL`: Deploy preview URL for branch deploys
+- `SITE_URL`: Production site URL
+- `DEPLOYMENT_CONTEXT`: Context (`production`, `deploy-preview`, `branch-deploy`)
+
+**Important:** Never hardcode domains in success/cancel URLs. The resolver ensures:
+- Branch deploys (dev3) redirect to `https://dev3--site.netlify.app/success/...`
+- Production deploys redirect to production domain automatically
+- No 404s when testing on different deployment contexts
 
 ### 2. Webhook Processing (`netlify/functions/stripe-webhook.ts`) ✅ FULLY REFACTORED
 - **Complete Event Handling**: checkout.session.completed, customer.subscription.*, invoice.payment.*, payment_method.attached

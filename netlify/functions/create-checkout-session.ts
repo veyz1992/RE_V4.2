@@ -17,6 +17,19 @@ const TIER_TO_ENV: Record<string, string> = {
   'gold': 'STRIPE_PRICE_GOLD',
 };
 
+// Helper function to resolve the correct base URL for redirects
+function resolveBaseUrl(event: any): string {
+  const raw =
+    process.env.URL ||
+    process.env.DEPLOY_PRIME_URL ||
+    (event?.headers?.origin ?? process.env.SITE_URL);
+
+  if (!raw) {
+    throw new Error("MISSING_BASE_URL");
+  }
+  return String(raw).replace(/\/+$/, "");
+}
+
 export const handler = async (event: any) => {
   try {
     if (event.httpMethod !== 'POST') {
@@ -115,6 +128,14 @@ export const handler = async (event: any) => {
 
     console.log(`Processing checkout: ${tierName} -> ${priceEnvKey} -> ${priceId}`);
 
+    // Resolve the correct base URL for this deployment context
+    const baseUrl = resolveBaseUrl(event);
+    const success_url = `${baseUrl}/success/${tierSlug}?checkout=success`;
+    const cancel_url = `${baseUrl}/results?checkout=cancelled`;
+
+    // Safe logging without exposing secrets
+    console.log('[checkout] baseUrl', { baseUrl, tierSlug });
+
     const stripe = new Stripe(secret, { apiVersion: '2024-06-20' });
 
     const session = await stripe.checkout.sessions.create({
@@ -122,8 +143,8 @@ export const handler = async (event: any) => {
       line_items: [{ price: priceId, quantity: 1 }],
       customer_email: customerEmail,
       metadata: { tier: tierName, email: customerEmail, assessmentId: assessmentId ?? '' },
-      success_url: `${process.env.URL}/success/${tierSlug}?checkout=success`,
-      cancel_url: `${process.env.URL}/results?checkout=cancelled`,
+      success_url,
+      cancel_url,
       // Optional: allow_promotion_codes: true,
     });
 
