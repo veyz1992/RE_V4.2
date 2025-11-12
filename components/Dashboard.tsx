@@ -2583,36 +2583,34 @@ const CancelSubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void; 
 };
 
 
-const MemberBilling: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
-    const { currentUser, updateUser } = useAuth();
-    const [localUser, setLocalUser] = useState(currentUser);
+const MemberBilling: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; billingData?: any; invoices?: any[]; }> = ({ showToast, billingData, invoices = [] }) => {
+    const { session } = useAuth();
     const [isPauseModalOpen, setPauseModalOpen] = useState(false);
     const [isCancelModalOpen, setCancelModalOpen] = useState(false);
 
-    useEffect(() => {
-        setLocalUser(currentUser);
-    }, [currentUser]);
-
     const handleCancelSubscription = () => {
-        if (!localUser || !localUser.billing) return;
-        const updatedUser = {
-            ...localUser,
-            billing: {
-                ...localUser.billing,
-                subscription: { ...localUser.billing.subscription, status: 'Canceled' as const }
-            }
-        };
-        setLocalUser(updatedUser);
-        updateUser(updatedUser); // Update context state
+        // TODO: Implement actual subscription cancellation via Stripe API
         setCancelModalOpen(false);
         showToast('Your subscription is scheduled for cancellation.', 'success');
     };
     
-    if (!localUser || !localUser.billing) {
+    if (!billingData) {
         return <Card><p>Billing information is not available.</p></Card>;
     }
 
-    const { subscription, paymentMethod, invoices } = localUser.billing;
+    const subscription = {
+        plan: billingData.plan_name || 'Unknown Plan',
+        status: billingData.subscription_status || 'Unknown',
+        renewalDate: billingData.next_renewal_date,
+        price: billingData.plan_price || '$0',
+    };
+
+    const paymentMethod = {
+        brand: billingData.payment_method_brand || 'Unknown',
+        last4: billingData.payment_method_last4 || '****',
+        expiry: billingData.payment_method_expiry || '',
+        cardholder: billingData.cardholder_name || session?.user?.email || 'Unknown',
+    };
 
     const statusConfig = {
         'Active': { text: 'Active', color: 'bg-success/20 text-success' },
@@ -3424,6 +3422,10 @@ const MemberDashboard: React.FC = () => {
     const [subscription, setSubscription] = useState<SupabaseSubscription | null>(null);
     const [documents, setDocuments] = useState<DashboardDocument[]>([]);
     const [recentRequests, setRecentRequests] = useState<DashboardServiceRequest[]>([]);
+    const [overviewData, setOverviewData] = useState<any>(null);
+    const [serviceRequests, setServiceRequests] = useState<any[]>([]);
+    const [billingData, setBillingData] = useState<any>(null);
+    const [invoices, setInvoices] = useState<any[]>([]);
     const [isDashboardLoading, setIsDashboardLoading] = useState(false);
     const [dashboardError, setDashboardError] = useState<string | null>(null);
 
@@ -3448,6 +3450,100 @@ const MemberDashboard: React.FC = () => {
         const mapped = rows.map(mapDocumentRow);
         setDocuments(mapped);
         return mapped;
+    }, [session?.user?.id]);
+
+    // Load overview data from v_member_overview view
+    const loadOverviewData = useCallback(async () => {
+        if (!session?.user?.id) {
+            setOverviewData(null);
+            return;
+        }
+
+        const { data, error } = await supabase
+            .from('v_member_overview')
+            .select('*')
+            .eq('profile_id', session.user.id)
+            .maybeSingle();
+
+        if (error) {
+            console.error('Failed to load overview data:', error);
+        } else {
+            setOverviewData(data);
+        }
+    }, [session?.user?.id]);
+
+    // Load service requests and activity
+    const loadServiceRequests = useCallback(async () => {
+        if (!session?.user?.id) {
+            setServiceRequests([]);
+            return;
+        }
+
+        const [requestsResult, activityResult] = await Promise.allSettled([
+            supabase
+                .from('service_requests')
+                .select('*')
+                .eq('profile_id', session.user.id)
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('service_request_activity')
+                .select('*')
+                .eq('profile_id', session.user.id)
+                .order('created_at', { ascending: false })
+        ]);
+
+        if (requestsResult.status === 'fulfilled' && !requestsResult.value.error) {
+            const requests = requestsResult.value.data || [];
+            let activity: any[] = [];
+            
+            if (activityResult.status === 'fulfilled' && !activityResult.value.error) {
+                activity = activityResult.value.data || [];
+            }
+
+            // Combine requests with their activity
+            const requestsWithActivity = requests.map(request => ({
+                ...request,
+                activity: activity.filter(act => act.request_id === request.id)
+            }));
+
+            setServiceRequests(requestsWithActivity);
+        } else {
+            console.error('Failed to load service requests:', requestsResult.status === 'fulfilled' ? requestsResult.value.error : 'Promise rejected');
+        }
+    }, [session?.user?.id]);
+
+    // Load billing data from v_member_billing view
+    const loadBillingData = useCallback(async () => {
+        if (!session?.user?.id) {
+            setBillingData(null);
+            setInvoices([]);
+            return;
+        }
+
+        const [billingResult, invoicesResult] = await Promise.allSettled([
+            supabase
+                .from('v_member_billing')
+                .select('*')
+                .eq('profile_id', session.user.id)
+                .maybeSingle(),
+            supabase
+                .from('invoices')
+                .select('*')
+                .eq('profile_id', session.user.id)
+                .order('invoice_date', { ascending: false })
+        ]);
+
+        if (billingResult.status === 'fulfilled' && !billingResult.value.error) {
+            setBillingData(billingResult.value.data);
+        } else {
+            console.error('Failed to load billing data:', billingResult.status === 'fulfilled' ? billingResult.value.error : 'Promise rejected');
+        }
+
+        if (invoicesResult.status === 'fulfilled' && !invoicesResult.value.error) {
+            setInvoices(invoicesResult.value.data || []);
+        } else {
+            console.error('Failed to load invoices:', invoicesResult.status === 'fulfilled' ? invoicesResult.value.error : 'Promise rejected');
+        }
     }, [session?.user?.id]);
 
     useEffect(() => {
@@ -3488,6 +3584,14 @@ const MemberDashboard: React.FC = () => {
 
         const fetchDashboardData = async () => {
             try {
+                // Load all dashboard data in parallel
+                await Promise.all([
+                    loadOverviewData(),
+                    loadServiceRequests(),
+                    loadBillingData(),
+                    refetchDocuments()
+                ]);
+
                 const [
                     profileResult,
                     membershipResult,
@@ -3588,7 +3692,39 @@ const MemberDashboard: React.FC = () => {
         setIsSidebarOpen(false);
     };
 
-    const overviewData = useMemo<OverviewData>(() => {
+    const computedOverviewData = useMemo<OverviewData>(() => {
+        // Use data from v_member_overview view if available, otherwise compute from individual tables
+        if (overviewData) {
+            return {
+                status: normalizeMemberStatus(overviewData.member_status),
+                verificationValidUntil: formatDate(overviewData.verification_valid_until),
+                verificationRating: overviewData.verification_rating,
+                stats: {
+                    profileViewsValue: overviewData.profile_views_value,
+                    profileViewsPeriod: overviewData.profile_views_period || 'Last 30 days',
+                    badgeClicksValue: overviewData.badge_clicks_value,
+                    badgeClicksPeriod: overviewData.badge_clicks_period || 'Last 30 days',
+                    planName: overviewData.plan_name,
+                    planPrice: overviewData.plan_price,
+                    nextRenewal: formatDate(overviewData.next_renewal)
+                },
+                benefits: {
+                    description: overviewData.benefits_description,
+                    items: parsePossibleJson<Array<{ name: string; progress?: string | null; icon?: string | null }>>(overviewData.benefits)?.map(benefit => ({
+                        name: benefit.name ?? 'Benefit',
+                        progress: benefit.progress ?? null,
+                        Icon: ensureIcon(benefit.icon ?? undefined),
+                    })) || []
+                },
+                activityLog: parsePossibleJson<Array<{ description: string; timestamp?: string | null; icon?: string | null }>>(overviewData.activity_log)?.map(activity => ({
+                    description: activity.description ?? 'Account activity',
+                    timestamp: activity.timestamp ? formatRelativeTime(activity.timestamp) : 'Recently',
+                    Icon: ensureIcon(activity.icon ?? undefined),
+                })) || []
+            };
+        }
+
+        // Fallback to computed data from individual tables
         const statusSource =
             profile?.member_status ??
             profile?.verification_status ??
@@ -3763,6 +3899,7 @@ const MemberDashboard: React.FC = () => {
             activityLog: sortedActivities,
         };
     }, [
+        overviewData,
         profile,
         membership,
         subscription,
@@ -3776,7 +3913,7 @@ const MemberDashboard: React.FC = () => {
     const renderView = () => {
         switch (activeView) {
             case 'overview':
-                return <MemberOverview data={overviewData} onNavigate={setActiveView} onNewRequest={() => setNewRequestModalOpen(true)} />;
+                return <MemberOverview data={computedOverviewData} onNavigate={setActiveView} onNewRequest={() => setNewRequestModalOpen(true)} />;
             case 'my-requests':
                 return (
                     <MyRequests
@@ -3794,7 +3931,7 @@ const MemberDashboard: React.FC = () => {
             case 'benefits':
                 return <MemberBenefits showToast={showToast} />;
             case 'billing':
-                return <MemberBilling showToast={showToast} />;
+                return <MemberBilling showToast={showToast} billingData={billingData} invoices={invoices} />;
             case 'community':
                 return <MemberCommunity onNavigate={setActiveView} />;
             case 'blueprint':

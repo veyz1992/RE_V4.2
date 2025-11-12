@@ -31,6 +31,7 @@ This is a React + TypeScript application that helps real estate contractors get 
 - **Bronze/Silver/Gold Support**: Can be "Coming Soon" without breaking checkout functionality
 - **Enhanced Logging**: Comprehensive logging in checkout and webhook functions
 - **Centralized Configuration**: `TIER_CONFIG` in `constants.ts` manages all tier mappings
+- **Member-Only Magic Links**: Landing page login restricted to existing members only
 
 ## Critical Environment Variables
 
@@ -87,10 +88,14 @@ This is a React + TypeScript application that helps real estate contractors get 
 - **Success redirect**: Routes to `/success/{tier-slug}` (e.g., `/success/founding-member`)
 - Returns checkout URL for redirect
 
-### 2. Webhook Processing (`netlify/functions/stripe-webhook.ts`)
-- Handles `checkout.session.completed` and `invoice.payment_succeeded` events
-- Updates profile with membership tier and payment status
-- Creates invoice records for audit trail
+### 2. Webhook Processing (`netlify/functions/stripe-webhook.ts`) ✅ FULLY REFACTORED
+- **Complete Event Handling**: checkout.session.completed, customer.subscription.*, invoice.payment.*, payment_method.attached
+- **Full Data Mirroring**: Profiles, memberships, subscriptions, invoices tables fully synced
+- **Idempotency Protection**: processed_events table prevents duplicate processing
+- **Environment Variables**: Uses STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET
+- **Error Handling**: Minimal logging with graceful failure recovery
+- **Invoice Management**: Automatic creation with hosted_invoice_url, pdf_url, invoice_date
+- **Payment Method Tracking**: Card details (brand, last4, expiry) stored on profiles
 - Comprehensive error handling and logging
 
 ### 3. Member Profile Updates
@@ -138,11 +143,13 @@ This is a React + TypeScript application that helps real estate contractors get 
 
 ## Authentication System ✅ DUAL LOGIN IMPLEMENTED
 
-### Member Authentication (Magic Link)
-- **Route**: `/login` (default login page)
-- **Method**: Magic link via `supabase.auth.signInWithOtp()`
-- **Flow**: Email → Magic link → Auto-login → Member dashboard
+### Member Authentication (Magic Link) ✅ WORKING
+- **Route**: `/login` (landing page email form)
+- **Method**: Magic link via `supabase.auth.signInWithOtp()` with `shouldCreateUser: false`
+- **Security**: **Members only** - restricts magic links to existing users only
+- **Flow**: Email → Magic link → Auto-login → Member dashboard (/member)
 - **Database**: Uses `public.profiles` table for member data
+- **Error Handling**: Friendly messages for non-member emails ("We couldn't find a member with that email. Please use the email you joined with.")
 
 ### Admin Authentication (Email + Password) ✅ WORKING
 - **Route**: `/admin/login` (dedicated admin login page)  
@@ -156,12 +163,14 @@ This is a React + TypeScript application that helps real estate contractors get 
 
 ### Security Implementation
 - **Separation**: Members and admins use completely separate login flows
+- **Member-Only Magic Links**: Landing page restricted to existing members (`shouldCreateUser: false`)
 - **No Password Exposure**: Admin passwords never logged or exposed
 - **Database Security**: Admin privileges verified via separate `admin_profiles` table
 - **Fixed Verification**: Query only checks `is_active=true` to avoid database enum conflicts
 - **Automatic Signout**: Failed admin verification immediately signs user out
 - **Route Protection**: `/admin/*` routes require verified admin status
 - **Access Fallback**: Unauthenticated admin routes redirect to `/admin/login`
+- **Public Signup Prevention**: Supabase Auth configured to disable new user registration
 
 ## Visual Features ✅ IMPLEMENTED
 
@@ -230,6 +239,7 @@ This is a React + TypeScript application that helps real estate contractors get 
 
 #### Authentication Issues
 - **Member Login**: Check magic link delivery and email configuration
+- **Member-Only Restriction**: Only existing users in auth.users can receive magic links
 - **Admin Login**: Verify user has active row in `admin_profiles` table
 - **Admin 400 Errors**: Ensure query doesn't filter by role (use `is_active=true` only)
 - **Route Protection**: Check `AuthContext` isAdmin state and route guards
@@ -279,6 +289,7 @@ npm run analyze:cycles           # Check for circular dependencies
 This platform is **production-ready** with:
 
 ✅ **Complete Authentication**: Dual login system (magic link + email/password)
+✅ **Member-Only Access**: Landing page restricted to existing members only
 ✅ **Payment Processing**: Founding Member tier fully operational
 ✅ **Admin Management**: Working admin dashboard with proper access controls
 ✅ **Visual Polish**: Premium animated backgrounds with mobile responsiveness
@@ -438,6 +449,7 @@ VITE_SUPABASE_ANON_KEY=public_anon_...
 
 ### Required Supabase Auth Configuration
 - **Email OTP**: Enabled in Supabase Auth settings
+- **Public Signups**: **DISABLED** - Turn OFF "Allow new users to sign up" in Auth → Providers → Email
 - **Redirect URLs**: Add `https://dev3--resonant-sprite-4fa0fe.netlify.app/auth/callback` to allowed URLs
 - **Email templates**: Configure magic link email template (optional customization)
 
