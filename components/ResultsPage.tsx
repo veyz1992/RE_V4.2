@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import PricingCard from './PricingCard';
 import FoundingMemberModal from './FoundingMemberModal';
 import { FOUNDING_MEMBER_SPOTS_REMAINING } from '../constants';
@@ -8,6 +8,8 @@ import { startCheckout } from '@/lib/checkout';
 
 const PLAN_STORAGE_KEY = 'restorationexpertise:last-plan';
 const EMAIL_STORAGE_KEY = 'restorationexpertise:last-email';
+const ASSESSMENT_ID_STORAGE_KEY = 'restorationexpertise:last-assessment-id';
+const PROFILE_ID_STORAGE_KEY = 'restorationexpertise:last-profile-id';
 
 const AnimatedScore: React.FC<{ score: number }> = ({ score }) => {
     const [displayScore, setDisplayScore] = useState(0);
@@ -172,6 +174,9 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
     const { total: score, grade, isEligibleForCertification, eligibilityReasons, opportunities } = result;
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [previewedTier, setPreviewedTier] = useState<{ name: string; features: string[] } | null>(null);
+    const [checkoutError, setCheckoutError] = useState<string | null>(null);
+    const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
+    const savedAssessmentRef = useRef<{ assessmentId: string | number; profileId: string; email: string } | null>(null);
 
     useEffect(() => {
         if (isEligibleForCertification) {
@@ -183,85 +188,164 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
     }, [isEligibleForCertification]);
 
     const beginCheckout = async () => {
+        if (isProcessingCheckout) {
+            console.debug('[Checkout] Request ignored – checkout already in progress');
+            return;
+        }
+
+        setCheckoutError(null);
+
+        const email = typeof result.emailEntered === 'string' ? result.emailEntered.trim() : '';
+        const fullName = typeof result.fullNameEntered === 'string' ? result.fullNameEntered.trim() : '';
+        const businessName = typeof result.answers?.businessName === 'string' ? result.answers.businessName.trim() : '';
+        const cityValue = typeof result.cityEntered === 'string' && result.cityEntered.trim().length > 0
+            ? result.cityEntered.trim()
+            : (typeof result.answers?.city === 'string' ? result.answers.city.trim() : '');
+        const stateValue = typeof result.state === 'string' ? result.state.trim() : '';
+
+        const missingFields: string[] = [];
+        if (!email) missingFields.push('email');
+        if (!fullName) missingFields.push('full_name');
+        if (!businessName) missingFields.push('business');
+        if (!cityValue) missingFields.push('city');
+        if (!stateValue) missingFields.push('state');
+
+        if (missingFields.length > 0) {
+            const message = `Please add your ${missingFields.join(', ')}`;
+            console.warn('[Checkout] Blocking checkout due to missing fields:', missingFields);
+            setCheckoutError(message);
+            return;
+        }
+
+        const assessmentPayload = {
+            answers: result.answers || {},
+            total_score: result.total,
+            scenario: result.isEligibleForCertification ? 'eligible' : 'not_eligible',
+            email,
+            full_name: fullName,
+            business: businessName,
+            city: cityValue,
+            state: stateValue,
+            intended_membership_tier: 'founding-member',
+            score_breakdown: {
+                operational: result.operational,
+                licensing: result.licensing,
+                feedback: result.feedback,
+                certifications: result.certifications,
+                digital: result.digital,
+                grade: result.grade,
+            },
+        };
+
+        console.debug('[Checkout] Saving assessment with payload:', assessmentPayload);
+
+        const removePlanSelection = () => {
+            if (typeof window !== 'undefined') {
+                window.localStorage.removeItem(PLAN_STORAGE_KEY);
+            }
+        };
+
         try {
-            console.debug('[Checkout] Starting checkout flow');
-            
+            setIsProcessingCheckout(true);
+
             if (typeof window !== 'undefined') {
                 window.localStorage.setItem(PLAN_STORAGE_KEY, 'Founding Member');
             }
 
-            // Step 1: Save assessment data
-            const assessmentPayload = {
-                answers: result.answers || {},
-                total_score: result.total,
-                scores: {
-                    operational: result.operational,
-                    licensing: result.licensing,
-                    feedback: result.feedback,
-                    certifications: result.certifications,
-                    digital: result.digital
-                },
-                scenario: result.isEligibleForCertification ? 'eligible' : 'not_eligible',
-                email: result.emailEntered || '',
-                full_name: result.fullNameEntered || '',
-                city: result.city || '',
-                state: result.state || '',
-                intended_membership_tier: 'founding-member'
-            };
+            let saveResponse: Response;
+            try {
+                saveResponse = await fetch('/.netlify/functions/save-assessment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(assessmentPayload),
+                });
+            } catch (networkError) {
+                console.error('[Checkout] Save assessment network error:', { error: networkError, payload: assessmentPayload });
+                removePlanSelection();
+                const errorMessage = 'Network error while saving your assessment. Please try again.';
+                setCheckoutError(errorMessage);
+                if (typeof window !== 'undefined') {
+                    window.alert(errorMessage);
+                }
+                return;
+            }
 
-            console.debug('[Checkout] Saving assessment:', assessmentPayload);
-
-            const saveResponse = await fetch('/.netlify/functions/save-assessment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(assessmentPayload)
-            });
+            const responseText = await saveResponse.text();
 
             if (!saveResponse.ok) {
-                console.error('[Checkout] Save assessment failed:', saveResponse.status);
-                alert('Could not save your answers. Please try again.');
+                console.error('[Checkout] Save assessment failed:', {
+                    status: saveResponse.status,
+                    payload: assessmentPayload,
+                    responseText,
+                });
+                removePlanSelection();
+                let errorMessage = 'Could not save your answers. Please try again.';
+                try {
+                    const parsed = JSON.parse(responseText);
+                    if (parsed?.error === 'MISSING_REQUIRED_FIELDS' && Array.isArray(parsed.missing)) {
+                        errorMessage = `Please add: ${parsed.missing.join(', ')}`;
+                    } else if (typeof parsed?.error === 'string') {
+                        errorMessage = parsed.error;
+                    }
+                } catch {
+                    // ignore json parse errors
+                }
+                setCheckoutError(errorMessage);
+                if (typeof window !== 'undefined') {
+                    window.alert(errorMessage);
+                }
                 return;
             }
 
-            const { profile_id, assessment_id, email } = await saveResponse.json();
+            const parsedSave = responseText ? JSON.parse(responseText) : {};
+            const assessmentId = parsedSave?.assessment_id;
+            const profileId = parsedSave?.profile_id;
+            const normalizedEmail = typeof parsedSave?.email === 'string' ? parsedSave.email : email;
 
-            console.debug('[Checkout] Assessment saved:', { profile_id, assessment_id, email });
+            if (!assessmentId || !profileId || !normalizedEmail) {
+                console.error('[Checkout] Save assessment response missing identifiers:', parsedSave);
+                removePlanSelection();
+                const errorMessage = 'We could not verify your saved assessment. Please try again.';
+                setCheckoutError(errorMessage);
+                if (typeof window !== 'undefined') {
+                    window.alert(errorMessage);
+                }
+                return;
+            }
 
-            // Step 2: Create checkout session
-            const checkoutPayload = {
-                profile_id,
-                assessment_id,
-                email,
-                tier: 'founding-member',
-                billing_cycle: 'one_time'
+            console.debug('[Checkout] Assessment saved:', { profileId, assessmentId, email: normalizedEmail });
+
+            savedAssessmentRef.current = {
+                assessmentId,
+                profileId,
+                email: normalizedEmail,
             };
 
-            console.debug('[Checkout] Creating checkout session:', checkoutPayload);
-
-            const checkoutResponse = await fetch('/.netlify/functions/create-checkout-session', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(checkoutPayload)
-            });
-
-            if (!checkoutResponse.ok) {
-                const errorData = await checkoutResponse.json();
-                console.error('[Checkout] Checkout session failed:', errorData);
-                alert(`Checkout failed: ${errorData.error || 'Unknown error'}`);
-                return;
-            }
-
-            const { url } = await checkoutResponse.json();
-            console.debug('[Checkout] Redirecting to Stripe:', url);
-
-            window.location.href = url;
-
-        } catch (error) {
             if (typeof window !== 'undefined') {
-                window.localStorage.removeItem(PLAN_STORAGE_KEY);
+                window.localStorage.setItem(ASSESSMENT_ID_STORAGE_KEY, String(assessmentId));
+                window.localStorage.setItem(PROFILE_ID_STORAGE_KEY, String(profileId));
+                window.localStorage.setItem(EMAIL_STORAGE_KEY, normalizedEmail);
             }
-            console.error('[Checkout] Failed to start checkout:', error);
-            alert('We were unable to start checkout. Please try again or contact support.');
+
+            await startCheckout({
+                assessmentId,
+                profileId,
+                email: normalizedEmail,
+            });
+        } catch (error) {
+            console.error('[Checkout] Unexpected error while starting checkout:', {
+                error,
+                payload: assessmentPayload,
+                savedAssessment: savedAssessmentRef.current,
+            });
+            removePlanSelection();
+            const errorMessage = 'We were unable to start checkout. Please try again or contact support.';
+            setCheckoutError(errorMessage);
+            if (typeof window !== 'undefined') {
+                window.alert(errorMessage);
+            }
+        } finally {
+            setIsProcessingCheckout(false);
         }
     };
 
@@ -317,10 +401,15 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
                                 <span className="w-px h-6 bg-white/50"></span>
                                 <span>🔒 Only {FOUNDING_MEMBER_SPOTS_REMAINING} spots remaining</span>
                             </div>
-                            <button onClick={handleClaimAndJoin} 
+                            <button onClick={handleClaimAndJoin}
                                     className="bg-white text-charcoal font-bold text-lg py-3 px-10 rounded-lg shadow-lg hover:bg-gray-200 transition-transform transform hover:scale-105">
                                 CLAIM YOUR FOUNDING MEMBER SPOT →
                             </button>
+                            {checkoutError && (
+                                <p className="mt-3 text-sm text-error" role="alert">
+                                    {checkoutError}
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>
