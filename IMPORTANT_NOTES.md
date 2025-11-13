@@ -878,3 +878,7 @@ const displayBusinessName = useMemo(() => {
 **SuccessPage sends magic link once and handles 429.**
 
 **No changes to Stripe plan/price IDs or redirects.**
+
+### 🔧 Production Fix - Server Environment Restoration - December 2024:
+
+**All functions now require SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY and price ids; SuccessPage sources data exclusively from get-success-summary; OTP is click-triggered to avoid rate limits.**
