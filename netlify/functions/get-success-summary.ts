@@ -51,9 +51,9 @@ export const handler = async (event: any) => {
       return json(200, { 
         success: false, 
         error: 'Method not allowed',
-        email: 'Pending Sync',
-        business: 'Pending Sync', 
-        name: 'Pending Sync',
+        email: null,
+        business: null,
+        name: null,
         plan: 'Founding Member'
       });
     }
@@ -67,9 +67,9 @@ export const handler = async (event: any) => {
       return json(200, { 
         success: false, 
         error: 'Missing session_id parameter',
-        email: 'Pending Sync',
-        business: 'Pending Sync', 
-        name: 'Pending Sync',
+        email: null,
+        business: null,
+        name: null,
         plan: 'Founding Member'
       });
     }
@@ -79,9 +79,9 @@ export const handler = async (event: any) => {
       return json(200, { 
         success: false, 
         error: 'Invalid session_id format',
-        email: 'Pending Sync',
-        business: 'Pending Sync', 
-        name: 'Pending Sync',
+        email: null,
+        business: null,
+        name: null,
         plan: 'Founding Member'
       });
     }
@@ -92,9 +92,9 @@ export const handler = async (event: any) => {
       return json(200, { 
         success: false, 
         error: 'Stripe configuration error',
-        email: 'Pending Sync',
-        business: 'Pending Sync', 
-        name: 'Pending Sync',
+        email: null,
+        business: null,
+        name: null,
         plan: 'Founding Member'
       });
     }
@@ -115,9 +115,9 @@ export const handler = async (event: any) => {
       return json(200, { 
         success: false, 
         error: 'Checkout session not found',
-        email: 'Pending Sync',
-        business: 'Pending Sync', 
-        name: 'Pending Sync',
+        email: null,
+        business: null,
+        name: null,
         plan: 'Founding Member'
       });
     }
@@ -127,9 +127,9 @@ export const handler = async (event: any) => {
       return json(200, { 
         success: false, 
         error: 'Session not found',
-        email: 'Pending Sync',
-        business: 'Pending Sync', 
-        name: 'Pending Sync',
+        email: null,
+        business: null,
+        name: null,
         plan: 'Founding Member'
       });
     }
@@ -170,7 +170,8 @@ export const handler = async (event: any) => {
     if (!supabase) {
       console.error('[get-success-summary] Supabase not available - using fallbacks');
       return json(200, {
-        success: true,
+        success: false,
+        error: 'Database not available',
         email: email || null,
         business: null,
         name: null,
@@ -178,70 +179,42 @@ export const handler = async (event: any) => {
       });
     }
 
-    // Query Supabase for profile data if profile_id exists
+    // Step 1: If profile_id present, fetch from profiles first
     if (profileId) {
       console.log('[get-success-summary] Querying profiles table with ID:', profileId);
       try {
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .select('company_name, full_name, email')
+          .select('full_name, company_name, email')
           .eq('id', profileId)
           .single();
 
         if (profileError) {
           console.error('[get-success-summary] Profile query error:', profileError);
         } else if (profileData) {
-          businessName = profileData.company_name;
           fullName = profileData.full_name;
-          // Use profile email if no Stripe email found
+          businessName = profileData.company_name;
           if (!email && profileData.email) {
             email = profileData.email;
           }
           console.log('[get-success-summary] Found profile data:', {
-            company_name: businessName,
             full_name: fullName,
+            company_name: businessName,
             email: profileData.email
           });
-        } else {
-          console.log('[get-success-summary] No profile data returned');
         }
       } catch (error) {
         console.error('[get-success-summary] Error querying profiles:', error);
       }
     }
 
-    // If profile_id is null but we have email, try to match by email
-    if (!profileId && email) {
-      console.log('[get-success-summary] No profile_id, attempting to match by email:', email);
-      try {
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('company_name, full_name, email')
-          .eq('email', email)
-          .single();
-
-        if (profileError) {
-          console.error('[get-success-summary] Profile email lookup error:', profileError);
-        } else if (profileData) {
-          businessName = profileData.company_name;
-          fullName = profileData.full_name;
-          console.log('[get-success-summary] Found profile by email:', {
-            company_name: businessName,
-            full_name: fullName
-          });
-        }
-      } catch (error) {
-        console.error('[get-success-summary] Error querying profiles by email:', error);
-      }
-    }
-
-    // Fallback to assessment data if needed and assessment_id exists
-    if ((!businessName || !fullName || !email) && assessmentId) {
+    // Step 2: If profiles empty OR profile_id null, fetch from assessments
+    if ((!fullName || !businessName || !email) && assessmentId) {
       console.log('[get-success-summary] Querying assessments table with ID:', assessmentId);
       try {
         const { data: assessmentData, error: assessmentError } = await supabase
           .from('assessments')
-          .select('answers, full_name_entered, email_entered, business_name, business_description, profile_id')
+          .select('full_name_entered, email_entered, answers')
           .eq('id', assessmentId)
           .single();
 
@@ -250,91 +223,90 @@ export const handler = async (event: any) => {
         } else if (assessmentData) {
           console.log('[get-success-summary] Raw assessment data:', assessmentData);
           
-          // Try multiple possible business name sources
-          if (!businessName) {
-            // First try direct business_name field
-            businessName = assessmentData.business_name;
-            
-            // Then try answers object
-            if (!businessName) {
-              const answers = assessmentData.answers || {};
-              businessName = answers.businessName || answers.business_name || answers.companyName || answers.company_name;
-            }
-            
-            if (businessName) {
-              console.log('[get-success-summary] Got business name from assessment:', businessName);
-            }
-          }
-          
+          // Extract data from assessment
           if (!fullName && assessmentData.full_name_entered) {
             fullName = assessmentData.full_name_entered;
-            console.log('[get-success-summary] Got full name from assessment:', fullName);
+            console.log('[get-success-summary] Got name from assessment.full_name_entered:', fullName);
           }
           
           if (!email && assessmentData.email_entered) {
             email = assessmentData.email_entered;
-            console.log('[get-success-summary] Got email from assessment:', email);
+            console.log('[get-success-summary] Got email from assessment.email_entered:', email);
           }
           
-          // If we still don't have a profile and the assessment has a profile_id, try to get it
-          if (assessmentData.profile_id && !profileId) {
-            console.log('[get-success-summary] Found profile_id in assessment, trying to fetch profile:', assessmentData.profile_id);
-            try {
-              const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('company_name, full_name, email')
-                .eq('id', assessmentData.profile_id)
-                .single();
-
-              if (!profileError && profileData) {
-                if (!businessName && profileData.company_name) {
-                  businessName = profileData.company_name;
-                  console.log('[get-success-summary] Got business name from linked profile:', businessName);
-                }
-                if (!fullName && profileData.full_name) {
-                  fullName = profileData.full_name;
-                  console.log('[get-success-summary] Got full name from linked profile:', fullName);
-                }
-                if (!email && profileData.email) {
-                  email = profileData.email;
-                  console.log('[get-success-summary] Got email from linked profile:', email);
-                }
-              }
-            } catch (profileFetchError) {
-              console.error('[get-success-summary] Error fetching linked profile:', profileFetchError);
+          // Extract business from answers.businessName
+          if (!businessName) {
+            const answers = assessmentData.answers || {};
+            businessName = answers?.businessName ?? null;
+            if (businessName) {
+              console.log('[get-success-summary] Got business from assessment.answers.businessName:', businessName);
             }
           }
           
-          console.log('[get-success-summary] Final assessment extraction:', {
-            businessName,
+          console.log('[get-success-summary] Assessment data extracted:', {
             fullName,
+            businessName,
             email,
-            rawAnswers: assessmentData.answers,
-            business_name_field: assessmentData.business_name
+            rawAnswers: assessmentData.answers
           });
-        } else {
-          console.log('[get-success-summary] No assessment data returned');
         }
       } catch (error) {
         console.error('[get-success-summary] Error querying assessments:', error);
       }
     }
 
-    // Create the clean JSON response - return null for missing data, not fallback strings
+    // Step 3: If assessment_id missing, fallback by email
+    if ((!fullName || !businessName) && !assessmentId && email) {
+      console.log('[get-success-summary] No assessment_id, trying email fallback:', email);
+      try {
+        const { data: assessmentData, error: assessmentError } = await supabase
+          .from('assessments')
+          .select('full_name_entered, email_entered, answers')
+          .eq('email_entered', email)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (assessmentError) {
+          console.error('[get-success-summary] Email fallback assessment query error:', assessmentError);
+        } else if (assessmentData) {
+          if (!fullName && assessmentData.full_name_entered) {
+            fullName = assessmentData.full_name_entered;
+            console.log('[get-success-summary] Got name from email fallback assessment:', fullName);
+          }
+          
+          if (!businessName) {
+            const answers = assessmentData.answers || {};
+            businessName = answers?.businessName ?? null;
+            if (businessName) {
+              console.log('[get-success-summary] Got business from email fallback assessment:', businessName);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[get-success-summary] Error in email fallback query:', error);
+      }
+    }
+
+    // Compose stable response as specified
+    const finalEmail = email || emailEntered || null;
+    const finalName = fullName || null;
+    const finalBusiness = businessName || null;
+    const finalPlan = plan || 'Founding Member';
+
     const response = {
       success: true,
-      email: email || null,
-      business: businessName || null,
-      name: fullName || null,
-      plan: plan
+      email: finalEmail,
+      business: finalBusiness,
+      name: finalName,
+      plan: finalPlan
     };
 
     console.log('[get-success-summary] ===== FINAL RESPONSE =====');
-    console.log('[get-success-summary] email:', email);
-    console.log('[get-success-summary] business:', businessName);
-    console.log('[get-success-summary] name:', fullName);
-    console.log('[get-success-summary] plan:', plan);
-    console.log('[get-success-summary] Final response object:', response);
+    console.log('[get-success-summary] email sources: profiles.email =', null, '| assessments.email_entered =', email, '| metadata.email_entered =', emailEntered);
+    console.log('[get-success-summary] name sources: profiles.full_name =', (profileId ? fullName : null), '| assessments.full_name_entered =', fullName);
+    console.log('[get-success-summary] business sources: profiles.company_name =', (profileId ? businessName : null), '| assessments.answers.businessName =', businessName);
+    console.log('[get-success-summary] Final values:', response);
     console.log('[get-success-summary] ===========================');
 
     return json(200, response);
