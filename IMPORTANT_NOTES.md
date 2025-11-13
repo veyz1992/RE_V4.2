@@ -864,3 +864,5 @@ const displayBusinessName = useMemo(() => {
 **Refined get-success-summary to join Stripe metadata with Supabase (profiles/assessments) and return email/name/business; ensured assessment step persists these fields so success page can render real data.**
 
 **get-success-summary now falls back to assessments.full_name_entered and answers.businessName when profiles isn't available prior to first login.**
+
+**get-success-summary now uses service role, reads assessments.full_name_entered and answers.businessName as fallback when profiles isn't created yet.**
