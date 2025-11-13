@@ -1,20 +1,5 @@
-import { supabaseServer } from './_utils/supabase.js';
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-// Validate required environment variables
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  console.error('Missing Supabase environment variables');
-}
-
-// Initialize Supabase admin client
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+import { assertEnv } from './_utils/env.js';
+import { serverClient } from '../lib/supabaseServer.js';
 
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
@@ -42,6 +27,18 @@ type HandlerResult = Promise<{
 }>;
 
 export const handler = async (event: Event, _context: Context) => {
+  try {
+    // Assert required environment variables
+    assertEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
+  } catch (envError) {
+    console.error('[check-email-eligibility] step:env_validation', {
+      error: envError.message,
+      context: process.env.CONTEXT,
+      deployUrl: process.env.DEPLOY_PRIME_URL
+    });
+    return jsonResponse(500, { success: false, error: `Missing server configuration: ${envError.message}` });
+  }
+
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return jsonResponse(200, { ok: true });
@@ -82,11 +79,11 @@ export const handler = async (event: Event, _context: Context) => {
 
   try {
     // Step 1: Check if user exists in auth.users
-    const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+    const { data: existingUsers, error: listError } = await serverClient.auth.admin.listUsers();
     
     if (listError) {
-      console.error('Error listing users:', listError);
-      return jsonResponse(500, { error: 'Failed to check user status' });
+      console.error('[check-email-eligibility] step:list_users_error', { error: listError });
+      return jsonResponse(500, { success: false, error: 'db' });
     }
 
     const existingUser = existingUsers.users.find((user: any) => 
@@ -95,10 +92,10 @@ export const handler = async (event: Event, _context: Context) => {
 
     if (existingUser) {
       const userId = existingUser.id;
-      console.log(`Found existing user: ${userId}`);
+      console.log('[check-email-eligibility] step:user_found', { userId });
 
       // Step 2: Check for active subscription
-      const { data: subscription, error: subError } = await supabaseAdmin
+      const { data: subscription, error: subError } = await serverClient
         .from('subscriptions')
         .select('status, stripe_subscription_id')
         .eq('profile_id', userId)
@@ -106,12 +103,16 @@ export const handler = async (event: Event, _context: Context) => {
         .maybeSingle();
 
       if (subError) {
-        console.error('Error checking subscription:', subError);
-        return jsonResponse(500, { error: 'Failed to check subscription status' });
+        console.error('[check-email-eligibility] step:subscription_check_error', { error: subError });
+        return jsonResponse(500, { success: false, error: 'db' });
       }
 
       if (subscription) {
-        console.log(`User ${userId} has active subscription: ${subscription.stripe_subscription_id}`);
+        console.log('[check-email-eligibility] step:active_subscription', { 
+          userId, 
+          subscriptionId: subscription.stripe_subscription_id,
+          context: process.env.CONTEXT
+        });
         return jsonResponse(200, { 
           eligible: false, 
           reason: 'member',
@@ -119,14 +120,13 @@ export const handler = async (event: Event, _context: Context) => {
         });
       }
 
-      // User exists but no active subscription - they can take assessment again
-      console.log(`User ${userId} exists but no active subscription found`);
+      console.log('[check-email-eligibility] step:user_no_subscription', { userId });
     }
 
     // Step 3: Check for recent assessment (within 30 days)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     
-    const { data: recentAssessment, error: assessmentError } = await supabaseAdmin
+    const { data: recentAssessment, error: assessmentError } = await serverClient
       .from('assessments')
       .select('id, created_at')
       .eq('email_entered', normalizedEmail)
@@ -136,12 +136,16 @@ export const handler = async (event: Event, _context: Context) => {
       .maybeSingle();
 
     if (assessmentError) {
-      console.error('Error checking recent assessments:', assessmentError);
+      console.error('[check-email-eligibility] step:assessment_check_error', { error: assessmentError });
       // Don't fail the request for this - just proceed without this check
     }
 
     if (recentAssessment) {
-      console.log(`Found recent assessment for ${normalizedEmail}: ${recentAssessment.id} (${recentAssessment.created_at})`);
+      console.log('[check-email-eligibility] step:recent_assessment', { 
+        assessmentId: recentAssessment.id,
+        createdAt: recentAssessment.created_at,
+        context: process.env.CONTEXT
+      });
       return jsonResponse(200, { 
         eligible: false, 
         reason: 'recent-assessment',
@@ -151,17 +155,23 @@ export const handler = async (event: Event, _context: Context) => {
     }
 
     // All checks passed - user is eligible
-    console.log(`Email ${normalizedEmail} is eligible for new assessment`);
+    console.log('[check-email-eligibility] step:eligible', { 
+      email: normalizedEmail,
+      context: process.env.CONTEXT
+    });
     return jsonResponse(200, { 
       eligible: true,
       message: 'Email is eligible for assessment'
     });
 
   } catch (error) {
-    console.error('Error in email eligibility check:', error);
+    console.error('[check-email-eligibility] step:unhandled_error', { 
+      error: error,
+      context: process.env.CONTEXT
+    });
     return jsonResponse(500, { 
-      error: 'Internal server error during eligibility check',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      success: false,
+      error: 'db'
     });
   }
 };

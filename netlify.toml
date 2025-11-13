@@ -2,6 +2,10 @@
   publish = "dist"
   command = "npm run build"
 
+[functions]
+  node_bundler = "esbuild"
+  directory = "netlify/functions"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

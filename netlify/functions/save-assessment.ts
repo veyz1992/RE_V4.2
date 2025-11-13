@@ -1,4 +1,5 @@
-import { supabaseServer } from './_utils/supabase.js';
+import { assertEnv } from './_utils/env.js';
+import { serverClient } from '../lib/supabaseServer.js';
 
 // Validation schemas
 const US_STATES = [
@@ -141,10 +142,16 @@ function json(statusCode: number, data: any) {
 
 export const handler = async (event: any) => {
   try {
-    // Debug probe
-    if (event.httpMethod === 'GET' && event.queryStringParameters?.debug === '1') {
-      const baseUrl = resolveBaseUrl(event);
-      return json(200, { baseUrl });
+    // Assert required environment variables
+    try {
+      assertEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
+    } catch (envError) {
+      console.error('[save-assessment] step:env_validation', { 
+        error: envError.message,
+        context: process.env.CONTEXT,
+        deployUrl: process.env.DEPLOY_PRIME_URL
+      });
+      return json(500, { success: false, error: `Missing server configuration: ${envError.message}` });
     }
 
     // CORS preflight
@@ -170,179 +177,150 @@ export const handler = async (event: any) => {
       return json(400, { error: 'VALIDATION_ERROR', details: validationErrors });
     }
 
-    const { assessmentInputs, answers, scores, planSlug = 'founding-member', startCheckout } = payload;
+    const { assessmentInputs, answers, scores, planSlug = 'founding-member' } = payload;
 
     // Normalize data
     const normalizedEmail = assessmentInputs.email_entered.toLowerCase().trim();
     const normalizedName = assessmentInputs.full_name_entered.trim();
     const normalizedCity = assessmentInputs.city.trim();
+    const companyName = answers.businessName?.trim() || null;
 
-    // Extract services array from answers.services boolean object
-    const servicesArray = Object.entries(answers.services || {})
-      .filter(([_, value]) => value === true)
-      .map(([key, _]) => key);
+    console.log('[save-assessment] step:upsert_profile', { 
+      email: normalizedEmail, 
+      context: process.env.CONTEXT 
+    });
 
-    // 1. Upsert profile by email
-    const profileData = {
-      email: normalizedEmail,
-      full_name: normalizedName,
-      company_name: answers.businessName?.trim() || null,
-      state: assessmentInputs.state,
-      city: normalizedCity,
-      years_in_business: answers.yearsInBusiness || null,
-      services: servicesArray.length > 0 ? servicesArray : null,
-      // Add missing Step 1 fields
-      business_description: answers.businessDescription?.trim() || null,
-      primary_service_city: answers.city?.trim() || null
-    };
-
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', normalizedEmail)
-      .single();
-
+    // 1. Upsert profile using email_entered
     let profileId;
-    if (existingProfile) {
-      // Update existing profile
-      const { data: updatedProfile, error: updateError } = await supabase
+    try {
+      // Check if profile exists
+      const { data: existingProfile, error: lookupError } = await serverClient
         .from('profiles')
-        .update(profileData)
+        .select('id')
         .eq('email', normalizedEmail)
-        .select('id')
-        .single();
+        .maybeSingle();
 
-      if (updateError) {
-        console.error('Profile update error:', updateError);
-        return json(500, { error: 'PROFILE_UPDATE_FAILED', details: updateError.message });
+      if (lookupError) {
+        console.error('[save-assessment] step:profile_lookup', { error: lookupError });
+        return json(500, { success: false, error: 'db' });
       }
-      profileId = updatedProfile.id;
-    } else {
-      // Insert new profile
-      const { data: newProfile, error: insertError } = await supabase
-        .from('profiles')
-        .insert(profileData)
-        .select('id')
-        .single();
 
-      if (insertError) {
-        console.error('Profile insert error:', insertError);
-        return json(500, { error: 'PROFILE_INSERT_FAILED', details: insertError.message });
+      if (existingProfile) {
+        // Update existing profile
+        const { data: updatedProfile, error: updateError } = await serverClient
+          .from('profiles')
+          .update({
+            full_name: normalizedName,
+            company_name: companyName,
+            city: normalizedCity,
+            state: assessmentInputs.state
+          })
+          .eq('email', normalizedEmail)
+          .select('id')
+          .single();
+
+        if (updateError) {
+          console.error('[save-assessment] step:profile_update', { error: updateError });
+          return json(500, { success: false, error: 'db' });
+        }
+        profileId = updatedProfile.id;
+      } else {
+        // Create new auth user via service role
+        const { data: authUser, error: authError } = await serverClient.auth.admin.createUser({
+          email: normalizedEmail,
+          email_confirm: true
+        });
+
+        if (authError) {
+          console.error('[save-assessment] step:auth_user_creation', { error: authError });
+          return json(500, { success: false, error: 'db' });
+        }
+
+        // Insert new profile with auth user id
+        const { data: newProfile, error: insertError } = await serverClient
+          .from('profiles')
+          .insert({
+            id: authUser.user.id,
+            email: normalizedEmail,
+            full_name: normalizedName,
+            company_name: companyName,
+            city: normalizedCity,
+            state: assessmentInputs.state
+          })
+          .select('id')
+          .single();
+
+        if (insertError) {
+          console.error('[save-assessment] step:profile_creation', { error: insertError });
+          return json(500, { success: false, error: 'db' });
+        }
+        profileId = newProfile.id;
       }
-      profileId = newProfile.id;
+
+      console.log('[save-assessment] step:profile_success', { profileId });
+
+    } catch (profileError) {
+      console.error('[save-assessment] step:profile_error', { error: profileError });
+      return json(500, { success: false, error: 'db' });
     }
 
     // 2. Insert assessment
-    const assessmentData = {
-      profile_id: profileId,
-      email_entered: normalizedEmail,
-      full_name_entered: normalizedName,
-      state: assessmentInputs.state,
-      city: normalizedCity,
-      answers: answers, // Full JSONB snapshot
-      operational_score: scores.operational,
-      licensing_score: scores.licensing,
-      feedback_score: scores.feedback,
-      certifications_score: scores.certifications,
-      digital_score: scores.digital,
-      total_score: scores.total,
-      pci_rating: scores.grade,
-      scenario: scores.isEligibleForCertification ? 'eligible' : 'not_eligible',
-      eligibility_reasons: scores.eligibilityReasons,
-      opportunities: scores.opportunities,
-      // Complete Step 1 field mapping
-      business_name: answers.businessName?.trim() || null,
-      business_description: answers.businessDescription?.trim() || null,
-      primary_service_city: answers.city?.trim() || null,
-      years_in_business: answers.yearsInBusiness || null,
-      services_offered: servicesArray.length > 0 ? servicesArray : null
-    };
+    try {
+      const assessmentData = {
+        profile_id: profileId,
+        email_entered: normalizedEmail,
+        full_name_entered: normalizedName,
+        city: normalizedCity,
+        state: assessmentInputs.state,
+        answers: answers,
+        scores: {
+          operational: scores.operational,
+          licensing: scores.licensing,
+          feedback: scores.feedback,
+          certifications: scores.certifications,
+          digital: scores.digital,
+          total: scores.total,
+          grade: scores.grade,
+          isEligibleForCertification: scores.isEligibleForCertification,
+          eligibilityReasons: scores.eligibilityReasons,
+          opportunities: scores.opportunities
+        },
+        intended_membership_tier: planSlug
+      };
 
-    const { data: assessment, error: assessmentError } = await supabase
-      .from('assessments')
-      .insert(assessmentData)
-      .select('id')
-      .single();
+      const { data: assessment, error: assessmentError } = await serverClient
+        .from('assessments')
+        .insert(assessmentData)
+        .select('id')
+        .single();
 
-    if (assessmentError) {
-      console.error('Assessment insert error:', assessmentError);
-      return json(500, { error: 'ASSESSMENT_INSERT_FAILED', details: assessmentError.message });
-    }
-
-    console.log('[save-assessment] Successfully saved:', { profileId, assessmentId: assessment.id });
-
-    // 3. Optional Stripe checkout creation
-    if (startCheckout) {
-      try {
-        const baseUrl = resolveBaseUrl(event);
-        
-        // Call create-checkout-session function
-        const checkoutPayload = {
-          intendedTier: planSlug,
-          email: normalizedEmail,
-          assessmentId: assessment.id,
-          profileId: profileId
-        };
-
-        // Import Stripe logic from create-checkout-session
-        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-        
-        // Get price ID based on planSlug
-        const priceIdMap = {
-          'founding-member': process.env.STRIPE_PRICE_FOUNDING_MEMBER,
-          'bronze': process.env.STRIPE_PRICE_BRONZE,
-          'silver': process.env.STRIPE_PRICE_SILVER,
-          'gold': process.env.STRIPE_PRICE_GOLD
-        };
-
-        const priceId = priceIdMap[planSlug as keyof typeof priceIdMap];
-        if (!priceId) {
-          return json(400, { error: 'INVALID_PLAN_SLUG' });
-        }
-
-        const success_url = `${baseUrl}/success/${planSlug}?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
-        const cancel_url = `${baseUrl}/results?checkout=cancelled`;
-
-        console.log('[save-assessment] Creating Stripe session:', { baseUrl, success_url, cancel_url });
-
-        const session = await stripe.checkout.sessions.create({
-          payment_method_types: ['card'],
-          line_items: [{
-            price: priceId,
-            quantity: 1,
-          }],
-          mode: 'subscription',
-          success_url,
-          cancel_url,
-          customer_email: normalizedEmail,
-          metadata: {
-            profile_id: profileId,
-            assessment_id: assessment.id,
-            email_entered: normalizedEmail,
-            plan: planSlug
-          }
-        });
-
-        return json(200, {
-          url: session.url,
-          profile_id: profileId,
-          assessment_id: assessment.id
-        });
-
-      } catch (stripeError) {
-        console.error('Stripe checkout creation failed:', stripeError);
-        return json(500, { error: 'STRIPE_CHECKOUT_FAILED', details: stripeError.message });
+      if (assessmentError) {
+        console.error('[save-assessment] step:assessment_creation', { error: assessmentError });
+        return json(500, { success: false, error: 'db' });
       }
-    }
 
-    // Return success without checkout
-    return json(200, {
-      profile_id: profileId,
-      assessment_id: assessment.id
-    });
+      console.log('[save-assessment] step:assessment_success', { 
+        assessmentId: assessment.id,
+        profileId,
+        context: process.env.CONTEXT 
+      });
+
+      return json(200, {
+        success: true,
+        assessment_id: assessment.id,
+        profile_id: profileId
+      });
+
+    } catch (assessmentError) {
+      console.error('[save-assessment] step:assessment_error', { error: assessmentError });
+      return json(500, { success: false, error: 'db' });
+    }
 
   } catch (error) {
-    console.error('Save assessment error:', error);
-    return json(500, { error: 'INTERNAL_SERVER_ERROR' });
+    console.error('[save-assessment] step:unhandled_error', { 
+      error: error,
+      context: process.env.CONTEXT 
+    });
+    return json(500, { success: false, error: 'db' });
   }
 };

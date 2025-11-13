@@ -5,7 +5,30 @@ export interface ServerEnv {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   STRIPE_SECRET_KEY: string;
+  STRIPE_WEBHOOK_SECRET: string;
   PRICE_FOUNDING_MEMBER: string;
+  SITE_BASE_URL: string;
+}
+
+// Assert that required environment keys are present
+export function assertEnv(keys: string[]): void {
+  const missing: string[] = [];
+  
+  for (const key of keys) {
+    const value = process.env[key];
+    if (!value || value.trim().length === 0) {
+      missing.push(key);
+    }
+  }
+
+  if (missing.length > 0) {
+    const message = `Missing server configuration: ${missing.join(', ')}`;
+    console.error(`[assertEnv] ${message}`, {
+      context: process.env.CONTEXT,
+      deployUrl: process.env.DEPLOY_PRIME_URL
+    });
+    throw new Error(message);
+  }
 }
 
 function validateEnv(): ServerEnv {
@@ -13,7 +36,9 @@ function validateEnv(): ServerEnv {
     'SUPABASE_URL',
     'SUPABASE_SERVICE_ROLE_KEY', 
     'STRIPE_SECRET_KEY',
-    'PRICE_FOUNDING_MEMBER'
+    'STRIPE_WEBHOOK_SECRET',
+    'PRICE_FOUNDING_MEMBER',
+    'SITE_BASE_URL'
   ] as const;
 
   const missing: string[] = [];
@@ -43,5 +68,7 @@ export const serverEnv = validateEnv();
 console.log('[env] Server environment validated:', {
   hasSupabase: !!serverEnv.SUPABASE_URL,
   hasStripe: !!serverEnv.STRIPE_SECRET_KEY,
-  hasPricing: !!serverEnv.PRICE_FOUNDING_MEMBER
+  hasWebhook: !!serverEnv.STRIPE_WEBHOOK_SECRET,
+  hasPricing: !!serverEnv.PRICE_FOUNDING_MEMBER,
+  hasSiteUrl: !!serverEnv.SITE_BASE_URL
 });

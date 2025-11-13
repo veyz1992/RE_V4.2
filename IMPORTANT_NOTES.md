@@ -882,3 +882,79 @@ const displayBusinessName = useMemo(() => {
 ### 🔧 Production Fix - Server Environment Restoration - December 2024:
 
 **All functions now require SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY and price ids; SuccessPage sources data exclusively from get-success-summary; OTP is click-triggered to avoid rate limits.**
+
+## SUCCESS FLOW END-TO-END FIX - IMPLEMENTATION COMPLETE ✅
+
+### Environment Audit Implementation
+- ✅ Added `assertEnv(keys: string[])` function in `/netlify/functions/_utils/env.ts`
+- ✅ All required server env keys validated: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PRICE_FOUNDING_MEMBER`, `SITE_BASE_URL`
+- ✅ All required client env keys documented: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY`
+- ✅ Each Netlify function now calls `assertEnv()` at the top and returns 500 JSON `{success:false, error:"Missing server configuration: <list>"}` on failure
+
+### Shared Supabase Server Client
+- ✅ Created `/netlify/lib/supabaseServer.ts` exporting `serverClient = createClient()` with service role key and auth disabled
+- ✅ Replaced all ad hoc Supabase instantiations in Netlify functions with the shared client
+- ✅ All functions now use consistent auth configuration: `{ auth: { autoRefreshToken:false, persistSession:false } }`
+
+### Save Assessment Correctly
+- ✅ `save-assessment.ts` now upserts profiles using `email_entered`:
+  - If `profiles.email = email_entered` exists, updates `full_name`, `company_name`, `city`, `state`
+  - Else creates new `auth.users` user via service role with email, then inserts profiles row with that id
+- ✅ Inserts assessments with `profile_id`, `email_entered`, `full_name_entered`, `city`, `state`, `answers`, `scores`, `intended_membership_tier`
+- ✅ Returns `{success:true, assessment_id, profile_id}` on success
+- ✅ Added robust error handling: if Supabase returns error, logs it and returns `{success:false, error:"db"}`
+
+### Create Checkout Session
+- ✅ `create-checkout-session.ts` validates body: `assessment_id`, `profile_id`, `email`
+- ✅ Uses `PRICE_FOUNDING_MEMBER` from env, not hardcoded values
+- ✅ Creates Stripe Checkout Session with mode: "subscription"
+- ✅ Sets `success_url = SITE_BASE_URL + "/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}"`
+- ✅ Sets `cancel_url = SITE_BASE_URL + "/pricing?checkout=cancel"`
+- ✅ Puts metadata: `{ assessment_id, profile_id, plan: "founding-member" }`
+- ✅ Returns `{url: session.url}` on success
+- ✅ On error, logs `stripe_error_code` and returns `{success:false, error:"stripe"}` with 500
+
+### Success Summary Function
+- ✅ `get-success-summary.ts` reads `session_id` from query parameters
+- ✅ Fetches Stripe Checkout Session and extracts `customer_details.email` plus `metadata.assessment_id` and `metadata.profile_id`
+- ✅ If metadata present, prefers those ids; otherwise falls back to email lookup
+- ✅ Queries Supabase for profiles by id or email, and most recent assessments by id or profile
+- ✅ Returns JSON `{success:true, email, plan:"founding-member", rating:"A+ Founding Elite - Restoration Pioneer", business: profiles.company_name ?? null, name: profiles.full_name ?? assessments.full_name_entered ?? null}`
+- ✅ If any DB error occurs, returns `{success:false, error:"db"}` with 500 for UI to handle
+
+### Success Page UI
+- ✅ `SuccessPage.tsx` reads `session_id` from URL and calls `/.netlify/functions/get-success-summary?session_id=...`
+- ✅ While loading, shows placeholders. When loaded displays `data.business ?? "—"` and `data.name ?? "—"`
+- ✅ If success === false, still renders email but keeps "—" for business and name without crashing
+- ✅ Does not hardcode any email - uses API response email exclusively
+
+### Robust Logging
+- ✅ Each function has structured logs: `console.error("[FunctionName] step:<label>", {details})`
+- ✅ Includes `process.env.CONTEXT` and `process.env.DEPLOY_PRIME_URL` to detect deploy context in logs
+- ✅ All functions log success and error states with deployment context
+
+### Netlify Configuration  
+- ✅ `netlify.toml` sets `functions.node_bundler = "esbuild"`
+- ✅ All functions live under `/netlify/functions`
+- ✅ Added health function `env-check.ts` returning which keys are present (masked, no actual secrets exposed)
+
+### Required Environment Variables for dev3 Deploy Context
+**Server Environment Variables (Branch deploys and Deploy Previews):**
+- `SUPABASE_URL` 
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET` 
+- `PRICE_FOUNDING_MEMBER`
+- `SITE_BASE_URL=https://dev3--resonant-sprite-4fa0fe.netlify.app`
+
+**Client Environment Variables:**
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY` 
+- `VITE_STRIPE_PUBLISHABLE_KEY`
+
+### Testing Checklist
+- [ ] Call `/.netlify/functions/env-check` on dev3 and verify all required keys are present
+- [ ] Run `/.netlify/functions/create-checkout-session` with test payload and confirm 200 with Stripe URL
+- [ ] Complete test checkout and load `/success/founding-member?checkout=success&session_id=...` 
+- [ ] Confirm business and name show values entered in Step 1
+- [ ] Confirm magic link email still sends

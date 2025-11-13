@@ -1,6 +1,6 @@
 // netlify/functions/create-checkout-session.ts
 import Stripe from 'stripe';
-import { serverEnv } from './_utils/env.js';
+import { assertEnv, serverEnv } from './_utils/env.js';
 
 const json = (status: number, body: unknown) => ({
   statusCode: status,
@@ -46,16 +46,16 @@ function resolveBaseUrl(event: any): string {
 
 export const handler = async (event: any) => {
   try {
-    // Validate required environment variables at the top
+    // Assert required environment variables
     try {
-      // Import validates envs, will throw if missing
-      const envCheck = serverEnv;
+      assertEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'STRIPE_SECRET_KEY', 'PRICE_FOUNDING_MEMBER', 'SITE_BASE_URL']);
     } catch (envError) {
-      console.error('[create-checkout-session] Environment validation failed:', envError);
-      return json(400, { 
-        error: 'CONFIG_ERROR', 
-        missing: ['Required environment variables not configured']
+      console.error('[create-checkout-session] step:env_validation', {
+        error: envError.message,
+        context: process.env.CONTEXT,
+        deployUrl: process.env.DEPLOY_PRIME_URL
       });
+      return json(500, { success: false, error: `Missing server configuration: ${envError.message}` });
     }
 
     // Debug mode - GET request with debug=1 query parameter
@@ -80,110 +80,74 @@ export const handler = async (event: any) => {
       return json(400, { error: 'INVALID_JSON', message: 'Request body must be valid JSON' });
     }
 
-    // Support both legacy (intendedTier) and new (tier) parameter names
+    // Validate body: assessment_id, profile_id, email
     const { 
-      tier, 
-      intendedTier, 
-      email, 
-      assessmentId, 
-      mode = 'subscription' 
+      assessment_id,
+      assessmentId,
+      profile_id,
+      profileId,
+      email
     } = requestBody;
 
-    const tierName = tier || intendedTier;
-    
-    if (!tierName) {
-      return json(400, { error: 'MISSING_TIER', details: { tier, intendedTier } });
-    }
+    const finalAssessmentId = assessment_id || assessmentId;
+    const finalProfileId = profile_id || profileId;
 
-    // Use validated environment from serverEnv
-    const secret = serverEnv.STRIPE_SECRET_KEY;
-
-    // Get email from assessment if not provided directly
-    let customerEmail = email;
-    if (!customerEmail && assessmentId) {
-      try {
-        const { supabaseServer } = await import('./_utils/supabase.js');
-        
-        const { data: assessment, error } = await supabaseServer
-          .from('assessments')
-          .select('email_entered')
-          .eq('id', assessmentId)
-          .maybeSingle();
-          
-        if (error) {
-          console.error('Assessment lookup error:', error);
-          return json(400, { error: 'ASSESSMENT_LOOKUP_FAILED', assessmentId });
-        }
-
-        if (!assessment?.email_entered) {
-          return json(400, { error: 'ASSESSMENT_NOT_FOUND', assessmentId });
-        }
-
-        customerEmail = assessment.email_entered;
-        console.log(`Email from assessment ${assessmentId}: ${customerEmail}`);
-      } catch (supabaseError) {
-        console.error('Supabase connection error:', supabaseError);
-        return json(500, { error: 'DATABASE_CONNECTION_FAILED' });
-      }
-    }
-
-    if (!customerEmail) {
-      return json(400, { error: 'MISSING_EMAIL', message: 'Email required either directly or via assessmentId' });
-    }
-
-    // Convert tier name to env key format
-    const tierSlug = tierName.toLowerCase().replace(/\s+/g, '-');
-    const priceEnvKey = TIER_TO_ENV[tierSlug];
-    const priceId = priceEnvKey === 'PRICE_FOUNDING_MEMBER' ? serverEnv.PRICE_FOUNDING_MEMBER : undefined;
-
-    if (!priceId) {
-      console.error('Missing price ID for tier:', tierName, 'slug:', tierSlug, 'envKey:', priceEnvKey);
-      return json(400, { 
-        error: 'CHECKOUT_CREATE_FAILED', 
-        detail: `Invalid tier: ${tierName}`
+    if (!finalAssessmentId || !finalProfileId || !email) {
+      console.error('[create-checkout-session] step:validation_failed', {
+        hasAssessmentId: !!finalAssessmentId,
+        hasProfileId: !!finalProfileId,
+        hasEmail: !!email,
+        context: process.env.CONTEXT
       });
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS', details: 'assessment_id, profile_id, and email are required' });
     }
 
-    console.log(`Processing checkout: ${tierName} -> ${priceEnvKey} -> ${priceId}`);
+    // Use PRICE_FOUNDING_MEMBER from env, not hardcoded
+    const priceId = serverEnv.PRICE_FOUNDING_MEMBER;
 
-    // Resolve the correct base URL for this deployment context
-    const baseUrl = resolveBaseUrl(event);
-    const success_url = `${baseUrl}/success/${tierSlug}?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
-    const cancel_url = `${baseUrl}/results?checkout=cancelled`;
+    console.log('[create-checkout-session] step:checkout_creation', {
+      assessmentId: finalAssessmentId,
+      profileId: finalProfileId,
+      email,
+      context: process.env.CONTEXT
+    });
 
-    // Safe logging without exposing secrets
-    console.log('[checkout] baseUrl', { baseUrl, tierSlug });
+    // Create Stripe Checkout Session
+    const success_url = `${serverEnv.SITE_BASE_URL}/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
+    const cancel_url = `${serverEnv.SITE_BASE_URL}/pricing?checkout=cancel`;
 
-    const stripe = new Stripe(secret, { apiVersion: '2024-06-20' });
-
-    // Get additional metadata from request body
-    const { profileId } = requestBody;
+    const stripe = new Stripe(serverEnv.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
 
     const session = await stripe.checkout.sessions.create({
-      mode,
+      mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      customer_email: customerEmail,
+      customer_email: email,
       metadata: { 
-        email_entered: customerEmail,
-        plan: tierSlug,
-        profile_id: profileId || '',
-        assessment_id: assessmentId || ''
+        assessment_id: finalAssessmentId,
+        profile_id: finalProfileId,
+        plan: 'founding-member'
       },
       success_url,
-      cancel_url,
-      // Optional: allow_promotion_codes: true,
+      cancel_url
+    });
+
+    console.log('[create-checkout-session] step:stripe_success', {
+      sessionId: session.id,
+      context: process.env.CONTEXT
     });
 
     return json(200, { url: session.url });
   } catch (err: any) {
-    console.error('create-checkout-session error:', {
+    console.error('[create-checkout-session] step:stripe_error', {
       message: err?.message,
       type: err?.type,
       code: err?.code,
+      stripe_error_code: err?.code,
+      context: process.env.CONTEXT
     });
-    return json(400, {
-      error: 'CHECKOUT_CREATE_FAILED',
-      detail: err?.message || 'Unknown error'
+    return json(500, {
+      success: false,
+      error: 'stripe'
     });
   }
 };
