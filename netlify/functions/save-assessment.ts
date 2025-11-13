@@ -1,4 +1,5 @@
-import { serviceRoleClient } from '../lib/supabaseServer.js';
+import { createServerSupabase } from '../lib/supabaseServer.js';
+import { randomUUID } from 'crypto';
 
 // Validation schemas
 const US_STATES = [
@@ -141,11 +142,7 @@ function json(statusCode: number, data: any) {
 
 export const handler = async (event: any) => {
   try {
-    // Validate required env vars
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.VITE_SUPABASE_ANON_KEY) {
-      console.error('[save-assessment] Missing required environment variables');
-      return json(500, { success: false, error: 'db' });
-    }
+    console.debug('[save-assessment] Request received');
 
     // CORS preflight
     if (event.httpMethod === 'OPTIONS') {
@@ -157,163 +154,150 @@ export const handler = async (event: any) => {
       return json(405, { error: 'METHOD_NOT_ALLOWED' });
     }
 
-    // Parse and validate input
-    let payload;
+    // Parse body
+    let body;
     try {
-      payload = JSON.parse(event.body);
+      body = JSON.parse(event.body);
+      console.debug('[save-assessment] Body parsed:', { hasAnswers: !!body.answers, hasScores: !!body.scores });
     } catch (e) {
       return json(400, { error: 'INVALID_JSON' });
     }
 
-    const validationErrors = validateInput(payload);
-    if (validationErrors.length > 0) {
-      return json(400, { error: 'VALIDATION_ERROR', details: validationErrors });
+    // Validate required fields
+    const { answers, total_score, scores, scenario, email, full_name, city, state, intended_membership_tier } = body;
+
+    if (!answers || !email || !full_name || !city || !state) {
+      console.error('[save-assessment] Missing required fields');
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
     }
 
-    const { assessmentInputs, answers, scores, planSlug = 'founding-member' } = payload;
+    if (!scores || typeof scores.operational === 'undefined' || typeof scores.licensing === 'undefined' || 
+        typeof scores.feedback === 'undefined' || typeof scores.certifications === 'undefined' || 
+        typeof scores.digital === 'undefined') {
+      console.error('[save-assessment] Missing required score fields');
+      return json(400, { error: 'MISSING_SCORE_FIELDS' });
+    }
 
-    // Normalize data
-    const normalizedEmail = assessmentInputs.email_entered.toLowerCase().trim();
-    const normalizedName = assessmentInputs.full_name_entered.trim();
-    const normalizedCity = assessmentInputs.city.trim();
-    const companyName = answers.businessName?.trim() || null;
+    // Create Supabase client
+    let supabase;
+    try {
+      supabase = createServerSupabase();
+    } catch (envError) {
+      console.error('[save-assessment] Environment error:', envError.message);
+      return json(500, { success: false, error: 'ASSESSMENT_SAVE_FAILED' });
+    }
 
-    console.log('[save-assessment] step:upsert_profile', { 
-      email: normalizedEmail, 
-      context: process.env.CONTEXT 
-    });
+    const normalizedEmail = email.toLowerCase().trim();
 
-    // 1. Upsert profile using email_entered
+    console.debug('[save-assessment] Upserting profile for:', normalizedEmail);
+
+    // 1. Upsert profile by email
     let profileId;
     try {
       // Check if profile exists
-      const { data: existingProfile, error: lookupError } = await serviceRoleClient
+      const { data: existingProfile, error: lookupError } = await supabase
         .from('profiles')
         .select('id')
         .eq('email', normalizedEmail)
         .maybeSingle();
 
       if (lookupError) {
-        console.error('[save-assessment] step:profile_lookup', { error: lookupError });
-        return json(500, { success: false, error: 'db' });
+        console.error('[save-assessment] Profile lookup error:', lookupError.stack || lookupError);
+        return json(500, { success: false, error: 'ASSESSMENT_SAVE_FAILED' });
       }
 
       if (existingProfile) {
         // Update existing profile
-        const { data: updatedProfile, error: updateError } = await serviceRoleClient
+        const { data: updatedProfile, error: updateError } = await supabase
           .from('profiles')
           .update({
-            full_name: normalizedName,
-            company_name: companyName,
-            city: normalizedCity,
-            state: assessmentInputs.state
+            full_name: full_name.trim(),
+            city: city.trim(),
+            state: state,
+            membership_tier: intended_membership_tier || null
           })
           .eq('email', normalizedEmail)
           .select('id')
           .single();
 
         if (updateError) {
-          console.error('[save-assessment] step:profile_update', { error: updateError });
-          return json(500, { success: false, error: 'db' });
+          console.error('[save-assessment] Profile update error:', updateError.stack || updateError);
+          return json(500, { success: false, error: 'ASSESSMENT_SAVE_FAILED' });
         }
         profileId = updatedProfile.id;
+        console.debug('[save-assessment] Updated existing profile:', profileId);
       } else {
-        // Create new auth user via service role
-        const { data: authUser, error: authError } = await serviceRoleClient.auth.admin.createUser({
-          email: normalizedEmail,
-          email_confirm: true
-        });
-
-        if (authError) {
-          console.error('[save-assessment] step:auth_user_creation', { error: authError });
-          return json(500, { success: false, error: 'db' });
-        }
-
-        // Insert new profile with auth user id
-        const { data: newProfile, error: insertError } = await serviceRoleClient
+        // Generate UUID and insert new profile
+        profileId = randomUUID();
+        const { error: insertError } = await supabase
           .from('profiles')
           .insert({
-            id: authUser.user.id,
+            id: profileId,
             email: normalizedEmail,
-            full_name: normalizedName,
-            company_name: companyName,
-            city: normalizedCity,
-            state: assessmentInputs.state
-          })
-          .select('id')
-          .single();
+            full_name: full_name.trim(),
+            city: city.trim(),
+            state: state,
+            role: 'member',
+            membership_tier: intended_membership_tier || null
+          });
 
         if (insertError) {
-          console.error('[save-assessment] step:profile_creation', { error: insertError });
-          return json(500, { success: false, error: 'db' });
+          console.error('[save-assessment] Profile insert error:', insertError.stack || insertError);
+          return json(500, { success: false, error: 'ASSESSMENT_SAVE_FAILED' });
         }
-        profileId = newProfile.id;
+        console.debug('[save-assessment] Created new profile:', profileId);
       }
-
-      console.log('[save-assessment] step:profile_success', { profileId });
-
     } catch (profileError) {
-      console.error('[save-assessment] step:profile_error', { error: profileError });
-      return json(500, { success: false, error: 'db' });
+      console.error('[save-assessment] Profile upsert error:', profileError.stack || profileError);
+      return json(500, { success: false, error: 'ASSESSMENT_SAVE_FAILED' });
     }
 
     // 2. Insert assessment
     try {
       const assessmentData = {
-        profile_id: profileId,
         email_entered: normalizedEmail,
-        full_name_entered: normalizedName,
-        city: normalizedCity,
-        state: assessmentInputs.state,
+        full_name_entered: full_name.trim(),
+        city: city.trim(),
+        state: state,
         answers: answers,
-        scores: {
-          operational: scores.operational,
-          licensing: scores.licensing,
-          feedback: scores.feedback,
-          certifications: scores.certifications,
-          digital: scores.digital,
-          total: scores.total,
-          grade: scores.grade,
-          isEligibleForCertification: scores.isEligibleForCertification,
-          eligibilityReasons: scores.eligibilityReasons,
-          opportunities: scores.opportunities
-        },
-        intended_membership_tier: planSlug
+        total_score: total_score,
+        operational_score: scores.operational,
+        licensing_score: scores.licensing,
+        feedback_score: scores.feedback,
+        certifications_score: scores.certifications,
+        digital_score: scores.digital,
+        scenario: scenario || null,
+        intended_membership_tier: intended_membership_tier || null,
+        profile_id: profileId
       };
 
-      const { data: assessment, error: assessmentError } = await serviceRoleClient
+      const { data: assessment, error: assessmentError } = await supabase
         .from('assessments')
         .insert(assessmentData)
         .select('id')
         .single();
 
       if (assessmentError) {
-        console.error('[save-assessment] step:assessment_creation', { error: assessmentError });
-        return json(500, { success: false, error: 'db' });
+        console.error('[save-assessment] Assessment insert error:', assessmentError.stack || assessmentError);
+        return json(500, { success: false, error: 'ASSESSMENT_SAVE_FAILED' });
       }
 
-      console.log('[save-assessment] step:assessment_success', { 
-        assessmentId: assessment.id,
-        profileId,
-        context: process.env.CONTEXT 
-      });
+      console.debug('[save-assessment] Successfully saved assessment:', assessment.id);
 
       return json(200, {
         success: true,
+        profile_id: profileId,
         assessment_id: assessment.id,
-        profile_id: profileId
+        email: normalizedEmail
       });
 
     } catch (assessmentError) {
-      console.error('[save-assessment] step:assessment_error', { error: assessmentError });
-      return json(500, { success: false, error: 'db' });
+      console.error('[save-assessment] Assessment error:', assessmentError.stack || assessmentError);
+      return json(500, { success: false, error: 'ASSESSMENT_SAVE_FAILED' });
     }
 
   } catch (error) {
-    console.error('[save-assessment] step:unhandled_error', { 
-      error: error,
-      context: process.env.CONTEXT 
-    });
-    return json(500, { success: false, error: 'db' });
+    console.error('[save-assessment] Unhandled error:', error.stack || error);
+    return json(500, { success: false, error: 'ASSESSMENT_SAVE_FAILED' });
   }
 };

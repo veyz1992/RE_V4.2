@@ -1,4 +1,4 @@
-import { serviceRoleClient } from '../lib/supabaseServer.js';
+import { createServerSupabase } from '../lib/supabaseServer.js';
 
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
@@ -28,9 +28,18 @@ type HandlerResult = Promise<{
 export const handler = async (event: Event, _context: Context) => {
   try {
     // Validate required env vars
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.VITE_SUPABASE_ANON_KEY) {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.error('[check-email-eligibility] Missing required environment variables');
       return jsonResponse(500, { error: 'Missing server configuration' });
+    }
+
+    // Create Supabase client
+    let serviceRoleClient;
+    try {
+      serviceRoleClient = createServerSupabase();
+    } catch (envError) {
+      console.error('[check-email-eligibility] Supabase client error:', envError.message);
+      return jsonResponse(500, { eligible: false, error: 'Database error' });
     }
 
     // Handle CORS preflight

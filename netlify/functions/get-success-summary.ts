@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { serverClient } from '../lib/supabaseServer.js';
+import { createServerSupabase } from '../lib/supabaseServer.js';
 
 const json = (status: number, body: unknown) => ({
   statusCode: status,
@@ -15,8 +15,17 @@ const json = (status: number, body: unknown) => ({
 export const handler = async (event: any) => {
   try {
     // Validate required env vars
-    if (!process.env.STRIPE_SECRET_KEY || !process.env.SUPABASE_URL || !process.env.VITE_SUPABASE_ANON_KEY) {
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.error('[get-success-summary] Missing required environment variables');
+      return json(500, { success: false, error: 'db' });
+    }
+
+    // Create Supabase client
+    let serverClient;
+    try {
+      serverClient = createServerSupabase();
+    } catch (envError) {
+      console.error('[get-success-summary] Supabase client error:', envError.message);
       return json(500, { success: false, error: 'db' });
     }
 

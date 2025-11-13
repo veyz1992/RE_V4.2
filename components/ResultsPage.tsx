@@ -184,15 +184,83 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
 
     const beginCheckout = async () => {
         try {
+            console.debug('[Checkout] Starting checkout flow');
+            
             if (typeof window !== 'undefined') {
                 window.localStorage.setItem(PLAN_STORAGE_KEY, 'Founding Member');
             }
-            await startCheckout(result.id, 'Founding Member');
+
+            // Step 1: Save assessment data
+            const assessmentPayload = {
+                answers: result.answers || {},
+                total_score: result.total,
+                scores: {
+                    operational: result.operational,
+                    licensing: result.licensing,
+                    feedback: result.feedback,
+                    certifications: result.certifications,
+                    digital: result.digital
+                },
+                scenario: result.isEligibleForCertification ? 'eligible' : 'not_eligible',
+                email: result.emailEntered || '',
+                full_name: result.fullNameEntered || '',
+                city: result.city || '',
+                state: result.state || '',
+                intended_membership_tier: 'founding-member'
+            };
+
+            console.debug('[Checkout] Saving assessment:', assessmentPayload);
+
+            const saveResponse = await fetch('/.netlify/functions/save-assessment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(assessmentPayload)
+            });
+
+            if (!saveResponse.ok) {
+                console.error('[Checkout] Save assessment failed:', saveResponse.status);
+                alert('Could not save your answers. Please try again.');
+                return;
+            }
+
+            const { profile_id, assessment_id, email } = await saveResponse.json();
+
+            console.debug('[Checkout] Assessment saved:', { profile_id, assessment_id, email });
+
+            // Step 2: Create checkout session
+            const checkoutPayload = {
+                profile_id,
+                assessment_id,
+                email,
+                tier: 'founding-member',
+                billing_cycle: 'one_time'
+            };
+
+            console.debug('[Checkout] Creating checkout session:', checkoutPayload);
+
+            const checkoutResponse = await fetch('/.netlify/functions/create-checkout-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(checkoutPayload)
+            });
+
+            if (!checkoutResponse.ok) {
+                const errorData = await checkoutResponse.json();
+                console.error('[Checkout] Checkout session failed:', errorData);
+                alert(`Checkout failed: ${errorData.error || 'Unknown error'}`);
+                return;
+            }
+
+            const { url } = await checkoutResponse.json();
+            console.debug('[Checkout] Redirecting to Stripe:', url);
+
+            window.location.href = url;
+
         } catch (error) {
             if (typeof window !== 'undefined') {
                 window.localStorage.removeItem(PLAN_STORAGE_KEY);
             }
-            console.error('Failed to start Stripe Checkout', error);
+            console.error('[Checkout] Failed to start checkout:', error);
             alert('We were unable to start checkout. Please try again or contact support.');
         }
     };

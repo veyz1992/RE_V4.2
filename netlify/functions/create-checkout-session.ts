@@ -1,5 +1,6 @@
 // netlify/functions/create-checkout-session.ts
 import Stripe from 'stripe';
+import { assertEnv } from '../lib/env.js';
 
 const json = (status: number, body: unknown) => ({
   statusCode: status,
@@ -45,71 +46,59 @@ function resolveBaseUrl(event: any): string {
 
 export const handler = async (event: any) => {
   try {
-    // Validate required env vars
-    if (!process.env.STRIPE_SECRET_KEY || !process.env.PRICE_ID_FOUNDING_MEMBER) {
-      console.error('[create-checkout-session] Missing required environment variables');
-      return json(500, { error: 'Missing server configuration' });
+    console.debug('[Checkout] Request received');
+
+    // Assert required environment variables
+    try {
+      assertEnv(['STRIPE_SECRET_KEY', 'PRICE_ID_FOUNDING_MEMBER']);
+    } catch (envError) {
+      console.error('[create-checkout-session] Missing env vars:', envError.message);
+      return json(500, { error: 'STRIPE_SESSION_FAILED' });
     }
 
-    // Debug mode - GET request with debug=1 query parameter
-    if (event.httpMethod === 'GET' && event.queryStringParameters?.debug === '1') {
-      const baseUrl = resolveBaseUrl(event);
-      return json(200, { 
-        ok: true, 
-        baseUrl,
-        hasStripe: true
-      });
-    }
-    
     if (event.httpMethod !== 'POST') {
       return json(405, { error: 'METHOD_NOT_ALLOWED' });
     }
 
-    // Parse request body
-    let requestBody;
+    // Parse and validate JSON body
+    let body;
     try {
-      requestBody = JSON.parse(event.body || '{}');
-    } catch (parseError) {
-      return json(400, { error: 'INVALID_JSON', message: 'Request body must be valid JSON' });
+      body = JSON.parse(event.body);
+      console.debug('[Checkout] Body parsed:', { hasAssessmentId: !!body.assessment_id, hasProfileId: !!body.profile_id, hasEmail: !!body.email });
+    } catch (err) {
+      console.error('[create-checkout-session] Invalid JSON:', err);
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
     }
 
-    // Validate body: assessment_id, profile_id, email
-    const { 
-      assessment_id,
-      assessmentId,
-      profile_id,
-      profileId,
-      email
-    } = requestBody;
+    // Validate required fields: assessment_id (uuid), profile_id (uuid), email (string)
+    const { assessment_id, profile_id, email, tier, billing_cycle } = body;
 
-    const finalAssessmentId = assessment_id || assessmentId;
-    const finalProfileId = profile_id || profileId;
-
-    if (!finalAssessmentId || !finalProfileId || !email) {
-      console.error('[create-checkout-session] step:validation_failed', {
-        hasAssessmentId: !!finalAssessmentId,
-        hasProfileId: !!finalProfileId,
-        hasEmail: !!email,
-        context: process.env.CONTEXT
+    if (!assessment_id || !profile_id || !email) {
+      console.error('[create-checkout-session] Missing required fields:', { 
+        hasAssessmentId: !!assessment_id, 
+        hasProfileId: !!profile_id, 
+        hasEmail: !!email 
       });
-      return json(400, { error: 'MISSING_REQUIRED_FIELDS', details: 'assessment_id, profile_id, and email are required' });
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
     }
 
-    // Use PRICE_ID_FOUNDING_MEMBER from env
+    // Validate email format
+    if (typeof email !== 'string' || !email.includes('@')) {
+      console.error('[create-checkout-session] Invalid email format:', email);
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
+    }
+
+    // Read PRICE_ID_FOUNDING_MEMBER from env
     const priceId = process.env.PRICE_ID_FOUNDING_MEMBER;
 
-    console.log('[create-checkout-session] step:checkout_creation', {
-      assessmentId: finalAssessmentId,
-      profileId: finalProfileId,
-      email,
-      context: process.env.CONTEXT
-    });
+    console.debug('[Checkout] Creating Stripe session for:', { assessment_id, profile_id, email, tier, billing_cycle });
 
-    // Create Stripe Checkout Session
-    const baseUrl = resolveBaseUrl(event);
-    const success_url = `${baseUrl}/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
-    const cancel_url = `${baseUrl}/pricing?checkout=cancel`;
+    // Get origin for URLs
+    const origin = resolveBaseUrl(event);
+    const success_url = `${origin}/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
+    const cancel_url = `${origin}/results`;
 
+    // Create Stripe session
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
 
     const session = await stripe.checkout.sessions.create({
@@ -117,22 +106,20 @@ export const handler = async (event: any) => {
       line_items: [{ price: priceId, quantity: 1 }],
       customer_email: email,
       metadata: { 
-        assessment_id: finalAssessmentId,
-        profile_id: finalProfileId,
+        assessment_id,
+        profile_id,
         plan: 'founding-member'
       },
       success_url,
       cancel_url
     });
 
-    console.log('[create-checkout-session] step:stripe_success', {
-      sessionId: session.id,
-      context: process.env.CONTEXT
-    });
+    console.debug('[Checkout] Stripe session created:', session.id);
 
     return json(200, { url: session.url });
+
   } catch (err: any) {
-    console.error('[checkout]', err);
-    return json(500, { error: 'Checkout init failed' });
+    console.error('[create-checkout-session] Error:', err.stack || err);
+    return json(500, { error: 'STRIPE_SESSION_FAILED' });
   }
 };
