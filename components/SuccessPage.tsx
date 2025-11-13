@@ -143,12 +143,14 @@ const SuccessPage: React.FC = () => {
   const planConfig = planDetails[resolvedPlan];
   const isFounding = resolvedPlan === 'founding-member';
 
-  // Display variables - now safe since all dependencies are declared above
+  // Display variables - bind directly to API response
   const displayBusinessName = useMemo(() => {
     console.log('[SuccessPage] Computing displayBusinessName - successData:', successData);
-    if (successData?.business) {
-      console.log('[SuccessPage] Using business from API:', successData.business);
-      return successData.business;
+    // If we have successData, use data.business directly
+    if (successData) {
+      const business = successData.business;
+      console.log('[SuccessPage] API returned business:', business);
+      return business || '—';
     }
     if (sessionId && isLoadingSuccessData) {
       console.log('[SuccessPage] Still loading, showing loading state');
@@ -161,9 +163,11 @@ const SuccessPage: React.FC = () => {
 
   const displayContactName = useMemo(() => {
     console.log('[SuccessPage] Computing displayContactName - successData:', successData);
-    if (successData?.name) {
-      console.log('[SuccessPage] Using name from API:', successData.name);
-      return successData.name;
+    // If we have successData, use data.name directly  
+    if (successData) {
+      const name = successData.name;
+      console.log('[SuccessPage] API returned name:', name);
+      return name || '—';
     }
     if (sessionId && isLoadingSuccessData) {
       console.log('[SuccessPage] Still loading, showing loading state');
@@ -240,6 +244,7 @@ const SuccessPage: React.FC = () => {
         
         if (response.ok) {
           const data = await response.json();
+          console.log('success-summary', data);
           console.log('[SuccessPage] ===== API RESPONSE =====');
           console.log('[SuccessPage] Raw response:', data);
           console.log('[SuccessPage] data.success:', data.success);

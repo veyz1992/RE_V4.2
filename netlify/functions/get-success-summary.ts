@@ -223,23 +223,26 @@ export const handler = async (event: any) => {
         } else if (assessmentData) {
           console.log('[get-success-summary] Raw assessment data:', assessmentData);
           
-          // Extract data from assessment
+          // Extract name from full_name_entered
           if (!fullName && assessmentData.full_name_entered) {
             fullName = assessmentData.full_name_entered;
             console.log('[get-success-summary] Got name from assessment.full_name_entered:', fullName);
           }
           
+          // Extract email from email_entered  
           if (!email && assessmentData.email_entered) {
             email = assessmentData.email_entered;
             console.log('[get-success-summary] Got email from assessment.email_entered:', email);
           }
           
-          // Extract business from answers.businessName
-          if (!businessName) {
-            const answers = assessmentData.answers || {};
-            businessName = answers?.businessName ?? null;
+          // Extract business from answers.businessName JSON field
+          if (!businessName && assessmentData.answers) {
+            console.log('[get-success-summary] Checking answers for businessName:', assessmentData.answers);
+            businessName = assessmentData.answers?.businessName ?? null;
             if (businessName) {
               console.log('[get-success-summary] Got business from assessment.answers.businessName:', businessName);
+            } else {
+              console.log('[get-success-summary] No businessName found in answers JSON');
             }
           }
           
@@ -275,9 +278,8 @@ export const handler = async (event: any) => {
             console.log('[get-success-summary] Got name from email fallback assessment:', fullName);
           }
           
-          if (!businessName) {
-            const answers = assessmentData.answers || {};
-            businessName = answers?.businessName ?? null;
+          if (!businessName && assessmentData.answers) {
+            businessName = assessmentData.answers?.businessName ?? null;
             if (businessName) {
               console.log('[get-success-summary] Got business from email fallback assessment:', businessName);
             }
@@ -303,10 +305,10 @@ export const handler = async (event: any) => {
     };
 
     console.log('[get-success-summary] ===== FINAL RESPONSE =====');
-    console.log('[get-success-summary] email sources: profiles.email =', null, '| assessments.email_entered =', email, '| metadata.email_entered =', emailEntered);
-    console.log('[get-success-summary] name sources: profiles.full_name =', (profileId ? fullName : null), '| assessments.full_name_entered =', fullName);
-    console.log('[get-success-summary] business sources: profiles.company_name =', (profileId ? businessName : null), '| assessments.answers.businessName =', businessName);
-    console.log('[get-success-summary] Final values:', response);
+    console.log('[get-success-summary] email sources: profiles.email =', (profileId ? 'checked' : 'skipped'), '| assessments.email_entered =', email, '| metadata.email_entered =', emailEntered);
+    console.log('[get-success-summary] name sources: profiles.full_name =', (profileId ? 'checked' : 'skipped'), '| assessments.full_name_entered =', fullName);
+    console.log('[get-success-summary] business sources: profiles.company_name =', (profileId ? 'checked' : 'skipped'), '| assessments.answers.businessName =', businessName);
+    console.log('[get-success-summary] Final composed response:', response);
     console.log('[get-success-summary] ===========================');
 
     return json(200, response);
