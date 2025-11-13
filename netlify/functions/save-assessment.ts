@@ -1,5 +1,4 @@
-import { getEnv } from './lib/env.js';
-import { getServerClient } from '../lib/supabaseServer.js';
+import { serviceRoleClient } from '../lib/supabaseServer.js';
 
 // Validation schemas
 const US_STATES = [
@@ -142,28 +141,10 @@ function json(statusCode: number, data: any) {
 
 export const handler = async (event: any) => {
   try {
-    // Check required environment variables with graceful handling
-    const envCheck = getEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
-    
-    if (!envCheck.ok) {
-      console.error('[save-assessment] step:env_missing', { 
-        missing: envCheck.missing,
-        context: process.env.CONTEXT,
-        deployUrl: process.env.DEPLOY_PRIME_URL
-      });
-      return json(500, { error: "database_not_available", missing: envCheck.missing });
-    }
-
-    // Get Supabase client with error handling
-    let serverClient;
-    try {
-      serverClient = getServerClient();
-    } catch (clientError) {
-      console.error('[save-assessment] step:client_error', { 
-        error: clientError.message,
-        context: process.env.CONTEXT
-      });
-      return json(500, { error: "database_not_available", missing: ["SUPABASE configuration"] });
+    // Validate required env vars
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.VITE_SUPABASE_ANON_KEY) {
+      console.error('[save-assessment] Missing required environment variables');
+      return json(500, { success: false, error: 'db' });
     }
 
     // CORS preflight
@@ -206,7 +187,7 @@ export const handler = async (event: any) => {
     let profileId;
     try {
       // Check if profile exists
-      const { data: existingProfile, error: lookupError } = await serverClient
+      const { data: existingProfile, error: lookupError } = await serviceRoleClient
         .from('profiles')
         .select('id')
         .eq('email', normalizedEmail)
@@ -219,7 +200,7 @@ export const handler = async (event: any) => {
 
       if (existingProfile) {
         // Update existing profile
-        const { data: updatedProfile, error: updateError } = await serverClient
+        const { data: updatedProfile, error: updateError } = await serviceRoleClient
           .from('profiles')
           .update({
             full_name: normalizedName,
@@ -238,7 +219,7 @@ export const handler = async (event: any) => {
         profileId = updatedProfile.id;
       } else {
         // Create new auth user via service role
-        const { data: authUser, error: authError } = await serverClient.auth.admin.createUser({
+        const { data: authUser, error: authError } = await serviceRoleClient.auth.admin.createUser({
           email: normalizedEmail,
           email_confirm: true
         });
@@ -249,7 +230,7 @@ export const handler = async (event: any) => {
         }
 
         // Insert new profile with auth user id
-        const { data: newProfile, error: insertError } = await serverClient
+        const { data: newProfile, error: insertError } = await serviceRoleClient
           .from('profiles')
           .insert({
             id: authUser.user.id,
@@ -300,7 +281,7 @@ export const handler = async (event: any) => {
         intended_membership_tier: planSlug
       };
 
-      const { data: assessment, error: assessmentError } = await serverClient
+      const { data: assessment, error: assessmentError } = await serviceRoleClient
         .from('assessments')
         .insert(assessmentData)
         .select('id')

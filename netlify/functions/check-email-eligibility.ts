@@ -1,5 +1,4 @@
-import { getEnv } from './lib/env.js';
-import { getServerClient } from '../lib/supabaseServer.js';
+import { serviceRoleClient } from '../lib/supabaseServer.js';
 
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
@@ -28,75 +27,56 @@ type HandlerResult = Promise<{
 
 export const handler = async (event: Event, _context: Context) => {
   try {
-    // Check required environment variables with graceful handling
-    const envCheck = getEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
-    
-    if (!envCheck.ok) {
-      console.error('[check-email-eligibility] step:env_missing', {
-        missing: envCheck.missing,
-        context: process.env.CONTEXT,
-        deployUrl: process.env.DEPLOY_PRIME_URL
-      });
-      return jsonResponse(500, { error: "database_not_available", missing: envCheck.missing });
+    // Validate required env vars
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.VITE_SUPABASE_ANON_KEY) {
+      console.error('[check-email-eligibility] Missing required environment variables');
+      return jsonResponse(500, { error: 'Missing server configuration' });
     }
 
-    // Get Supabase client with error handling
-    let serverClient;
+    // Handle CORS preflight
+    if (event.httpMethod === 'OPTIONS') {
+      return jsonResponse(200, { ok: true });
+    }
+
+    if (event.httpMethod !== 'POST') {
+      return jsonResponse(405, { error: 'Method Not Allowed' });
+    }
+
+    if (!event.body) {
+      return jsonResponse(400, { error: 'Missing request body' });
+    }
+
+    const rawBody = event.isBase64Encoded
+      ? Buffer.from(event.body, 'base64').toString('utf8')
+      : event.body;
+
+    let payload: { email?: string };
     try {
-      serverClient = getServerClient();
-    } catch (clientError) {
-      console.error('[check-email-eligibility] step:client_error', { 
-        error: clientError.message,
-        context: process.env.CONTEXT
-      });
-      return jsonResponse(500, { error: "database_not_available", missing: ["SUPABASE configuration"] });
+      payload = JSON.parse(rawBody);
+    } catch (error) {
+      return jsonResponse(400, { error: 'Invalid JSON body' });
     }
 
-  // Handle CORS preflight
-  if (event.httpMethod === 'OPTIONS') {
-    return jsonResponse(200, { ok: true });
-  }
+    const { email } = payload;
 
-  if (event.httpMethod !== 'POST') {
-    return jsonResponse(405, { error: 'Method Not Allowed' });
-  }
+    if (!email || typeof email !== 'string') {
+      return jsonResponse(400, { error: 'Valid email is required' });
+    }
 
-  if (!event.body) {
-    return jsonResponse(400, { error: 'Missing request body' });
-  }
+    const normalizedEmail = email.trim().toLowerCase();
 
-  const rawBody = event.isBase64Encoded
-    ? Buffer.from(event.body, 'base64').toString('utf8')
-    : event.body;
+    if (!normalizedEmail) {
+      return jsonResponse(400, { error: 'Valid email is required' });
+    }
 
-  let payload: { email?: string };
-  try {
-    payload = JSON.parse(rawBody);
-  } catch (error) {
-    return jsonResponse(400, { error: 'Invalid JSON body' });
-  }
+    console.log(`Checking email eligibility: ${normalizedEmail}`);
 
-  const { email } = payload;
-
-  if (!email || typeof email !== 'string') {
-    return jsonResponse(400, { error: 'Valid email is required' });
-  }
-
-  const normalizedEmail = email.trim().toLowerCase();
-
-  if (!normalizedEmail) {
-    return jsonResponse(400, { error: 'Valid email is required' });
-  }
-
-  console.log(`Checking email eligibility: ${normalizedEmail}`);
-
-  try {
     // Step 1: Check if user exists in auth.users
-    const { data: existingUsers, error: listError } = await serverClient.auth.admin.listUsers();
+    const { data: existingUsers, error: listError } = await serviceRoleClient.auth.admin.listUsers();
     
     if (listError) {
       console.error('[check-email-eligibility] step:list_users_error', { error: listError });
-      return jsonResponse(500, { success: false, error: 'db' });
+      return jsonResponse(500, { eligible: false, error: 'Database error' });
     }
 
     const existingUser = existingUsers.users.find((user: any) => 
@@ -108,7 +88,7 @@ export const handler = async (event: Event, _context: Context) => {
       console.log('[check-email-eligibility] step:user_found', { userId });
 
       // Step 2: Check for active subscription
-      const { data: subscription, error: subError } = await serverClient
+      const { data: subscription, error: subError } = await serviceRoleClient
         .from('subscriptions')
         .select('status, stripe_subscription_id')
         .eq('profile_id', userId)
@@ -117,7 +97,7 @@ export const handler = async (event: Event, _context: Context) => {
 
       if (subError) {
         console.error('[check-email-eligibility] step:subscription_check_error', { error: subError });
-        return jsonResponse(500, { success: false, error: 'db' });
+        return jsonResponse(500, { eligible: false, error: 'Database error' });
       }
 
       if (subscription) {
@@ -139,7 +119,7 @@ export const handler = async (event: Event, _context: Context) => {
     // Step 3: Check for recent assessment (within 30 days)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     
-    const { data: recentAssessment, error: assessmentError } = await serverClient
+    const { data: recentAssessment, error: assessmentError } = await serviceRoleClient
       .from('assessments')
       .select('id, created_at')
       .eq('email_entered', normalizedEmail)
@@ -183,8 +163,8 @@ export const handler = async (event: Event, _context: Context) => {
       context: process.env.CONTEXT
     });
     return jsonResponse(500, { 
-      success: false,
-      error: 'db'
+      eligible: false,
+      error: 'Internal server error'
     });
   }
 };
