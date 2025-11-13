@@ -7,18 +7,12 @@ import { FUNCTION_ENDPOINTS } from '../src/lib/functions';
 import {
   AnimatedCheckmarkIcon,
   UsersIcon,
-  UserCircleIcon,
-  ArrowDownTrayIcon,
-  PencilSquareIcon,
   NewspaperIcon,
   ListBulletIcon,
-  ChatBubbleOvalLeftEllipsisIcon,
   ClipboardDocumentCheckIcon,
-  LightBulbIcon,
   TrophyIcon,
   ShieldCheckIcon,
   UploadIcon,
-  PhoneIcon,
 } from './icons';
 
 
@@ -113,8 +107,15 @@ const SuccessPage: React.FC = () => {
     console.warn('Auth context not available:', error);
   }
 
-  // State for email from Stripe session
-  const [stripeEmail, setStripeEmail] = useState<string>('');
+  // State for success summary data
+  const [successData, setSuccessData] = useState<{
+    email: string | null;
+    plan: string | null;
+    business_name: string | null;
+    contact_name: string | null;
+    profile_id: string | null;
+    assessment_id: string | null;
+  } | null>(null);
 
   const resolvedPlan = useMemo(() => {
     try {
@@ -136,22 +137,22 @@ const SuccessPage: React.FC = () => {
   const [resendCooldown, setResendCooldown] = useState<number>(0);
 
   // Move display variables above their first use to prevent TDZ issues
-  const displayBusinessName = currentUser?.name ?? 'Your Business';
-  const displayContactName = currentUser?.account?.ownerName ?? currentUser?.name ?? 'Your Name';
+  const displayBusinessName = successData?.business_name || currentUser?.name || 'Your Business';
+  const displayContactName = successData?.contact_name || currentUser?.account?.ownerName || currentUser?.name || 'Your Name';
   // Parse session_id once on mount
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [isLoadingStripeEmail, setIsLoadingStripeEmail] = useState(false);
+  const [isLoadingSuccessData, setIsLoadingSuccessData] = useState(false);
 
   // Compute display email based on session_id presence
   const displayEmail = useMemo(() => {
     if (sessionId) {
-      // If session_id present: use stripeEmail only (or show loading)
-      return stripeEmail || null;
+      // If session_id present: use success data email only (or show loading)
+      return successData?.email || null;
     } else {
       // If session_id missing: use fallback hierarchy
       return currentUser?.email || cachedEmail;
     }
-  }, [sessionId, stripeEmail, currentUser?.email, cachedEmail]);
+  }, [sessionId, successData?.email, currentUser?.email, cachedEmail]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -164,7 +165,7 @@ const SuccessPage: React.FC = () => {
     window.localStorage.removeItem(PLAN_STORAGE_KEY);
   }, [navigate, planSlug]);
 
-  // Initialize session_id and clear cached email if session_id present
+  // Initialize session_id and clear localStorage if session_id present
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
@@ -175,9 +176,10 @@ const SuccessPage: React.FC = () => {
     console.log('[SuccessPage] session_id from URL:', urlSessionId);
     
     if (urlSessionId) {
-      // Clear cached email when session_id is present - we want fresh Stripe data
-      console.log('[SuccessPage] session_id present - clearing cached email');
+      // Clear localStorage when session_id is present - we want fresh data
+      console.log('[SuccessPage] session_id present - clearing localStorage');
       window.localStorage.removeItem(EMAIL_STORAGE_KEY);
+      window.localStorage.removeItem(PLAN_STORAGE_KEY);
       setCachedEmail('');
     } else {
       // Load cached email only when no session_id
@@ -188,38 +190,34 @@ const SuccessPage: React.FC = () => {
     }
   }, []);
 
-  // Fetch email from Stripe session if session_id is provided
+  // Fetch success summary data if session_id is provided
   useEffect(() => {
-    const fetchStripeSessionEmail = async () => {
-      if (!sessionId || stripeEmail) return;
+    const fetchSuccessData = async () => {
+      if (!sessionId || successData) return;
       
       try {
-        setIsLoadingStripeEmail(true);
-        console.log(`[SuccessPage] Fetching email from Stripe session: ${sessionId}`);
+        setIsLoadingSuccessData(true);
+        console.log(`[SuccessPage] Fetching success summary: ${sessionId}`);
         
-        const response = await fetch(`${FUNCTION_ENDPOINTS.STRIPE_SESSION}?session_id=${sessionId}`);
+        const response = await fetch(`${FUNCTION_ENDPOINTS.SUCCESS_SUMMARY}?session_id=${sessionId}`);
         
         if (response.ok) {
           const data = await response.json();
-          console.log('[SuccessPage] Stripe API response:', data);
-          if (data.email) {
-            setStripeEmail(data.email);
-            console.log(`[SuccessPage] ✅ Success! Email from Stripe: ${data.email}`);
-          } else {
-            console.warn('[SuccessPage] ⚠️ No email found in Stripe response');
-          }
+          console.log('[SuccessPage] Success summary response:', data);
+          setSuccessData(data);
+          console.log(`[SuccessPage] ✅ Success! Data loaded:`, data);
         } else {
-          console.error('[SuccessPage] ❌ Failed to fetch session email:', response.status, response.statusText);
+          console.error('[SuccessPage] ❌ Failed to fetch success summary:', response.status, response.statusText);
         }
       } catch (error) {
-        console.error('[SuccessPage] ❌ Error fetching Stripe session email:', error);
+        console.error('[SuccessPage] ❌ Error fetching success summary:', error);
       } finally {
-        setIsLoadingStripeEmail(false);
+        setIsLoadingSuccessData(false);
       }
     };
     
-    fetchStripeSessionEmail();
-  }, [sessionId, stripeEmail]);
+    fetchSuccessData();
+  }, [sessionId, successData]);
 
   // Define triggerMagicLink before its first use to prevent TDZ issues
   const triggerMagicLink = async (targetEmail?: string) => {
@@ -227,11 +225,11 @@ const SuccessPage: React.FC = () => {
     let emailToUse = targetEmail;
     
     if (sessionId) {
-      // If session_id present: only use stripeEmail, never cached
-      emailToUse = stripeEmail;
-      if (!emailToUse && !isLoadingStripeEmail) {
+      // If session_id present: only use success data email, never cached
+      emailToUse = successData?.email;
+      if (!emailToUse && !isLoadingSuccessData) {
         setActionState('error');
-        setActionMessage('We\'re still loading your email from Stripe. Please wait a moment.');
+        setActionMessage('We\'re still loading your account information. Please wait a moment.');
         return;
       }
     } else {
@@ -305,8 +303,8 @@ const SuccessPage: React.FC = () => {
   useEffect(() => {
     try {
       if (sessionId) {
-        // If session_id present: only trigger after stripeEmail is loaded
-        if (stripeEmail && actionState === 'idle') {
+        // If session_id present: only trigger after successData is loaded
+        if (successData?.email && actionState === 'idle') {
           triggerMagicLink();
         }
       } else {
@@ -322,7 +320,7 @@ const SuccessPage: React.FC = () => {
     } catch (error) {
       console.error('Error in magic link auto-trigger:', error);
     }
-  }, [sessionId, stripeEmail, cachedEmail, displayEmail, actionState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId, successData?.email, cachedEmail, displayEmail, actionState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -447,7 +445,7 @@ const SuccessPage: React.FC = () => {
             <div className="mt-4 bg-black/20 p-3 rounded-lg text-center text-white">
               📧 Sent to: <strong>
                 {sessionId ? (
-                  displayEmail || (isLoadingStripeEmail ? 'checking...' : 'We\'re preparing your access email...')
+                  displayEmail || (isLoadingSuccessData ? 'checking...' : 'We\'re preparing your access email...')
                 ) : (
                   displayEmail || 'checking...'
                 )}
@@ -513,65 +511,9 @@ const SuccessPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-16">
-          <h2 className="font-playfair text-3xl font-bold mb-6 text-white">Need a Quick Start?</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="fm-glass-card p-6 rounded-2xl text-white">
-              <div className="flex items-center gap-3 mb-4">
-                <UserCircleIcon className="w-10 h-10 text-gold" />
-                <div>
-                  <h3 className="font-semibold">Complete Your Profile</h3>
-                  <p className="text-sm text-gray-300">Upload your logo, service areas, and certifications.</p>
-                </div>
-              </div>
-              <button onClick={() => navigate('/login')} className="w-full py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-semibold">
-                Go to login
-              </button>
-            </div>
-            <div className="fm-glass-card p-6 rounded-2xl text-white">
-              <div className="flex items-center gap-3 mb-4">
-                <ArrowDownTrayIcon className="w-10 h-10 text-gold" />
-                <div>
-                  <h3 className="font-semibold">Download Your Badge</h3>
-                  <p className="text-sm text-gray-300">Showcase your verified status across your channels.</p>
-                </div>
-              </div>
-              <button onClick={() => navigate('/login')} className="w-full py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-semibold">
-                Access badge library
-              </button>
-            </div>
-            <div className="fm-glass-card p-6 rounded-2xl text-white">
-              <div className="flex items-center gap-3 mb-4">
-                <PhoneIcon className="w-10 h-10 text-gold" />
-                <div>
-                  <h3 className="font-semibold">Schedule Onboarding</h3>
-                  <p className="text-sm text-gray-300">Book time with our team to map your first 30 days.</p>
-                </div>
-              </div>
-              <button onClick={() => window.open('mailto:support@restorationexpertise.com', '_blank')} className="w-full py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-semibold">
-                Email support
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-16 text-center space-y-4 text-gray-300">
-          <div className="flex flex-col items-center gap-3 md:flex-row md:justify-center">
-            <div className="flex items-center gap-3">
-              <PencilSquareIcon className="w-6 h-6 text-gold" />
-              <span>Finish your onboarding checklist inside the dashboard.</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <ChatBubbleOvalLeftEllipsisIcon className="w-6 h-6 text-gold" />
-              <span>Join the private member community for weekly live sessions.</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <LightBulbIcon className="w-6 h-6 text-gold" />
-              <span>Track your credibility goals with the 99-Step Blueprint.</span>
-            </div>
-          </div>
+        <div className="mt-16 text-center text-gray-300">
           <p className="text-sm">
-            Need help? <a className="text-gold hover:underline" href="mailto:support@restorationexpertise.com">Contact support</a>
+            Need help? <a className="text-gold hover:underline" href="mailto:hi@restorationexpertise.com">Contact support</a>
           </p>
         </div>
       </main>

@@ -11,4 +11,5 @@ export const FUNCTION_ENDPOINTS = {
   CHECKOUT_HEALTH: FN('checkout-health'),
   STRIPE_SESSION: FN('get-stripe-session'),
   SAVE_ASSESSMENT: FN('save-assessment'),
+  SUCCESS_SUMMARY: FN('get-success-summary'),
 } as const;
