@@ -2,7 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { PLAN_STORAGE_KEY, EMAIL_STORAGE_KEY, normalizePlan, type Plan } from '../src/shared/config';
+import {
+  PLAN_STORAGE_KEY,
+  EMAIL_STORAGE_KEY,
+  CHECKOUT_SESSION_STORAGE_KEY,
+  normalizePlan,
+  type Plan,
+} from '../src/shared/config';
 import { FUNCTION_ENDPOINTS } from '../src/lib/functions';
 import {
   AnimatedCheckmarkIcon,
@@ -122,6 +128,13 @@ const SuccessPage: React.FC = () => {
   const [cachedEmail, setCachedEmail] = useState<string>('');
   const [resendCooldown, setResendCooldown] = useState<number>(0);
   const [magicLinkSent, setMagicLinkSent] = useState<boolean>(false);
+  const [storedSessionId, setStoredSessionId] = useState<string | null>(null);
+  const [metadataSummary, setMetadataSummary] = useState<{
+    email: string | null;
+    email_entered: string | null;
+    full_name_entered: string | null;
+    plan: string | null;
+  } | null>(null);
 
   // State for success summary data
   const [successData, setSuccessData] = useState<{
@@ -146,49 +159,41 @@ const SuccessPage: React.FC = () => {
 
   // Display variables - bind directly to API response
   const displayBusinessName = useMemo(() => {
-    console.log('[SuccessPage] Computing displayBusinessName - successData:', successData);
-    // If we have successData, use data.business directly
-    if (successData) {
-      const business = successData.business;
-      console.log('[SuccessPage] API returned business:', business);
-      return business || '—';
+    if (successData?.business) {
+      return successData.business;
+    }
+    if (metadataSummary?.email_entered) {
+      return metadataSummary.email_entered;
     }
     if (sessionId && isLoadingSuccessData) {
-      console.log('[SuccessPage] Still loading, showing loading state');
       return '—';
     }
-    const fallback = currentUser?.name || '—';
-    console.log('[SuccessPage] Using fallback business name:', fallback);
-    return fallback;
-  }, [successData, sessionId, isLoadingSuccessData, currentUser?.name]);
+    if (metadataSummary?.email) {
+      return metadataSummary.email;
+    }
+    return currentUser?.name || '—';
+  }, [successData, metadataSummary, sessionId, isLoadingSuccessData, currentUser?.name]);
 
   const displayContactName = useMemo(() => {
-    console.log('[SuccessPage] Computing displayContactName - successData:', successData);
-    // If we have successData, use data.name directly  
-    if (successData) {
-      const name = successData.name;
-      console.log('[SuccessPage] API returned name:', name);
-      return name || '—';
+    if (successData?.name) {
+      return successData.name;
+    }
+    if (metadataSummary?.full_name_entered) {
+      return metadataSummary.full_name_entered;
     }
     if (sessionId && isLoadingSuccessData) {
-      console.log('[SuccessPage] Still loading, showing loading state');
       return '—';
     }
-    const fallback = currentUser?.account?.ownerName || currentUser?.name || '—';
-    console.log('[SuccessPage] Using fallback contact name:', fallback);
-    return fallback;
-  }, [successData, sessionId, isLoadingSuccessData, currentUser?.account?.ownerName, currentUser?.name]);
+    return currentUser?.account?.ownerName || currentUser?.name || '—';
+  }, [successData, metadataSummary, sessionId, isLoadingSuccessData, currentUser?.account?.ownerName, currentUser?.name]);
 
   // Compute display email based on session_id presence
   const displayEmail = useMemo(() => {
     if (sessionId) {
-      // If session_id present: use success data email only (or show loading)
-      return successData?.email || null;
-    } else {
-      // If session_id missing: use fallback hierarchy
-      return currentUser?.email || cachedEmail;
+      return successData?.email || metadataSummary?.email || null;
     }
-  }, [sessionId, successData?.email, currentUser?.email, cachedEmail]);
+    return successData?.email || metadataSummary?.email || currentUser?.email || cachedEmail;
+  }, [sessionId, successData?.email, metadataSummary?.email, currentUser?.email, cachedEmail]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -217,12 +222,19 @@ const SuccessPage: React.FC = () => {
         console.log('[SuccessPage] session_id present - clearing localStorage');
         window.localStorage.removeItem(EMAIL_STORAGE_KEY);
         window.localStorage.removeItem(PLAN_STORAGE_KEY);
+        window.localStorage.removeItem(CHECKOUT_SESSION_STORAGE_KEY);
         setCachedEmail('');
+        setStoredSessionId(null);
+        setMetadataSummary(null);
       } else {
         // Load cached email only when no session_id
         const storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
         if (storedEmail) {
           setCachedEmail(storedEmail);
+        }
+        const storedCheckoutSession = window.localStorage.getItem(CHECKOUT_SESSION_STORAGE_KEY);
+        if (storedCheckoutSession) {
+          setStoredSessionId(storedCheckoutSession);
         }
       }
     } catch (error) {
@@ -284,6 +296,56 @@ const SuccessPage: React.FC = () => {
     
     fetchSuccessData();
   }, [sessionId, successData]);
+
+  useEffect(() => {
+    if (sessionId || !storedSessionId || metadataSummary) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const fetchCheckoutMetadata = async () => {
+      try {
+        const response = await fetch(`${FUNCTION_ENDPOINTS.STRIPE_SESSION}?session_id=${storedSessionId}`);
+        if (!response.ok) {
+          console.error('[SuccessPage] ❌ Failed to fetch checkout session metadata:', response.status, response.statusText);
+          return;
+        }
+
+        const data = await response.json();
+        if (isCancelled) return;
+
+        const summary = {
+          email: data.email ?? null,
+          email_entered: data.email_entered ?? null,
+          full_name_entered: data.full_name_entered ?? null,
+          plan: data.plan ?? null,
+        } as const;
+
+        setMetadataSummary(summary);
+
+        if (!successData) {
+          setSuccessData({
+            success: true,
+            email: summary.email,
+            business: summary.email_entered,
+            name: summary.full_name_entered,
+            plan: summary.plan ?? 'founding-member',
+          });
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('[SuccessPage] ❌ Error loading checkout metadata:', error);
+        }
+      }
+    };
+
+    fetchCheckoutMetadata();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [sessionId, storedSessionId, metadataSummary, successData]);
 
   // Define triggerMagicLink before its first use to prevent TDZ issues
   const triggerMagicLink = async (targetEmail?: string, isManualRetry = false) => {

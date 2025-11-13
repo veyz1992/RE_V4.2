@@ -1,125 +1,127 @@
-// netlify/functions/create-checkout-session.ts
 import Stripe from 'stripe';
-import { assertEnv } from '../lib/env.js';
+import { checkRequiredEnv } from '../lib/assertEnv.js';
 
 const json = (status: number, body: unknown) => ({
   statusCode: status,
   headers: {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*', // keep if we need CORS from app
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
   },
   body: JSON.stringify(body),
 });
 
-const TIER_TO_ENV: Record<string, string> = {
-  'founding-member': 'PRICE_FOUNDING_MEMBER',
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 };
 
-// helper: choose the correct origin for this deploy
-function resolveBaseUrl(event: any): string {
-  // Prefer the live request origin first
+const resolveBaseUrl = (event: any): string => {
   const fromRaw = (() => {
     try {
       if (event?.rawUrl) return new URL(event.rawUrl).origin;
       const proto =
-        event?.headers?.["x-forwarded-proto"] ||
-        event?.headers?.["x-forwarded-protocol"] ||
-        "https";
-      const host =
-        event?.headers?.["x-forwarded-host"] ||
-        event?.headers?.host;
+        event?.headers?.['x-forwarded-proto'] ||
+        event?.headers?.['x-forwarded-protocol'] ||
+        'https';
+      const host = event?.headers?.['x-forwarded-host'] || event?.headers?.host;
       if (host) return `${proto}://${host}`;
       return null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   })();
 
   const raw =
     fromRaw ||
-    process.env.DEPLOY_URL ||        // branch/preview exact URL
-    process.env.DEPLOY_PRIME_URL ||  // preview URL
-    process.env.URL ||               // may be primary custom domain
-    process.env.SITE_URL;            // usually primary custom domain
+    process.env.DEPLOY_URL ||
+    process.env.DEPLOY_PRIME_URL ||
+    process.env.URL ||
+    process.env.SITE_URL;
 
-  if (!raw) throw new Error("MISSING_BASE_URL");
-  return String(raw).replace(/\/+$/, "");
-}
+  if (!raw) throw new Error('MISSING_BASE_URL');
+  return String(raw).replace(/\/+$/, '');
+};
 
 export const handler = async (event: any) => {
   try {
-    console.debug('[Checkout] Request received');
+    if (event.httpMethod === 'OPTIONS') {
+      return json(200, {});
+    }
 
-    // Assert required environment variables
-    try {
-      assertEnv(['STRIPE_SECRET_KEY', 'PRICE_ID_FOUNDING_MEMBER']);
-    } catch (envError) {
-      console.error('[create-checkout-session] Missing env vars:', envError.message);
-      return json(500, { error: 'STRIPE_SESSION_FAILED' });
+    const envCheck = checkRequiredEnv(['STRIPE_SECRET_KEY', 'PRICE_ID_FOUNDING_MEMBER']);
+    if (!envCheck.ok) {
+      return json(500, { error: 'SERVER_ERROR', message: envCheck.message });
     }
 
     if (event.httpMethod !== 'POST') {
       return json(405, { error: 'METHOD_NOT_ALLOWED' });
     }
 
-    // Parse and validate JSON body
-    let body;
+    let body: any;
     try {
-      body = JSON.parse(event.body);
-      console.debug('[Checkout] Body parsed:', { hasAssessmentId: !!body.assessment_id, hasProfileId: !!body.profile_id, hasEmail: !!body.email });
-    } catch (err) {
-      console.error('[create-checkout-session] Invalid JSON:', err);
+      body = JSON.parse(event.body ?? '{}');
+    } catch (parseError) {
+      return json(400, { error: 'INVALID_JSON' });
+    }
+
+    const { email, assessment_id, plan, profile_id, metadata: rawMetadata } = body ?? {};
+
+    if (!email || !assessment_id || !plan) {
       return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
     }
 
-    // Validate required fields: assessment_id (uuid), profile_id (uuid), email (string)
-    const { assessment_id, profile_id, email, tier, billing_cycle } = body;
-
-    if (!assessment_id || !profile_id || !email) {
-      console.error('[create-checkout-session] Missing required fields:', { 
-        hasAssessmentId: !!assessment_id, 
-        hasProfileId: !!profile_id, 
-        hasEmail: !!email 
-      });
-      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
+    let origin: string;
+    try {
+      origin = resolveBaseUrl(event);
+    } catch (resolveError: any) {
+      console.error('[create-checkout-session] Failed to resolve base URL:', resolveError?.message || resolveError);
+      return json(500, { error: 'SERVER_ERROR', message: 'Unable to determine site URL for checkout redirects.' });
     }
+    const priceId = process.env.PRICE_ID_FOUNDING_MEMBER as string;
 
-    // Validate email format
-    if (typeof email !== 'string' || !email.includes('@')) {
-      console.error('[create-checkout-session] Invalid email format:', email);
-      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
-    }
-
-    // Read PRICE_ID_FOUNDING_MEMBER from env
-    const priceId = process.env.PRICE_ID_FOUNDING_MEMBER;
-
-    console.debug('[Checkout] Creating Stripe session for:', { assessment_id, profile_id, email, tier, billing_cycle });
-
-    // Get origin for URLs
-    const origin = resolveBaseUrl(event);
-    const success_url = `${origin}/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
-    const cancel_url = `${origin}/results`;
-
-    // Create Stripe session
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
-
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
-      customer_email: email,
-      metadata: { 
-        assessment_id,
-        profile_id,
-        plan: 'founding-member'
-      },
-      success_url,
-      cancel_url
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+      apiVersion: '2024-06-20',
     });
 
-    console.debug('[Checkout] Stripe session created:', session.id);
+    const metadata: Record<string, string> = {
+      assessment_id,
+      profile_id: typeof profile_id === 'string' && profile_id.trim().length > 0 ? profile_id : '',
+    };
 
-    return json(200, { url: session.url });
+    if (typeof plan === 'string' && plan.trim()) {
+      metadata.plan = plan;
+    }
 
-  } catch (err: any) {
-    console.error('[create-checkout-session] Error:', err.stack || err);
-    return json(500, { error: 'STRIPE_SESSION_FAILED' });
+    if (isRecord(rawMetadata)) {
+      for (const [key, value] of Object.entries(rawMetadata)) {
+        if (typeof value === 'string' && value.trim().length > 0) {
+          metadata[key] = value.trim();
+        }
+      }
+    }
+
+    const success_url = `${origin}/success?session_id={CHECKOUT_SESSION_ID}`;
+    const cancel_url = `${origin}/results`;
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        line_items: [{ price: priceId, quantity: 1 }],
+        customer_email: email,
+        metadata,
+        client_reference_id: assessment_id,
+        success_url,
+        cancel_url,
+      });
+
+      return json(200, { url: session.url, id: session.id });
+    } catch (stripeError: any) {
+      console.error('[create-checkout-session] Stripe error:', stripeError?.message || stripeError);
+      return json(500, { error: 'STRIPE_ERROR' });
+    }
+  } catch (unhandledError: any) {
+    console.error('[create-checkout-session] Unhandled error:', unhandledError?.message || unhandledError);
+    return json(500, { error: 'STRIPE_ERROR' });
   }
 };

@@ -5,11 +5,15 @@ import { FOUNDING_MEMBER_SPOTS_REMAINING } from '../constants';
 import { StoredAssessmentResult, Opportunity } from '../types';
 import { CheckCircleIcon, ExclamationTriangleIcon, XMarkIcon } from './icons';
 import { startCheckout } from '@/lib/checkout';
+import { FUNCTION_ENDPOINTS } from '@/lib/functions';
+import {
+    PLAN_STORAGE_KEY,
+    EMAIL_STORAGE_KEY,
+    ASSESSMENT_ID_STORAGE_KEY,
+    CHECKOUT_SESSION_STORAGE_KEY,
+} from '../src/shared/config';
 
-const PLAN_STORAGE_KEY = 'restorationexpertise:last-plan';
-const EMAIL_STORAGE_KEY = 'restorationexpertise:last-email';
-const ASSESSMENT_ID_STORAGE_KEY = 'restorationexpertise:last-assessment-id';
-const PROFILE_ID_STORAGE_KEY = 'restorationexpertise:last-profile-id';
+const ASSESSMENT_SCENARIO = 'member_self_assessment';
 
 const AnimatedScore: React.FC<{ score: number }> = ({ score }) => {
     const [displayScore, setDisplayScore] = useState(0);
@@ -176,7 +180,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
     const [previewedTier, setPreviewedTier] = useState<{ name: string; features: string[] } | null>(null);
     const [checkoutError, setCheckoutError] = useState<string | null>(null);
     const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
-    const savedAssessmentRef = useRef<{ assessmentId: string | number; profileId: string; email: string } | null>(null);
+    const savedAssessmentRef = useRef<{ assessmentId: string | number; email: string } | null>(null);
 
     useEffect(() => {
         if (isEligibleForCertification) {
@@ -195,53 +199,51 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
 
         setCheckoutError(null);
 
-        const email = typeof result.emailEntered === 'string' ? result.emailEntered.trim() : '';
+        const email = typeof result.emailEntered === 'string' ? result.emailEntered.trim().toLowerCase() : '';
         const fullName = typeof result.fullNameEntered === 'string' ? result.fullNameEntered.trim() : '';
-        const businessName = typeof result.answers?.businessName === 'string' ? result.answers.businessName.trim() : '';
         const cityValue = typeof result.cityEntered === 'string' && result.cityEntered.trim().length > 0
             ? result.cityEntered.trim()
             : (typeof result.answers?.city === 'string' ? result.answers.city.trim() : '');
         const stateValue = typeof result.state === 'string' ? result.state.trim() : '';
 
-        const missingFields: string[] = [];
-        if (!email) missingFields.push('email');
-        if (!fullName) missingFields.push('full_name');
-        if (!businessName) missingFields.push('business');
-        if (!cityValue) missingFields.push('city');
-        if (!stateValue) missingFields.push('state');
-
-        if (missingFields.length > 0) {
-            const message = `Please add your ${missingFields.join(', ')}`;
-            console.warn('[Checkout] Blocking checkout due to missing fields:', missingFields);
+        if (!email) {
+            const message = 'Please add your email before claiming your spot.';
+            console.warn('[Checkout] Blocking checkout due to missing email');
             setCheckoutError(message);
             return;
         }
 
-        const assessmentPayload = {
-            answers: result.answers || {},
-            total_score: result.total,
-            scenario: result.isEligibleForCertification ? 'eligible' : 'not_eligible',
-            email,
-            full_name: fullName,
-            business: businessName,
-            city: cityValue,
-            state: stateValue,
-            intended_membership_tier: 'founding-member',
-            score_breakdown: {
-                operational: result.operational,
-                licensing: result.licensing,
-                feedback: result.feedback,
-                certifications: result.certifications,
-                digital: result.digital,
-                grade: result.grade,
-            },
+        const breakdown: Record<string, number> = {};
+        const maybeSetBreakdown = (key: string, value: unknown) => {
+            if (typeof value === 'number' && Number.isFinite(value)) {
+                breakdown[key] = Math.round(value);
+            }
         };
 
-        console.debug('[Checkout] Saving assessment with payload:', assessmentPayload);
+        maybeSetBreakdown('operational', result.operational);
+        maybeSetBreakdown('licensing', result.licensing);
+        maybeSetBreakdown('feedback', result.feedback);
+        maybeSetBreakdown('certifications', result.certifications);
+        maybeSetBreakdown('digital', result.digital);
 
-        const removePlanSelection = () => {
+        const assessmentPayload: Record<string, unknown> = {
+            answers: result.answers || {},
+            total_score: typeof result.total === 'number' ? Math.round(result.total) : 0,
+            scenario: ASSESSMENT_SCENARIO,
+        };
+
+        if (email) assessmentPayload.email = email;
+        if (fullName) assessmentPayload.full_name = fullName;
+        if (cityValue) assessmentPayload.city = cityValue;
+        if (stateValue) assessmentPayload.state = stateValue;
+        if (Object.keys(breakdown).length > 0) {
+            assessmentPayload.breakdown = breakdown;
+        }
+
+        const clearPlanSelection = () => {
             if (typeof window !== 'undefined') {
                 window.localStorage.removeItem(PLAN_STORAGE_KEY);
+                window.localStorage.removeItem(CHECKOUT_SESSION_STORAGE_KEY);
             }
         };
 
@@ -254,96 +256,100 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
 
             let saveResponse: Response;
             try {
-                saveResponse = await fetch('/.netlify/functions/save-assessment', {
+                saveResponse = await fetch(FUNCTION_ENDPOINTS.SAVE_ASSESSMENT, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(assessmentPayload),
                 });
             } catch (networkError) {
                 console.error('[Checkout] Save assessment network error:', { error: networkError, payload: assessmentPayload });
-                removePlanSelection();
+                clearPlanSelection();
                 const errorMessage = 'Network error while saving your assessment. Please try again.';
                 setCheckoutError(errorMessage);
-                if (typeof window !== 'undefined') {
-                    window.alert(errorMessage);
-                }
                 return;
             }
 
             const responseText = await saveResponse.text();
+            let parsedSave: any = {};
+            try {
+                parsedSave = responseText ? JSON.parse(responseText) : {};
+            } catch (parseError) {
+                console.error('[Checkout] Failed to parse save-assessment response:', { responseText, parseError });
+            }
 
-            if (!saveResponse.ok) {
+            if (!saveResponse.ok || !parsedSave?.success) {
                 console.error('[Checkout] Save assessment failed:', {
                     status: saveResponse.status,
                     payload: assessmentPayload,
                     responseText,
                 });
-                removePlanSelection();
-                let errorMessage = 'Could not save your answers. Please try again.';
-                try {
-                    const parsed = JSON.parse(responseText);
-                    if (parsed?.error === 'MISSING_REQUIRED_FIELDS' && Array.isArray(parsed.missing)) {
-                        errorMessage = `Please add: ${parsed.missing.join(', ')}`;
-                    } else if (typeof parsed?.error === 'string') {
-                        errorMessage = parsed.error;
-                    }
-                } catch {
-                    // ignore json parse errors
-                }
-                setCheckoutError(errorMessage);
-                if (typeof window !== 'undefined') {
-                    window.alert(errorMessage);
-                }
+                clearPlanSelection();
+                const errorCode = typeof parsedSave?.error === 'string' ? parsedSave.error : 'ASSESSMENT_SAVE_FAILED';
+                setCheckoutError(errorCode);
                 return;
             }
 
-            const parsedSave = responseText ? JSON.parse(responseText) : {};
             const assessmentId = parsedSave?.assessment_id;
-            const profileId = parsedSave?.profile_id;
-            const normalizedEmail = typeof parsedSave?.email === 'string' ? parsedSave.email : email;
-
-            if (!assessmentId || !profileId || !normalizedEmail) {
-                console.error('[Checkout] Save assessment response missing identifiers:', parsedSave);
-                removePlanSelection();
+            if (!assessmentId) {
+                console.error('[Checkout] Save assessment response missing assessment_id:', parsedSave);
+                clearPlanSelection();
                 const errorMessage = 'We could not verify your saved assessment. Please try again.';
                 setCheckoutError(errorMessage);
-                if (typeof window !== 'undefined') {
-                    window.alert(errorMessage);
-                }
                 return;
             }
 
-            console.debug('[Checkout] Assessment saved:', { profileId, assessmentId, email: normalizedEmail });
+            const normalizedEmail = typeof parsedSave?.email === 'string' && parsedSave.email ? parsedSave.email : email;
 
             savedAssessmentRef.current = {
                 assessmentId,
-                profileId,
                 email: normalizedEmail,
             };
 
             if (typeof window !== 'undefined') {
                 window.localStorage.setItem(ASSESSMENT_ID_STORAGE_KEY, String(assessmentId));
-                window.localStorage.setItem(PROFILE_ID_STORAGE_KEY, String(profileId));
                 window.localStorage.setItem(EMAIL_STORAGE_KEY, normalizedEmail);
+                window.localStorage.removeItem(CHECKOUT_SESSION_STORAGE_KEY);
             }
 
-            await startCheckout({
-                assessmentId,
-                profileId,
-                email: normalizedEmail,
-            });
+            const stripeMetadata: Record<string, string> = { email_entered: email };
+            if (fullName) {
+                stripeMetadata.full_name_entered = fullName;
+            }
+
+            let session;
+            try {
+                session = await startCheckout({
+                    assessmentId,
+                    email: normalizedEmail,
+                    plan: 'founding-member',
+                    metadata: stripeMetadata,
+                });
+            } catch (checkoutError) {
+                console.error('[Checkout] Failed to create checkout session:', {
+                    checkoutError,
+                    assessmentPayload,
+                    savedAssessment: savedAssessmentRef.current,
+                });
+                clearPlanSelection();
+                setCheckoutError('We were unable to start checkout. Please try again or contact support.');
+                return;
+            }
+
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(CHECKOUT_SESSION_STORAGE_KEY, session.id);
+                window.location.href = session.url;
+            } else {
+                console.warn('[Checkout] Cannot redirect to Stripe – window is undefined');
+            }
         } catch (error) {
             console.error('[Checkout] Unexpected error while starting checkout:', {
                 error,
                 payload: assessmentPayload,
                 savedAssessment: savedAssessmentRef.current,
             });
-            removePlanSelection();
+            clearPlanSelection();
             const errorMessage = 'We were unable to start checkout. Please try again or contact support.';
             setCheckoutError(errorMessage);
-            if (typeof window !== 'undefined') {
-                window.alert(errorMessage);
-            }
         } finally {
             setIsProcessingCheckout(false);
         }

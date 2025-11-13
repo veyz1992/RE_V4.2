@@ -94,6 +94,10 @@ export const handler = async (event: any) => {
       plan = planMatch[1];
     }
 
+    if (!plan && metadata.plan) {
+      plan = metadata.plan;
+    }
+
     // Extract metadata
     const metadata = session.metadata || {};
 
@@ -112,6 +116,7 @@ export const handler = async (event: any) => {
       profile_id: metadata.profile_id || null,
       assessment_id: metadata.assessment_id || null,
       email_entered: metadata.email_entered || null,
+      full_name_entered: metadata.full_name_entered || null,
       payment_status: session.payment_status,
       customer_details: session.customer_details
     });
