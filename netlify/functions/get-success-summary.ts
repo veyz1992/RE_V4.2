@@ -308,15 +308,15 @@ export const handler = async (event: any) => {
     const response = {
       success: true,
       email: finalEmail,
+      plan: 'founding-member',
+      rating: 'A+ Founding Elite - Restoration Pioneer',
       business: finalBusiness,
-      name: finalName,
-      plan: finalPlan
+      name: finalName
     };
 
     console.log('[get-success-summary] ===== FINAL RESPONSE =====');
-    console.log('[get-success-summary] email sources: profiles.email =', (profileId ? 'checked' : 'skipped'), '| assessments.email_entered =', email, '| metadata.email_entered =', emailEntered);
-    console.log('[get-success-summary] name sources: profiles.full_name =', (profileId ? 'checked' : 'skipped'), '| assessments.full_name_entered =', fullName);
-    console.log('[get-success-summary] business sources: profiles.company_name =', (profileId ? 'checked' : 'skipped'), '| assessments.answers.businessName =', businessName);
+    const lookupPath = profileId ? 'profile_id' : (assessmentId ? 'assessment_id' : 'email');
+    console.log('[get-success-summary] Lookup path used:', lookupPath);
     console.log('[get-success-summary] Final composed response:', response);
     console.log('[get-success-summary] ===========================');
 

@@ -93,12 +93,12 @@ export const handler = async (event: any) => {
     if (!customerEmail && assessmentId) {
       try {
         const { createClient } = await import('@supabase/supabase-js');
-        const supabaseUrl = process.env.VITE_SUPABASE_URL;
+        const supabaseUrl = process.env.SUPABASE_URL;
         const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
         
         if (!supabaseUrl || !supabaseServiceRoleKey) {
-          console.error('Missing Supabase environment variables');
-          return json(500, { error: 'MISSING_SUPABASE_CONFIG' });
+          console.error('Missing Supabase environment variables (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)');
+          return json(500, { error: 'Database not available' });
         }
 
         const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {

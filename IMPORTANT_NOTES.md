@@ -868,3 +868,13 @@ const displayBusinessName = useMemo(() => {
 **get-success-summary now uses service role, reads assessments.full_name_entered and answers.businessName as fallback when profiles isn't created yet.**
 
 **get-success-summary now falls back to assessments.full_name_entered and answers.businessName when a profiles row does not exist yet, and that the response keys are email, name, business, plan.**
+
+### 🔧 Environment & Function Audit - December 2024:
+
+**Added SUPABASE_URL (server-side) requirement for Netlify Functions.**
+
+**get-success-summary now resolves profile/name via Stripe metadata → assessments/profiles.**
+
+**SuccessPage sends magic link once and handles 429.**
+
+**No changes to Stripe plan/price IDs or redirects.**

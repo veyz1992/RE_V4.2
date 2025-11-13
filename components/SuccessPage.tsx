@@ -121,6 +121,7 @@ const SuccessPage: React.FC = () => {
   const [actionMessage, setActionMessage] = useState<string>('');
   const [cachedEmail, setCachedEmail] = useState<string>('');
   const [resendCooldown, setResendCooldown] = useState<number>(0);
+  const [magicLinkSent, setMagicLinkSent] = useState<boolean>(false);
 
   // State for success summary data
   const [successData, setSuccessData] = useState<{
@@ -285,7 +286,13 @@ const SuccessPage: React.FC = () => {
   }, [sessionId, successData]);
 
   // Define triggerMagicLink before its first use to prevent TDZ issues
-  const triggerMagicLink = async (targetEmail?: string) => {
+  const triggerMagicLink = async (targetEmail?: string, isManualRetry = false) => {
+    // Single-run guard: only call once per page load unless manual retry
+    if (magicLinkSent && !isManualRetry) {
+      console.log('[SuccessPage] Magic link already sent on this page load, skipping automatic send');
+      return;
+    }
+
     // Determine the email to use based on context
     let emailToUse = targetEmail;
     
@@ -335,9 +342,9 @@ const SuccessPage: React.FC = () => {
           setActionState('error');
           setActionMessage('⚠️ Dev Configuration: Please add this domain to Supabase Auth → URL Configuration → Redirect URLs');
           console.error('Supabase Auth redirect URL not configured:', `${window.location.origin}/auth/callback`);
-        } else if (error.message.includes('rate')) {
+        } else if (error.message.includes('rate') || error.message.includes('429')) {
           setActionState('error');
-          setActionMessage('Rate limit reached. Please wait a moment before trying again.');
+          setActionMessage('Too many requests, please wait a minute');
           setResendCooldown(60);
         } else {
           setActionState('error');
@@ -350,6 +357,7 @@ const SuccessPage: React.FC = () => {
       setActionState('sent');
       setActionMessage(`Magic link sent to ${emailToUse}. Check your inbox and Spam/Promotions folder if you don't see it.`);
       setResendCooldown(60); // Start 60-second cooldown
+      setMagicLinkSent(true); // Mark as sent to prevent automatic retries
       
       // Update localStorage only if we're not in session mode and email changed
       if (typeof window !== 'undefined' && !sessionId) {
@@ -544,7 +552,7 @@ const SuccessPage: React.FC = () => {
                   Wrong email? Update it here
                 </button>
                 <button 
-                  onClick={() => triggerMagicLink()} 
+                  onClick={() => triggerMagicLink(undefined, true)} 
                   disabled={resendCooldown > 0}
                   className={`font-semibold ${resendCooldown > 0 ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:underline'}`}
                 >

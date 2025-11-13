@@ -23,15 +23,15 @@ const stripePublishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 // Environment variables for Supabase
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Validate required environment variables
 if (!stripeSecretKey) {
   throw new Error('Missing STRIPE_SECRET_KEY environment variable.');
 }
-if (!supabaseUrl) {
-  throw new Error('Missing VITE_SUPABASE_URL environment variable.');
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variable.');
 }
 if (!supabaseServiceRoleKey) {
   throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable.');
