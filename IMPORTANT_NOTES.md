@@ -858,3 +858,7 @@ const displayBusinessName = useMemo(() => {
 4. **Data Mapping:** Real assessment data now displays instead of placeholders
 
 **Status: ✅ PRODUCTION READY - All critical issues resolved**
+
+### 🔄 Data Flow Refinement - December 2024:
+
+**Refined get-success-summary to join Stripe metadata with Supabase (profiles/assessments) and return email/name/business; ensured assessment step persists these fields so success page can render real data.**
