@@ -109,12 +109,11 @@ const SuccessPage: React.FC = () => {
 
   // State for success summary data
   const [successData, setSuccessData] = useState<{
+    success: boolean;
     email: string | null;
+    business: string | null;
+    name: string | null;
     plan: string | null;
-    business_name: string | null;
-    contact_name: string | null;
-    profile_id: string | null;
-    assessment_id: string | null;
   } | null>(null);
 
   const resolvedPlan = useMemo(() => {
@@ -137,8 +136,8 @@ const SuccessPage: React.FC = () => {
   const [resendCooldown, setResendCooldown] = useState<number>(0);
 
   // Move display variables above their first use to prevent TDZ issues
-  const displayBusinessName = successData?.business_name || currentUser?.name || 'Your Business';
-  const displayContactName = successData?.contact_name || currentUser?.account?.ownerName || currentUser?.name || 'Your Name';
+  const displayBusinessName = successData?.business && successData.business !== 'Pending Sync' ? successData.business : currentUser?.name || 'Your Business';
+  const displayContactName = successData?.name && successData.name !== 'Pending Sync' ? successData.name : currentUser?.account?.ownerName || currentUser?.name || 'Your Name';
   // Parse session_id once on mount
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoadingSuccessData, setIsLoadingSuccessData] = useState(false);
@@ -147,7 +146,7 @@ const SuccessPage: React.FC = () => {
   const displayEmail = useMemo(() => {
     if (sessionId) {
       // If session_id present: use success data email only (or show loading)
-      return successData?.email || null;
+      return successData?.email && successData.email !== 'Pending Sync' ? successData.email : null;
     } else {
       // If session_id missing: use fallback hierarchy
       return currentUser?.email || cachedEmail;
@@ -208,9 +207,25 @@ const SuccessPage: React.FC = () => {
           console.log(`[SuccessPage] ✅ Success! Data loaded:`, data);
         } else {
           console.error('[SuccessPage] ❌ Failed to fetch success summary:', response.status, response.statusText);
+          // Set fallback data even on error to prevent loading forever
+          setSuccessData({
+            success: false,
+            email: 'Pending Sync',
+            business: 'Pending Sync',
+            name: 'Pending Sync',
+            plan: 'Founding Member'
+          });
         }
       } catch (error) {
         console.error('[SuccessPage] ❌ Error fetching success summary:', error);
+        // Set fallback data on error
+        setSuccessData({
+          success: false,
+          email: 'Pending Sync',
+          business: 'Pending Sync',
+          name: 'Pending Sync',
+          plan: 'Founding Member'
+        });
       } finally {
         setIsLoadingSuccessData(false);
       }
@@ -226,7 +241,7 @@ const SuccessPage: React.FC = () => {
     
     if (sessionId) {
       // If session_id present: only use success data email, never cached
-      emailToUse = successData?.email;
+      emailToUse = successData?.email && successData.email !== 'Pending Sync' ? successData.email : null;
       if (!emailToUse && !isLoadingSuccessData) {
         setActionState('error');
         setActionMessage('We\'re still loading your account information. Please wait a moment.');
@@ -304,7 +319,7 @@ const SuccessPage: React.FC = () => {
     try {
       if (sessionId) {
         // If session_id present: only trigger after successData is loaded
-        if (successData?.email && actionState === 'idle') {
+        if (successData?.email && successData.email !== 'Pending Sync' && actionState === 'idle') {
           triggerMagicLink();
         }
       } else {
@@ -445,7 +460,8 @@ const SuccessPage: React.FC = () => {
             <div className="mt-4 bg-black/20 p-3 rounded-lg text-center text-white">
               📧 Sent to: <strong>
                 {sessionId ? (
-                  displayEmail || (isLoadingSuccessData ? 'checking...' : 'We\'re preparing your access email...')
+                  displayEmail || (isLoadingSuccessData ? 'checking...' : 
+                    (successData?.success === false ? 'We couldn\'t load your data yet. Please contact support.' : 'We\'re preparing your access email...'))
                 ) : (
                   displayEmail || 'checking...'
                 )}
@@ -512,9 +528,18 @@ const SuccessPage: React.FC = () => {
         </div>
 
         <div className="mt-16 text-center text-gray-300">
-          <p className="text-sm">
-            Need help? <a className="text-gold hover:underline" href="mailto:hi@restorationexpertise.com">Contact support</a>
-          </p>
+          <div className="w-full max-w-md mx-auto p-6 rounded-2xl shadow-xl fm-glass-card border border-gold/20">
+            <h3 className="font-bold text-lg text-white mb-3">Need Help?</h3>
+            <p className="text-sm text-gray-300 mb-4">
+              Our support team is here to help you get started with your new membership.
+            </p>
+            <a 
+              href="mailto:hi@restorationexpertise.com" 
+              className="inline-block px-6 py-3 rounded-lg bg-gold text-charcoal font-semibold hover:bg-gold-light transition-colors"
+            >
+              Contact Support
+            </a>
+          </div>
         </div>
       </main>
     </div>
