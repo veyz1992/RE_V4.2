@@ -96,6 +96,11 @@ const SuccessPage: React.FC = () => {
   // Safe param access with defaults
   const plan = planSlug ?? 'founding-member';
   
+  // Safely read session_id to prevent TDZ issues
+  const search = typeof window !== 'undefined' ? window.location.search : '';
+  const params = new URLSearchParams(search || '');
+  const sessionIdFromUrl = params.get('session_id');
+  
   // Safely access auth context with fallback
   let currentUser: any = null;
   let login: any = null;
@@ -106,6 +111,16 @@ const SuccessPage: React.FC = () => {
   } catch (error) {
     console.warn('Auth context not available:', error);
   }
+
+  // All state declarations first to prevent TDZ
+  const [sessionId, setSessionId] = useState<string | null>(sessionIdFromUrl);
+  const [isLoadingSuccessData, setIsLoadingSuccessData] = useState(false);
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [actionState, setActionState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [actionMessage, setActionMessage] = useState<string>('');
+  const [cachedEmail, setCachedEmail] = useState<string>('');
+  const [resendCooldown, setResendCooldown] = useState<number>(0);
 
   // State for success summary data
   const [successData, setSuccessData] = useState<{
@@ -128,14 +143,7 @@ const SuccessPage: React.FC = () => {
   const planConfig = planDetails[resolvedPlan];
   const isFounding = resolvedPlan === 'founding-member';
 
-  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
-  const [newEmail, setNewEmail] = useState('');
-  const [actionState, setActionState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const [actionMessage, setActionMessage] = useState<string>('');
-  const [cachedEmail, setCachedEmail] = useState<string>('');
-  const [resendCooldown, setResendCooldown] = useState<number>(0);
-
-  // Move display variables above their first use to prevent TDZ issues
+  // Display variables - now safe since all dependencies are declared above
   const displayBusinessName = useMemo(() => {
     console.log('[SuccessPage] Computing displayBusinessName - successData:', successData);
     if (successData?.business && successData.business !== 'Pending Sync') {
@@ -144,9 +152,9 @@ const SuccessPage: React.FC = () => {
     }
     if (sessionId && isLoadingSuccessData) {
       console.log('[SuccessPage] Still loading, showing loading state');
-      return 'Loading...';
+      return '—';
     }
-    const fallback = currentUser?.name || 'Your Business';
+    const fallback = currentUser?.name || '—';
     console.log('[SuccessPage] Using fallback business name:', fallback);
     return fallback;
   }, [successData, sessionId, isLoadingSuccessData, currentUser?.name]);
@@ -159,15 +167,12 @@ const SuccessPage: React.FC = () => {
     }
     if (sessionId && isLoadingSuccessData) {
       console.log('[SuccessPage] Still loading, showing loading state');
-      return 'Loading...';
+      return '—';
     }
-    const fallback = currentUser?.account?.ownerName || currentUser?.name || 'Your Name';
+    const fallback = currentUser?.account?.ownerName || currentUser?.name || '—';
     console.log('[SuccessPage] Using fallback contact name:', fallback);
     return fallback;
   }, [successData, sessionId, isLoadingSuccessData, currentUser?.account?.ownerName, currentUser?.name]);
-  // Parse session_id once on mount
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [isLoadingSuccessData, setIsLoadingSuccessData] = useState(false);
 
   // Compute display email based on session_id presence
   const displayEmail = useMemo(() => {
@@ -195,24 +200,30 @@ const SuccessPage: React.FC = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlSessionId = urlParams.get('session_id');
-    
-    setSessionId(urlSessionId);
-    console.log('[SuccessPage] session_id from URL:', urlSessionId);
-    
-    if (urlSessionId) {
-      // Clear localStorage when session_id is present - we want fresh data
-      console.log('[SuccessPage] session_id present - clearing localStorage');
-      window.localStorage.removeItem(EMAIL_STORAGE_KEY);
-      window.localStorage.removeItem(PLAN_STORAGE_KEY);
-      setCachedEmail('');
-    } else {
-      // Load cached email only when no session_id
-      const storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
-      if (storedEmail) {
-        setCachedEmail(storedEmail);
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlSessionId = urlParams.get('session_id');
+      
+      setSessionId(urlSessionId);
+      console.log('[SuccessPage] session_id from URL:', urlSessionId);
+      
+      if (urlSessionId) {
+        // Clear localStorage when session_id is present - we want fresh data
+        console.log('[SuccessPage] session_id present - clearing localStorage');
+        window.localStorage.removeItem(EMAIL_STORAGE_KEY);
+        window.localStorage.removeItem(PLAN_STORAGE_KEY);
+        setCachedEmail('');
+      } else {
+        // Load cached email only when no session_id
+        const storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
+        if (storedEmail) {
+          setCachedEmail(storedEmail);
+        }
       }
+    } catch (error) {
+      console.error('[SuccessPage] Error initializing session:', error);
+      setActionState('error');
+      setActionMessage('Unable to initialize session properly');
     }
   }, []);
 
@@ -244,9 +255,9 @@ const SuccessPage: React.FC = () => {
           // Set fallback data even on error to prevent loading forever
           setSuccessData({
             success: false,
-            email: 'Pending Sync',
-            business: 'Pending Sync',
-            name: 'Pending Sync',
+            email: '—',
+            business: '—',
+            name: '—',
             plan: 'Founding Member'
           });
         }
@@ -255,9 +266,9 @@ const SuccessPage: React.FC = () => {
         // Set fallback data on error
         setSuccessData({
           success: false,
-          email: 'Pending Sync',
-          business: 'Pending Sync',
-          name: 'Pending Sync',
+          email: '—',
+          business: '—',
+          name: '—',
           plan: 'Founding Member'
         });
       } finally {
@@ -496,6 +507,8 @@ const SuccessPage: React.FC = () => {
                 {sessionId ? (
                   displayEmail || (isLoadingSuccessData ? 'checking...' : 
                     (successData?.success === false ? 'We couldn\'t load your data yet. Please contact support.' : 'We\'re preparing your access email...'))
+                ) : sessionId === null ? (
+                  <span className="text-yellow-400">Missing session id</span>
                 ) : (
                   displayEmail || 'checking...'
                 )}
