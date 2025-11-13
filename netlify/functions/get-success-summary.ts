@@ -171,9 +171,9 @@ export const handler = async (event: any) => {
       console.error('[get-success-summary] Supabase not available - using fallbacks');
       return json(200, {
         success: true,
-        email: email || 'Pending Sync',
-        business: 'Pending Sync',
-        name: 'Pending Sync',
+        email: email || null,
+        business: null,
+        name: null,
         plan: plan
       });
     }
@@ -241,7 +241,7 @@ export const handler = async (event: any) => {
       try {
         const { data: assessmentData, error: assessmentError } = await supabase
           .from('assessments')
-          .select('answers, full_name_entered, email_entered')
+          .select('answers, full_name_entered, email_entered, business_name, business_description, profile_id')
           .eq('id', assessmentId)
           .single();
 
@@ -250,10 +250,17 @@ export const handler = async (event: any) => {
         } else if (assessmentData) {
           console.log('[get-success-summary] Raw assessment data:', assessmentData);
           
-          // Try multiple possible business name fields
+          // Try multiple possible business name sources
           if (!businessName) {
-            const answers = assessmentData.answers || {};
-            businessName = answers.businessName || answers.business_name || answers.companyName || answers.company_name;
+            // First try direct business_name field
+            businessName = assessmentData.business_name;
+            
+            // Then try answers object
+            if (!businessName) {
+              const answers = assessmentData.answers || {};
+              businessName = answers.businessName || answers.business_name || answers.companyName || answers.company_name;
+            }
+            
             if (businessName) {
               console.log('[get-success-summary] Got business name from assessment:', businessName);
             }
@@ -269,11 +276,41 @@ export const handler = async (event: any) => {
             console.log('[get-success-summary] Got email from assessment:', email);
           }
           
+          // If we still don't have a profile and the assessment has a profile_id, try to get it
+          if (assessmentData.profile_id && !profileId) {
+            console.log('[get-success-summary] Found profile_id in assessment, trying to fetch profile:', assessmentData.profile_id);
+            try {
+              const { data: profileData, error: profileError } = await supabase
+                .from('profiles')
+                .select('company_name, full_name, email')
+                .eq('id', assessmentData.profile_id)
+                .single();
+
+              if (!profileError && profileData) {
+                if (!businessName && profileData.company_name) {
+                  businessName = profileData.company_name;
+                  console.log('[get-success-summary] Got business name from linked profile:', businessName);
+                }
+                if (!fullName && profileData.full_name) {
+                  fullName = profileData.full_name;
+                  console.log('[get-success-summary] Got full name from linked profile:', fullName);
+                }
+                if (!email && profileData.email) {
+                  email = profileData.email;
+                  console.log('[get-success-summary] Got email from linked profile:', email);
+                }
+              }
+            } catch (profileFetchError) {
+              console.error('[get-success-summary] Error fetching linked profile:', profileFetchError);
+            }
+          }
+          
           console.log('[get-success-summary] Final assessment extraction:', {
             businessName,
             fullName,
             email,
-            rawAnswers: assessmentData.answers
+            rawAnswers: assessmentData.answers,
+            business_name_field: assessmentData.business_name
           });
         } else {
           console.log('[get-success-summary] No assessment data returned');
@@ -283,12 +320,12 @@ export const handler = async (event: any) => {
       }
     }
 
-    // Create the clean JSON response with fallbacks for missing data
+    // Create the clean JSON response - return null for missing data, not fallback strings
     const response = {
       success: true,
-      email: email || 'Pending Sync',
-      business: businessName || 'Pending Sync',
-      name: fullName || 'Pending Sync',
+      email: email || null,
+      business: businessName || null,
+      name: fullName || null,
       plan: plan
     };
 
@@ -310,9 +347,9 @@ export const handler = async (event: any) => {
     return json(200, { 
       success: false, 
       error: error?.message || 'Internal server error',
-      email: 'Pending Sync',
-      business: 'Pending Sync',
-      name: 'Pending Sync',
+      email: null,
+      business: null,
+      name: null,
       plan: 'Founding Member'
     });
   }

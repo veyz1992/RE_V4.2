@@ -146,7 +146,7 @@ const SuccessPage: React.FC = () => {
   // Display variables - now safe since all dependencies are declared above
   const displayBusinessName = useMemo(() => {
     console.log('[SuccessPage] Computing displayBusinessName - successData:', successData);
-    if (successData?.business && successData.business !== 'Pending Sync') {
+    if (successData?.business) {
       console.log('[SuccessPage] Using business from API:', successData.business);
       return successData.business;
     }
@@ -161,7 +161,7 @@ const SuccessPage: React.FC = () => {
 
   const displayContactName = useMemo(() => {
     console.log('[SuccessPage] Computing displayContactName - successData:', successData);
-    if (successData?.name && successData.name !== 'Pending Sync') {
+    if (successData?.name) {
       console.log('[SuccessPage] Using name from API:', successData.name);
       return successData.name;
     }
@@ -178,7 +178,7 @@ const SuccessPage: React.FC = () => {
   const displayEmail = useMemo(() => {
     if (sessionId) {
       // If session_id present: use success data email only (or show loading)
-      return successData?.email && successData.email !== 'Pending Sync' ? successData.email : null;
+      return successData?.email || null;
     } else {
       // If session_id missing: use fallback hierarchy
       return currentUser?.email || cachedEmail;
@@ -255,9 +255,9 @@ const SuccessPage: React.FC = () => {
           // Set fallback data even on error to prevent loading forever
           setSuccessData({
             success: false,
-            email: '—',
-            business: '—',
-            name: '—',
+            email: null,
+            business: null,
+            name: null,
             plan: 'Founding Member'
           });
         }
@@ -266,9 +266,9 @@ const SuccessPage: React.FC = () => {
         // Set fallback data on error
         setSuccessData({
           success: false,
-          email: '—',
-          business: '—',
-          name: '—',
+          email: null,
+          business: null,
+          name: null,
           plan: 'Founding Member'
         });
       } finally {
@@ -286,7 +286,7 @@ const SuccessPage: React.FC = () => {
     
     if (sessionId) {
       // If session_id present: only use success data email, never cached
-      emailToUse = successData?.email && successData.email !== 'Pending Sync' ? successData.email : null;
+      emailToUse = successData?.email || null;
       if (!emailToUse && !isLoadingSuccessData) {
         setActionState('error');
         setActionMessage('We\'re still loading your account information. Please wait a moment.');
@@ -364,7 +364,7 @@ const SuccessPage: React.FC = () => {
     try {
       if (sessionId) {
         // If session_id present: only trigger after successData is loaded
-        if (successData?.email && successData.email !== 'Pending Sync' && actionState === 'idle') {
+        if (successData?.email && actionState === 'idle') {
           triggerMagicLink();
         }
       } else {
