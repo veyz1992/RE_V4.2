@@ -136,8 +136,35 @@ const SuccessPage: React.FC = () => {
   const [resendCooldown, setResendCooldown] = useState<number>(0);
 
   // Move display variables above their first use to prevent TDZ issues
-  const displayBusinessName = successData?.business && successData.business !== 'Pending Sync' ? successData.business : currentUser?.name || 'Your Business';
-  const displayContactName = successData?.name && successData.name !== 'Pending Sync' ? successData.name : currentUser?.account?.ownerName || currentUser?.name || 'Your Name';
+  const displayBusinessName = useMemo(() => {
+    console.log('[SuccessPage] Computing displayBusinessName - successData:', successData);
+    if (successData?.business && successData.business !== 'Pending Sync') {
+      console.log('[SuccessPage] Using business from API:', successData.business);
+      return successData.business;
+    }
+    if (sessionId && isLoadingSuccessData) {
+      console.log('[SuccessPage] Still loading, showing loading state');
+      return 'Loading...';
+    }
+    const fallback = currentUser?.name || 'Your Business';
+    console.log('[SuccessPage] Using fallback business name:', fallback);
+    return fallback;
+  }, [successData, sessionId, isLoadingSuccessData, currentUser?.name]);
+
+  const displayContactName = useMemo(() => {
+    console.log('[SuccessPage] Computing displayContactName - successData:', successData);
+    if (successData?.name && successData.name !== 'Pending Sync') {
+      console.log('[SuccessPage] Using name from API:', successData.name);
+      return successData.name;
+    }
+    if (sessionId && isLoadingSuccessData) {
+      console.log('[SuccessPage] Still loading, showing loading state');
+      return 'Loading...';
+    }
+    const fallback = currentUser?.account?.ownerName || currentUser?.name || 'Your Name';
+    console.log('[SuccessPage] Using fallback contact name:', fallback);
+    return fallback;
+  }, [successData, sessionId, isLoadingSuccessData, currentUser?.account?.ownerName, currentUser?.name]);
   // Parse session_id once on mount
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoadingSuccessData, setIsLoadingSuccessData] = useState(false);
@@ -202,7 +229,14 @@ const SuccessPage: React.FC = () => {
         
         if (response.ok) {
           const data = await response.json();
-          console.log('[SuccessPage] Success summary response:', data);
+          console.log('[SuccessPage] ===== API RESPONSE =====');
+          console.log('[SuccessPage] Raw response:', data);
+          console.log('[SuccessPage] data.success:', data.success);
+          console.log('[SuccessPage] data.email:', data.email);
+          console.log('[SuccessPage] data.business:', data.business);
+          console.log('[SuccessPage] data.name:', data.name);
+          console.log('[SuccessPage] data.plan:', data.plan);
+          console.log('[SuccessPage] =======================');
           setSuccessData(data);
           console.log(`[SuccessPage] ✅ Success! Data loaded:`, data);
         } else {

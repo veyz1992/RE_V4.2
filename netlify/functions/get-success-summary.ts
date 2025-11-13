@@ -248,22 +248,32 @@ export const handler = async (event: any) => {
         if (assessmentError) {
           console.error('[get-success-summary] Assessment query error:', assessmentError);
         } else if (assessmentData) {
-          if (!businessName && assessmentData.answers?.businessName) {
-            businessName = assessmentData.answers.businessName;
-            console.log('[get-success-summary] Got business name from assessment');
+          console.log('[get-success-summary] Raw assessment data:', assessmentData);
+          
+          // Try multiple possible business name fields
+          if (!businessName) {
+            const answers = assessmentData.answers || {};
+            businessName = answers.businessName || answers.business_name || answers.companyName || answers.company_name;
+            if (businessName) {
+              console.log('[get-success-summary] Got business name from assessment:', businessName);
+            }
           }
+          
           if (!fullName && assessmentData.full_name_entered) {
             fullName = assessmentData.full_name_entered;
-            console.log('[get-success-summary] Got full name from assessment');
+            console.log('[get-success-summary] Got full name from assessment:', fullName);
           }
+          
           if (!email && assessmentData.email_entered) {
             email = assessmentData.email_entered;
-            console.log('[get-success-summary] Got email from assessment');
+            console.log('[get-success-summary] Got email from assessment:', email);
           }
-          console.log('[get-success-summary] Found assessment data:', {
-            businessName: assessmentData.answers?.businessName,
-            full_name_entered: assessmentData.full_name_entered,
-            email_entered: assessmentData.email_entered
+          
+          console.log('[get-success-summary] Final assessment extraction:', {
+            businessName,
+            fullName,
+            email,
+            rawAnswers: assessmentData.answers
           });
         } else {
           console.log('[get-success-summary] No assessment data returned');
@@ -282,7 +292,13 @@ export const handler = async (event: any) => {
       plan: plan
     };
 
-    console.log('[get-success-summary] Final response:', response);
+    console.log('[get-success-summary] ===== FINAL RESPONSE =====');
+    console.log('[get-success-summary] email:', email);
+    console.log('[get-success-summary] business:', businessName);
+    console.log('[get-success-summary] name:', fullName);
+    console.log('[get-success-summary] plan:', plan);
+    console.log('[get-success-summary] Final response object:', response);
+    console.log('[get-success-summary] ===========================');
 
     return json(200, response);
 
