@@ -1,5 +1,5 @@
-import { assertEnv } from './_utils/env.js';
-import { serverClient } from '../lib/supabaseServer.js';
+import { getEnv } from './lib/env.js';
+import { getServerClient } from '../lib/supabaseServer.js';
 
 // Validation schemas
 const US_STATES = [
@@ -142,16 +142,28 @@ function json(statusCode: number, data: any) {
 
 export const handler = async (event: any) => {
   try {
-    // Assert required environment variables
-    try {
-      assertEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
-    } catch (envError) {
-      console.error('[save-assessment] step:env_validation', { 
-        error: envError.message,
+    // Check required environment variables with graceful handling
+    const envCheck = getEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
+    
+    if (!envCheck.ok) {
+      console.error('[save-assessment] step:env_missing', { 
+        missing: envCheck.missing,
         context: process.env.CONTEXT,
         deployUrl: process.env.DEPLOY_PRIME_URL
       });
-      return json(500, { success: false, error: `Missing server configuration: ${envError.message}` });
+      return json(500, { error: "database_not_available", missing: envCheck.missing });
+    }
+
+    // Get Supabase client with error handling
+    let serverClient;
+    try {
+      serverClient = getServerClient();
+    } catch (clientError) {
+      console.error('[save-assessment] step:client_error', { 
+        error: clientError.message,
+        context: process.env.CONTEXT
+      });
+      return json(500, { error: "database_not_available", missing: ["SUPABASE configuration"] });
     }
 
     // CORS preflight

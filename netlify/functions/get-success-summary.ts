@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
-import { assertEnv, serverEnv } from './_utils/env.js';
-import { serverClient } from '../lib/supabaseServer.js';
+import { getEnv } from './lib/env.js';
+import { getServerClient } from '../lib/supabaseServer.js';
 
 const json = (status: number, body: unknown) => ({
   statusCode: status,
@@ -15,16 +15,30 @@ const json = (status: number, body: unknown) => ({
 
 export const handler = async (event: any) => {
   try {
-    // Assert required environment variables
-    try {
-      assertEnv(['STRIPE_SECRET_KEY', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
-    } catch (envError) {
-      console.error('[get-success-summary] step:env_validation', {
-        error: envError.message,
+    // Check required environment variables with graceful handling
+    const envCheck = getEnv(['STRIPE_SECRET_KEY', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
+    
+    if (!envCheck.ok) {
+      console.error('[get-success-summary] step:env_missing', {
+        missing: envCheck.missing,
         context: process.env.CONTEXT,
         deployUrl: process.env.DEPLOY_PRIME_URL
       });
-      return json(500, { success: false, error: 'Missing server configuration: ' + envError.message });
+      return json(500, { error: "database_not_available", missing: envCheck.missing });
+    }
+
+    const env = envCheck.values;
+
+    // Get Supabase client with error handling
+    let serverClient;
+    try {
+      serverClient = getServerClient();
+    } catch (clientError) {
+      console.error('[get-success-summary] step:client_error', { 
+        error: clientError.message,
+        context: process.env.CONTEXT
+      });
+      return json(500, { error: "database_not_available", missing: ["SUPABASE configuration"] });
     }
 
     // CORS preflight
@@ -61,7 +75,7 @@ export const handler = async (event: any) => {
     let metadataProfileId;
     
     try {
-      const stripe = new Stripe(serverEnv.STRIPE_SECRET_KEY, {
+      const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
         apiVersion: '2024-06-20'
       });
 

@@ -1,6 +1,8 @@
 // Health check function to verify environment variables presence
 // Returns which keys are present (masked) without exposing actual secrets
 
+import { getEnv } from './lib/env.js';
+
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
   headers: {
@@ -21,45 +23,18 @@ export const handler = async (event: any) => {
     return jsonResponse(405, { error: 'Method Not Allowed' });
   }
 
-  // Required server environment keys
-  const requiredServerKeys = [
-    'SUPABASE_URL',
-    'SUPABASE_SERVICE_ROLE_KEY', 
-    'STRIPE_SECRET_KEY',
-    'STRIPE_WEBHOOK_SECRET',
-    'PRICE_FOUNDING_MEMBER',
-    'SITE_BASE_URL'
+  // Required keys for dev3
+  const requiredKeys = [
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "PRICE_ID_FOUNDING_MEMBER",
+    "STRIPE_PRICE_FOUNDING_MEMBER"
   ];
 
-  // Required client environment keys
-  const requiredClientKeys = [
-    'VITE_SUPABASE_URL',
-    'VITE_SUPABASE_ANON_KEY',
-    'VITE_STRIPE_PUBLISHABLE_KEY'
-  ];
-
-  // Check which keys are present (masked)
-  const serverEnvStatus = {};
-  const clientEnvStatus = {};
-  const missingKeys = [];
-
-  for (const key of requiredServerKeys) {
-    const value = process.env[key];
-    const isPresent = !!(value && value.trim().length > 0);
-    serverEnvStatus[key] = isPresent ? 'present' : 'missing';
-    if (!isPresent) {
-      missingKeys.push(key);
-    }
-  }
-
-  for (const key of requiredClientKeys) {
-    const value = process.env[key];
-    const isPresent = !!(value && value.trim().length > 0);
-    clientEnvStatus[key] = isPresent ? 'present' : 'missing';
-    if (!isPresent) {
-      missingKeys.push(key);
-    }
-  }
+  // Use getEnv helper
+  const envCheck = getEnv(requiredKeys);
 
   // Deployment context information
   const deployContext = {
@@ -71,20 +46,26 @@ export const handler = async (event: any) => {
     branch: process.env.BRANCH || null
   };
 
+  // Build status for each key
+  const keyStatus = {};
+  for (const key of requiredKeys) {
+    const value = process.env[key];
+    keyStatus[key] = !!(value && value.trim().length > 0) ? 'present' : 'missing';
+  }
+
   const response = {
-    ok: missingKeys.length === 0,
+    ok: envCheck.ok,
+    missing: envCheck.missing,
     timestamp: new Date().toISOString(),
     deployContext,
-    serverEnv: serverEnvStatus,
-    clientEnv: clientEnvStatus,
-    missing: missingKeys,
-    totalChecked: requiredServerKeys.length + requiredClientKeys.length,
-    totalMissing: missingKeys.length
+    keyStatus,
+    totalChecked: requiredKeys.length,
+    totalMissing: envCheck.missing.length
   };
 
   console.log('[env-check] Environment check completed:', {
     context: deployContext.context,
-    missing: missingKeys,
+    missing: envCheck.missing,
     deployUrl: deployContext.deployUrl
   });
 

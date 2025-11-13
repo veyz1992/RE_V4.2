@@ -1,6 +1,6 @@
 // netlify/functions/create-checkout-session.ts
 import Stripe from 'stripe';
-import { assertEnv, serverEnv } from './_utils/env.js';
+import { getEnv } from './lib/env.js';
 
 const json = (status: number, body: unknown) => ({
   statusCode: status,
@@ -46,17 +46,25 @@ function resolveBaseUrl(event: any): string {
 
 export const handler = async (event: any) => {
   try {
-    // Assert required environment variables
-    try {
-      assertEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'STRIPE_SECRET_KEY', 'PRICE_FOUNDING_MEMBER', 'SITE_BASE_URL']);
-    } catch (envError) {
-      console.error('[create-checkout-session] step:env_validation', {
-        error: envError.message,
+    // Check required environment variables with graceful handling
+    const envCheck = getEnv([
+      'SUPABASE_URL', 
+      'SUPABASE_SERVICE_ROLE_KEY', 
+      'STRIPE_SECRET_KEY',
+      'PRICE_ID_FOUNDING_MEMBER',
+      'STRIPE_PRICE_FOUNDING_MEMBER'
+    ]);
+
+    if (!envCheck.ok) {
+      console.error('[create-checkout-session] step:env_missing', {
+        missing: envCheck.missing,
         context: process.env.CONTEXT,
         deployUrl: process.env.DEPLOY_PRIME_URL
       });
-      return json(500, { success: false, error: `Missing server configuration: ${envError.message}` });
+      return json(500, { error: "env_missing", missing: envCheck.missing });
     }
+
+    const env = envCheck.values;
 
     // Debug mode - GET request with debug=1 query parameter
     if (event.httpMethod === 'GET' && event.queryStringParameters?.debug === '1') {
@@ -102,21 +110,30 @@ export const handler = async (event: any) => {
       return json(400, { error: 'MISSING_REQUIRED_FIELDS', details: 'assessment_id, profile_id, and email are required' });
     }
 
-    // Use PRICE_FOUNDING_MEMBER from env, not hardcoded
-    const priceId = serverEnv.PRICE_FOUNDING_MEMBER;
+    // Accept either PRICE_ID_FOUNDING_MEMBER or STRIPE_PRICE_FOUNDING_MEMBER
+    const priceId = env.PRICE_ID_FOUNDING_MEMBER || env.STRIPE_PRICE_FOUNDING_MEMBER;
+    
+    if (!priceId) {
+      console.error('[create-checkout-session] step:no_price', {
+        context: process.env.CONTEXT
+      });
+      return json(500, { error: "env_missing", missing: ["PRICE_ID_FOUNDING_MEMBER or STRIPE_PRICE_FOUNDING_MEMBER"] });
+    }
 
     console.log('[create-checkout-session] step:checkout_creation', {
       assessmentId: finalAssessmentId,
       profileId: finalProfileId,
       email,
+      hasPriceId: !!priceId,
       context: process.env.CONTEXT
     });
 
     // Create Stripe Checkout Session
-    const success_url = `${serverEnv.SITE_BASE_URL}/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
-    const cancel_url = `${serverEnv.SITE_BASE_URL}/pricing?checkout=cancel`;
+    const siteBaseUrl = process.env.SITE_BASE_URL || process.env.URL || 'http://localhost:5173';
+    const success_url = `${siteBaseUrl}/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
+    const cancel_url = `${siteBaseUrl}/pricing?checkout=cancel`;
 
-    const stripe = new Stripe(serverEnv.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+    const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
