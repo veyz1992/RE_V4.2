@@ -258,14 +258,15 @@ export const handler = async (event: any) => {
       }
     }
 
-    // Step 3: If assessment_id missing, fallback by email
-    if ((!fullName || !businessName) && !assessmentId && email) {
-      console.log('[get-success-summary] No assessment_id, trying email fallback:', email);
+    // Step 3: If no profile and missing data, fallback to assessments by email
+    const emailForFallback = email || emailEntered;
+    if ((!fullName || !businessName) && emailForFallback) {
+      console.log('[get-success-summary] No profile/incomplete data, trying assessment email fallback:', emailForFallback);
       try {
         const { data: assessmentData, error: assessmentError } = await supabase
           .from('assessments')
           .select('full_name_entered, email_entered, answers')
-          .eq('email_entered', email)
+          .eq('email_entered', emailForFallback)
           .order('created_at', { ascending: false })
           .limit(1)
           .single();
@@ -273,17 +274,25 @@ export const handler = async (event: any) => {
         if (assessmentError) {
           console.error('[get-success-summary] Email fallback assessment query error:', assessmentError);
         } else if (assessmentData) {
+          // Map name = full_name_entered
           if (!fullName && assessmentData.full_name_entered) {
             fullName = assessmentData.full_name_entered;
             console.log('[get-success-summary] Got name from email fallback assessment:', fullName);
           }
           
+          // Map business = answers.businessName
           if (!businessName && assessmentData.answers) {
             businessName = assessmentData.answers?.businessName ?? null;
             if (businessName) {
               console.log('[get-success-summary] Got business from email fallback assessment:', businessName);
             }
           }
+          
+          console.log('[get-success-summary] Email fallback successful:', {
+            name: fullName,
+            business: businessName,
+            email: emailForFallback
+          });
         }
       } catch (error) {
         console.error('[get-success-summary] Error in email fallback query:', error);
