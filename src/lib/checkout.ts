@@ -4,33 +4,28 @@ const CHECKOUT_ENDPOINT = FUNCTION_ENDPOINTS.CHECKOUT;
 
 export interface StartCheckoutParams {
   assessmentId: string | number;
-  profileId: string;
   email: string;
+  plan: 'founding-member';
+  profileId?: string | null;
+  metadata?: Record<string, string | null | undefined>;
 }
 
-const resolvePriceId = (): string | undefined => {
-  const globalProcess = typeof globalThis !== 'undefined' ? (globalThis as any).process : undefined;
-  const fromProcess: string | undefined = globalProcess?.env?.PRICE_ID_FOUNDING_MEMBER;
-  const fromVite = (import.meta.env as Record<string, string | undefined>).VITE_PRICE_ID_FOUNDING_MEMBER;
-  return fromProcess || fromVite;
-};
+export interface CheckoutSessionResponse {
+  url: string;
+  id: string;
+}
 
-export const startCheckout = async ({ assessmentId, profileId, email }: StartCheckoutParams): Promise<void> => {
-  if (!assessmentId || !profileId || !email) {
+export const startCheckout = async ({ assessmentId, email, plan, profileId, metadata }: StartCheckoutParams): Promise<CheckoutSessionResponse> => {
+  if (!assessmentId || !email || !plan) {
     throw new Error('Missing required checkout identifiers.');
   }
 
-  const priceId = resolvePriceId();
-
-  if (!priceId) {
-    throw new Error('PRICE_ID_FOUNDING_MEMBER is not configured.');
-  }
-
   const payload = {
-    assessment_id: assessmentId,
-    profile_id: profileId,
+    assessment_id: String(assessmentId),
     email,
-    price_id: priceId,
+    plan,
+    profile_id: profileId ?? null,
+    metadata: metadata ?? undefined,
   };
 
   try {
@@ -42,8 +37,9 @@ export const startCheckout = async ({ assessmentId, profileId, email }: StartChe
       body: JSON.stringify(payload),
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const responseText = await response.text();
       console.error('[Checkout] create-checkout-session failed:', {
         status: response.status,
         payload,
@@ -52,14 +48,20 @@ export const startCheckout = async ({ assessmentId, profileId, email }: StartChe
       throw new Error(`Failed to initiate checkout. Status: ${response.status}`);
     }
 
-    const data: { url?: string } = await response.json();
-
-    if (!data.url) {
-      console.error('[Checkout] create-checkout-session missing redirect URL:', { payload, data });
-      throw new Error('Checkout session did not return a redirect URL.');
+    let data: { url?: string; id?: string } = {};
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch (parseError) {
+      console.error('[Checkout] create-checkout-session parse error:', { payload, responseText, parseError });
+      throw new Error('Checkout session response was not valid JSON.');
     }
 
-    window.location.href = data.url;
+    if (!data.url || !data.id) {
+      console.error('[Checkout] create-checkout-session missing data:', { payload, data });
+      throw new Error('Checkout session did not return the expected data.');
+    }
+
+    return { url: data.url, id: data.id };
   } catch (error) {
     console.error('[Checkout] create-checkout-session error:', { error, payload });
     throw error;
