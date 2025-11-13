@@ -1,339 +1,157 @@
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-import { createClient } from '@supabase/supabase-js';
+import Stripe from 'stripe';
+import { serverEnv } from './_utils/env.js';
+import { supabaseServer } from './_utils/supabase.js';
 
-// Initialize Supabase client
-let supabase: any = null;
-
-try {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  
-  if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('[get-success-summary] Missing Supabase environment variables');
-  } else {
-    supabase = createClient(supabaseUrl, supabaseServiceKey);
-    console.log('[get-success-summary] Supabase client initialized with service role key:', supabaseServiceKey.substring(0, 20) + '...' + supabaseServiceKey.slice(-4));
-  }
-} catch (error) {
-  console.error('[get-success-summary] Failed to initialize Supabase:', error);
-}
-
-// JSON response helper
-function json(statusCode: number, data: any) {
-  return {
-    statusCode,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Content-Type',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS'
-    },
-    body: JSON.stringify(data)
-  };
-}
+const json = (status: number, body: unknown) => ({
+  statusCode: status,
+  headers: {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  },
+  body: JSON.stringify(body),
+});
 
 export const handler = async (event: any) => {
-  // Wrap entire function in try/catch to prevent 502 errors
   try {
-    console.log('[get-success-summary] Function invoked');
-    console.log('[get-success-summary] Event method:', event.httpMethod);
-    console.log('[get-success-summary] Query params:', event.queryStringParameters);
+    // Validate environment variables
+    try {
+      const envCheck = serverEnv;
+    } catch (envError) {
+      console.error('[get-success-summary] Environment validation failed:', envError);
+      return json(400, { 
+        success: false, 
+        error: 'CONFIG_ERROR'
+      });
+    }
 
     // CORS preflight
     if (event.httpMethod === 'OPTIONS') {
-      console.log('[get-success-summary] Handling OPTIONS request');
       return json(200, {});
     }
 
     // Only allow GET requests
     if (event.httpMethod !== 'GET') {
-      console.log('[get-success-summary] Invalid method:', event.httpMethod);
-      return json(200, { 
+      return json(405, { 
         success: false, 
-        error: 'Method not allowed',
-        email: null,
-        business: null,
-        name: null,
-        plan: 'Founding Member'
+        error: 'Method not allowed'
       });
     }
 
-    // Validate session_id from query parameters
+    // Get session_id from query parameters
     const sessionId = event.queryStringParameters?.session_id;
-    console.log('[get-success-summary] Session ID from params:', sessionId);
-
     if (!sessionId) {
-      console.log('[get-success-summary] Missing session_id parameter');
-      return json(200, { 
+      return json(400, { 
         success: false, 
-        error: 'Missing session_id parameter',
-        email: null,
-        business: null,
-        name: null,
-        plan: 'Founding Member'
+        error: 'NO_SESSION_ID'
       });
     }
 
-    if (typeof sessionId !== 'string' || sessionId.trim().length === 0) {
-      console.log('[get-success-summary] Invalid session_id format');
-      return json(200, { 
-        success: false, 
-        error: 'Invalid session_id format',
-        email: null,
-        business: null,
-        name: null,
-        plan: 'Founding Member'
-      });
-    }
+    console.log('[get-success-summary] Processing session:', sessionId);
 
-    // Check if Stripe is properly initialized
-    if (!stripe) {
-      console.error('[get-success-summary] Stripe not initialized - missing STRIPE_SECRET_KEY');
-      return json(200, { 
-        success: false, 
-        error: 'Stripe configuration error',
-        email: null,
-        business: null,
-        name: null,
-        plan: 'Founding Member'
-      });
-    }
+    // Initialize Stripe client
+    const stripe = new Stripe(serverEnv.STRIPE_SECRET_KEY, {
+      apiVersion: '2024-06-20'
+    });
 
-    console.log('[get-success-summary] Fetching Stripe session:', sessionId);
-
-    // Retrieve the Stripe checkout session
+    // Retrieve Stripe checkout session
     let session;
     try {
       session = await stripe.checkout.sessions.retrieve(sessionId, {
         expand: ['customer']
       });
-      console.log('[get-success-summary] Stripe session retrieved successfully');
-      console.log('[get-success-summary] Session status:', session.status);
-      console.log('[get-success-summary] Session metadata:', session.metadata);
+      console.log('[get-success-summary] Retrieved Stripe session');
     } catch (stripeError) {
       console.error('[get-success-summary] Stripe error:', stripeError);
-      return json(200, { 
-        success: false, 
-        error: 'Checkout session not found',
-        email: null,
-        business: null,
-        name: null,
-        plan: 'Founding Member'
-      });
-    }
-
-    if (!session) {
-      console.log('[get-success-summary] Session is null/undefined');
-      return json(200, { 
-        success: false, 
-        error: 'Session not found',
-        email: null,
-        business: null,
-        name: null,
-        plan: 'Founding Member'
-      });
-    }
-
-    // Extract and validate metadata
-    const metadata = session.metadata || {};
-    const profileId = metadata.profile_id;
-    const assessmentId = metadata.assessment_id;
-    const emailEntered = metadata.email_entered;
-    const plan = metadata.plan || 'Founding Member';
-
-    console.log('[get-success-summary] Extracted metadata:', {
-      profileId,
-      assessmentId,
-      emailEntered,
-      plan
-    });
-
-    // Extract email with priority: customer_details.email > customer.email > metadata.email_entered
-    let email = null;
-    if (session.customer_details?.email) {
-      email = session.customer_details.email;
-      console.log('[get-success-summary] Using email from customer_details');
-    } else if (session.customer?.email) {
-      email = session.customer.email;
-      console.log('[get-success-summary] Using email from customer');
-    } else if (emailEntered) {
-      email = emailEntered;
-      console.log('[get-success-summary] Using email from metadata');
-    } else {
-      console.warn('[get-success-summary] No email found in session');
-    }
-
-    let businessName = null;
-    let fullName = null;
-
-    // Check Supabase availability - continue with fallbacks if unavailable
-    if (!supabase) {
-      console.error('[get-success-summary] Supabase not available - using fallbacks');
-      return json(200, {
+      return json(400, {
         success: false,
-        error: 'Database not available',
-        email: email || null,
-        business: null,
-        name: null,
-        plan: plan
+        error: 'DB_OR_STRIPE_UNAVAILABLE'
       });
     }
 
-    // Step 1: If profile_id present, fetch from profiles first
-    if (profileId) {
-      console.log('[get-success-summary] Querying profiles table with ID:', profileId);
-      try {
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('full_name, company_name, email')
-          .eq('id', profileId)
-          .single();
-
-        if (profileError) {
-          console.error('[get-success-summary] Profile query error:', profileError);
-        } else if (profileData) {
-          fullName = profileData.full_name;
-          businessName = profileData.company_name;
-          if (!email && profileData.email) {
-            email = profileData.email;
-          }
-          console.log('[get-success-summary] Found profile data:', {
-            full_name: fullName,
-            company_name: businessName,
-            email: profileData.email
-          });
-        }
-      } catch (error) {
-        console.error('[get-success-summary] Error querying profiles:', error);
-      }
+    // Extract customer email from session
+    const customerEmail = session.customer_details?.email || session.customer?.email || null;
+    
+    if (!customerEmail) {
+      console.error('[get-success-summary] No customer email found in session');
+      return json(400, {
+        success: false,
+        error: 'DB_OR_STRIPE_UNAVAILABLE'
+      });
     }
 
-    // Step 2: If profiles empty OR profile_id null, fetch from assessments
-    if ((!fullName || !businessName || !email) && assessmentId) {
-      console.log('[get-success-summary] Querying assessments table with ID:', assessmentId);
-      try {
-        const { data: assessmentData, error: assessmentError } = await supabase
-          .from('assessments')
-          .select('full_name_entered, email_entered, answers')
-          .eq('id', assessmentId)
-          .single();
+    console.log('[get-success-summary] Customer email:', customerEmail);
 
-        if (assessmentError) {
-          console.error('[get-success-summary] Assessment query error:', assessmentError);
-        } else if (assessmentData) {
-          console.log('[get-success-summary] Raw assessment data:', assessmentData);
-          
-          // Extract name from full_name_entered
-          if (!fullName && assessmentData.full_name_entered) {
-            fullName = assessmentData.full_name_entered;
-            console.log('[get-success-summary] Got name from assessment.full_name_entered:', fullName);
-          }
-          
-          // Extract email from email_entered  
-          if (!email && assessmentData.email_entered) {
-            email = assessmentData.email_entered;
-            console.log('[get-success-summary] Got email from assessment.email_entered:', email);
-          }
-          
-          // Extract business from answers.businessName JSON field
-          if (!businessName && assessmentData.answers) {
-            console.log('[get-success-summary] Checking answers for businessName:', assessmentData.answers);
-            businessName = assessmentData.answers?.businessName ?? null;
-            if (businessName) {
-              console.log('[get-success-summary] Got business from assessment.answers.businessName:', businessName);
-            } else {
-              console.log('[get-success-summary] No businessName found in answers JSON');
-            }
-          }
-          
-          console.log('[get-success-summary] Assessment data extracted:', {
-            fullName,
-            businessName,
-            email,
-            rawAnswers: assessmentData.answers
-          });
-        }
-      } catch (error) {
-        console.error('[get-success-summary] Error querying assessments:', error);
-      }
-    }
+    let email = customerEmail;
+    let business = null;
+    let name = null;
 
-    // Step 3: If no profile and missing data, fallback to assessments by email
-    const emailForFallback = email || emailEntered;
-    if ((!fullName || !businessName) && emailForFallback) {
-      console.log('[get-success-summary] No profile/incomplete data, trying assessment email fallback:', emailForFallback);
-      try {
-        const { data: assessmentData, error: assessmentError } = await supabase
+    // Query profiles by email first
+    try {
+      const { data: profileData, error: profileError } = await supabaseServer
+        .from('profiles')
+        .select('email, company_name, full_name, last_assessment_id')
+        .eq('email', customerEmail)
+        .single();
+
+      if (!profileError && profileData) {
+        business = profileData.company_name;
+        name = profileData.full_name;
+        console.log('[get-success-summary] Found profile data:', {
+          company_name: business,
+          full_name: name
+        });
+      } else {
+        console.log('[get-success-summary] No profile found, falling back to assessments');
+        
+        // Fallback to latest assessment by email
+        const { data: assessmentData, error: assessmentError } = await supabaseServer
           .from('assessments')
-          .select('full_name_entered, email_entered, answers')
-          .eq('email_entered', emailForFallback)
+          .select('full_name_entered, city, state, answers')
+          .eq('email_entered', customerEmail)
           .order('created_at', { ascending: false })
           .limit(1)
           .single();
 
-        if (assessmentError) {
-          console.error('[get-success-summary] Email fallback assessment query error:', assessmentError);
-        } else if (assessmentData) {
-          // Map name = full_name_entered
-          if (!fullName && assessmentData.full_name_entered) {
-            fullName = assessmentData.full_name_entered;
-            console.log('[get-success-summary] Got name from email fallback assessment:', fullName);
+        if (!assessmentError && assessmentData) {
+          name = assessmentData.full_name_entered;
+          // Extract business from answers JSON
+          if (assessmentData.answers?.businessName) {
+            business = assessmentData.answers.businessName;
           }
-          
-          // Map business = answers.businessName
-          if (!businessName && assessmentData.answers) {
-            businessName = assessmentData.answers?.businessName ?? null;
-            if (businessName) {
-              console.log('[get-success-summary] Got business from email fallback assessment:', businessName);
-            }
-          }
-          
-          console.log('[get-success-summary] Email fallback successful:', {
-            name: fullName,
-            business: businessName,
-            email: emailForFallback
+          console.log('[get-success-summary] Found assessment data:', {
+            full_name_entered: name,
+            business_from_answers: business
           });
         }
-      } catch (error) {
-        console.error('[get-success-summary] Error in email fallback query:', error);
       }
+    } catch (supabaseError) {
+      console.error('[get-success-summary] Supabase error:', supabaseError);
+      return json(400, {
+        success: false,
+        error: 'DB_OR_STRIPE_UNAVAILABLE'
+      });
     }
 
-    // Compose stable response as specified
-    const finalEmail = email || emailEntered || null;
-    const finalName = fullName || null;
-    const finalBusiness = businessName || null;
-    const finalPlan = plan || 'Founding Member';
-
+    // Compose final response
     const response = {
       success: true,
-      email: finalEmail,
+      email,
+      business: business || null,
+      name: name || null,
       plan: 'founding-member',
-      rating: 'A+ Founding Elite - Restoration Pioneer',
-      business: finalBusiness,
-      name: finalName
+      rating: 'A+ Founding Elite - Restoration Pioneer'
     };
 
-    console.log('[get-success-summary] ===== FINAL RESPONSE =====');
-    const lookupPath = profileId ? 'profile_id' : (assessmentId ? 'assessment_id' : 'email');
-    console.log('[get-success-summary] Lookup path used:', lookupPath);
-    console.log('[get-success-summary] Final composed response:', response);
-    console.log('[get-success-summary] ===========================');
-
+    console.log('[get-success-summary] Final response:', response);
     return json(200, response);
 
   } catch (error) {
     console.error('[get-success-summary] Unhandled error:', error);
-    console.error('[get-success-summary] Error stack:', error?.stack);
-    
-    // Always return 200 with fallback data to prevent frontend crashes
-    return json(200, { 
-      success: false, 
-      error: error?.message || 'Internal server error',
-      email: null,
-      business: null,
-      name: null,
-      plan: 'Founding Member'
+    return json(400, {
+      success: false,
+      error: 'DB_OR_STRIPE_UNAVAILABLE'
     });
   }
 };
