@@ -10,11 +10,11 @@
     "analyze:cycles": "madge --circular --extensions ts,tsx,js,jsx src"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.48.1",
+    "@supabase/supabase-js": "latest",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.5",
-    "stripe": "^16.0.0"
+    "stripe": "latest"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

@@ -1,5 +1,11 @@
 import Stripe from 'stripe';
-import { createServerSupabase } from '../lib/supabaseServer.js';
+import { assertEnv } from '../lib/assertEnv';
+import { supabaseAdmin } from '../lib/supabaseServer';
+
+const { STRIPE_SECRET_KEY } = assertEnv(['STRIPE_SECRET_KEY'] as const);
+const stripe = new Stripe(STRIPE_SECRET_KEY, {
+  apiVersion: '2024-06-20'
+});
 
 const json = (status: number, body: unknown) => ({
   statusCode: status,
@@ -14,20 +20,7 @@ const json = (status: number, body: unknown) => ({
 
 export const handler = async (event: any) => {
   try {
-    // Validate required env vars
-    if (!process.env.STRIPE_SECRET_KEY || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('[get-success-summary] Missing required environment variables');
-      return json(500, { success: false, error: 'db' });
-    }
-
-    // Create Supabase client
-    let serverClient;
-    try {
-      serverClient = createServerSupabase();
-    } catch (envError) {
-      console.error('[get-success-summary] Supabase client error:', envError.message);
-      return json(500, { success: false, error: 'db' });
-    }
+    const serverClient = supabaseAdmin;
 
     // CORS preflight
     if (event.httpMethod === 'OPTIONS') {
@@ -63,10 +56,6 @@ export const handler = async (event: any) => {
     let metadataProfileId;
     
     try {
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-        apiVersion: '2024-06-20'
-      });
-
       session = await stripe.checkout.sessions.retrieve(sessionId, {
         expand: ['customer']
       });
