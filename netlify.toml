@@ -1,10 +1,15 @@
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  external_node_modules = []
+  included_files = []
+
 [build]
   publish = "dist"
   command = "npm run build"
 
-[functions]
-  node_bundler = "esbuild"
-  directory = "netlify/functions"
+[build.environment]
+  NODE_VERSION = "18"
 
 [[redirects]]
   from = "/*"

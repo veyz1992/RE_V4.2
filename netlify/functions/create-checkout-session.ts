@@ -1,127 +1,170 @@
+import type { Handler } from '@netlify/functions';
 import Stripe from 'stripe';
-import { checkRequiredEnv } from '../lib/assertEnv.js';
+import { assertEnv } from '../lib/assertEnv';
+import { supabaseAdmin } from '../lib/supabaseServer';
 
-const json = (status: number, body: unknown) => ({
-  statusCode: status,
-  headers: {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  },
-  body: JSON.stringify(body),
+const { STRIPE_SECRET_KEY, PRICE_ID_FOUNDING_MEMBER } = assertEnv([
+  'STRIPE_SECRET_KEY',
+  'PRICE_ID_FOUNDING_MEMBER'
+] as const);
+
+const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+
+const json = (statusCode: number, body: unknown) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body)
 });
 
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+const planPriceMap: Record<string, string> = {
+  'founding-member': PRICE_ID_FOUNDING_MEMBER,
+  'founding_member': PRICE_ID_FOUNDING_MEMBER,
+  foundingMember: PRICE_ID_FOUNDING_MEMBER
 };
 
-const resolveBaseUrl = (event: any): string => {
-  const fromRaw = (() => {
-    try {
-      if (event?.rawUrl) return new URL(event.rawUrl).origin;
-      const proto =
-        event?.headers?.['x-forwarded-proto'] ||
-        event?.headers?.['x-forwarded-protocol'] ||
-        'https';
-      const host = event?.headers?.['x-forwarded-host'] || event?.headers?.host;
-      if (host) return `${proto}://${host}`;
-      return null;
-    } catch {
-      return null;
+const resolveOrigin = (event: Parameters<Handler>[0]): string => {
+  try {
+    if (event.rawUrl) {
+      return new URL(event.rawUrl).origin;
     }
-  })();
+  } catch {
+    // ignore
+  }
 
-  const raw =
-    fromRaw ||
+  const forwardedProto = event.headers?.['x-forwarded-proto'] ?? event.headers?.['x-forwarded-protocol'];
+  const host = event.headers?.['x-forwarded-host'] ?? event.headers?.host;
+
+  if (host) {
+    const proto = typeof forwardedProto === 'string' && forwardedProto.length > 0 ? forwardedProto : 'https';
+    return `${proto}://${host}`;
+  }
+
+  const fallback =
     process.env.DEPLOY_URL ||
     process.env.DEPLOY_PRIME_URL ||
     process.env.URL ||
     process.env.SITE_URL;
 
-  if (!raw) throw new Error('MISSING_BASE_URL');
-  return String(raw).replace(/\/+$/, '');
+  if (!fallback) {
+    throw new Error('Unable to determine site origin');
+  }
+
+  return String(fallback).replace(/\/+$/, '');
 };
 
-export const handler = async (event: any) => {
+export const handler: Handler = async (event) => {
   try {
     if (event.httpMethod === 'OPTIONS') {
-      return json(200, {});
-    }
-
-    const envCheck = checkRequiredEnv(['STRIPE_SECRET_KEY', 'PRICE_ID_FOUNDING_MEMBER']);
-    if (!envCheck.ok) {
-      return json(500, { error: 'SERVER_ERROR', message: envCheck.message });
+      return json(200, { ok: true });
     }
 
     if (event.httpMethod !== 'POST') {
       return json(405, { error: 'METHOD_NOT_ALLOWED' });
     }
 
-    let body: any;
+    if (!event.body) {
+      return json(400, { error: 'EMPTY_BODY' });
+    }
+
+    let payload: Record<string, any>;
     try {
-      body = JSON.parse(event.body ?? '{}');
-    } catch (parseError) {
+      payload = JSON.parse(event.body);
+    } catch {
       return json(400, { error: 'INVALID_JSON' });
     }
 
-    const { email, assessment_id, plan, profile_id, metadata: rawMetadata } = body ?? {};
-
-    if (!email || !assessment_id || !plan) {
-      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
+    const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    if (!email) {
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS', details: ['email'] });
     }
 
-    let origin: string;
-    try {
-      origin = resolveBaseUrl(event);
-    } catch (resolveError: any) {
-      console.error('[create-checkout-session] Failed to resolve base URL:', resolveError?.message || resolveError);
-      return json(500, { error: 'SERVER_ERROR', message: 'Unable to determine site URL for checkout redirects.' });
-    }
-    const priceId = process.env.PRICE_ID_FOUNDING_MEMBER as string;
+    const requestedPriceId = typeof payload.priceId === 'string' ? payload.priceId.trim() : '';
+    const planKey = typeof payload.plan === 'string' ? payload.plan.trim() : '';
+    const priceId = requestedPriceId || (planKey ? planPriceMap[planKey] : undefined) || PRICE_ID_FOUNDING_MEMBER;
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-      apiVersion: '2024-06-20',
-    });
-
-    const metadata: Record<string, string> = {
-      assessment_id,
-      profile_id: typeof profile_id === 'string' && profile_id.trim().length > 0 ? profile_id : '',
-    };
-
-    if (typeof plan === 'string' && plan.trim()) {
-      metadata.plan = plan;
+    if (!priceId) {
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS', details: ['priceId'] });
     }
 
-    if (isRecord(rawMetadata)) {
-      for (const [key, value] of Object.entries(rawMetadata)) {
-        if (typeof value === 'string' && value.trim().length > 0) {
-          metadata[key] = value.trim();
+    let profileId: string | null = null;
+    let stripeCustomerId: string | null = null;
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, stripe_customer_id')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    if (profile) {
+      profileId = profile.id ?? null;
+      stripeCustomerId = profile.stripe_customer_id ?? null;
+    } else {
+      const { data: insertedProfile, error: insertProfileError } = await supabaseAdmin
+        .from('profiles')
+        .insert({ email })
+        .select('id')
+        .single();
+
+      if (insertProfileError) {
+        throw insertProfileError;
+      }
+
+      profileId = insertedProfile.id;
+    }
+
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({ email });
+      stripeCustomerId = customer.id;
+
+      if (profileId) {
+        await supabaseAdmin.from('profiles').update({ stripe_customer_id: stripeCustomerId }).eq('id', profileId);
+      }
+    }
+
+    const origin = resolveOrigin(event);
+
+    const metadata: Record<string, string> = {};
+    if (typeof payload.assessment_id === 'string') {
+      metadata.assessment_id = payload.assessment_id;
+    }
+    if (typeof payload.profile_id === 'string') {
+      metadata.profile_id = payload.profile_id;
+    }
+    if (planKey) {
+      metadata.plan = planKey;
+    }
+    if (payload.metadata && typeof payload.metadata === 'object') {
+      for (const [key, value] of Object.entries(payload.metadata)) {
+        if (typeof value === 'string') {
+          metadata[key] = value;
         }
       }
     }
 
-    const success_url = `${origin}/success?session_id={CHECKOUT_SESSION_ID}`;
-    const cancel_url = `${origin}/results`;
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: stripeCustomerId ?? undefined,
+      customer_email: stripeCustomerId ? undefined : email,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url:
+        typeof payload.successUrl === 'string' && payload.successUrl.length > 0
+          ? payload.successUrl
+          : `${origin}/results?checkout=success`,
+      cancel_url:
+        typeof payload.cancelUrl === 'string' && payload.cancelUrl.length > 0
+          ? payload.cancelUrl
+          : `${origin}/results?checkout=cancel`,
+      allow_promotion_codes: true,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined
+    });
 
-    try {
-      const session = await stripe.checkout.sessions.create({
-        mode: 'subscription',
-        line_items: [{ price: priceId, quantity: 1 }],
-        customer_email: email,
-        metadata,
-        client_reference_id: assessment_id,
-        success_url,
-        cancel_url,
-      });
-
-      return json(200, { url: session.url, id: session.id });
-    } catch (stripeError: any) {
-      console.error('[create-checkout-session] Stripe error:', stripeError?.message || stripeError);
-      return json(500, { error: 'STRIPE_ERROR' });
-    }
-  } catch (unhandledError: any) {
-    console.error('[create-checkout-session] Unhandled error:', unhandledError?.message || unhandledError);
-    return json(500, { error: 'STRIPE_ERROR' });
+    return json(200, { url: session.url });
+  } catch (error: any) {
+    console.error('[create-checkout-session] error', error);
+    return json(500, { error: 'CHECKOUT_SESSION_FAILED', message: error?.message ?? 'Unknown error' });
   }
 };

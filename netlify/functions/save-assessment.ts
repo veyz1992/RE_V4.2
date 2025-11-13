@@ -1,44 +1,11 @@
-import { createServerSupabase } from '../lib/supabaseServer.js';
-import { checkRequiredEnv } from '../lib/assertEnv.js';
-
-type ScoreBreakdown = {
-  operational?: number;
-  licensing?: number;
-  feedback?: number;
-  certifications?: number;
-  digital?: number;
-};
-
-type SaveAssessmentPayload = {
-  email?: string;
-  full_name?: string;
-  city?: string;
-  state?: string;
-  answers?: Record<string, unknown>;
-  total_score?: number;
-  scenario?: string;
-  breakdown?: ScoreBreakdown;
-};
-
-type ValidationDetails = {
-  missingFields: string[];
-  invalidFields: string[];
-};
+import type { Handler } from '@netlify/functions';
+import { supabaseAdmin } from '../lib/supabaseServer';
 
 const json = (statusCode: number, body: unknown) => ({
   statusCode,
-  headers: {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  },
-  body: JSON.stringify(body),
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body)
 });
-
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-};
 
 const normalizeString = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -46,130 +13,114 @@ const normalizeString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-const toInteger = (value: number): number => {
-  if (!Number.isFinite(value)) return 0;
-  return Math.round(value);
-};
-
-export const handler = async (event: any) => {
+export const handler: Handler = async (event) => {
   try {
-    if (event.httpMethod === 'OPTIONS') {
-      return json(200, {});
-    }
-
     if (event.httpMethod !== 'POST') {
       return json(405, { error: 'METHOD_NOT_ALLOWED' });
     }
 
-    const envCheck = checkRequiredEnv(['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
-    if (!envCheck.ok) {
-      return json(500, { error: 'SERVER_ERROR', message: envCheck.message });
+    if (!event.body) {
+      return json(400, { error: 'EMPTY_BODY' });
     }
 
-    let parsedBody: unknown;
+    let payload: Record<string, any>;
     try {
-      parsedBody = JSON.parse(event.body ?? '{}');
-    } catch (parseError) {
-      return json(400, { error: 'VALIDATION_ERROR', details: { missingFields: ['answers', 'total_score', 'scenario'], invalidFields: ['body'] } });
+      payload = JSON.parse(event.body);
+    } catch {
+      return json(400, { error: 'INVALID_JSON' });
     }
 
-    if (!isRecord(parsedBody)) {
-      return json(400, { error: 'VALIDATION_ERROR', details: { missingFields: ['answers', 'total_score', 'scenario'], invalidFields: [] } });
+    const requiredFields: Array<keyof typeof payload> = ['email', 'answers', 'total_score', 'scenario'];
+    const missing = requiredFields.filter((field) => {
+      const value = payload[field];
+      if (value === null || value === undefined) return true;
+      if (field === 'email' || field === 'scenario') {
+        return typeof value !== 'string' || value.trim().length === 0;
+      }
+      return false;
+    });
+
+    if (missing.length > 0) {
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS', details: missing });
     }
 
-    const payload = parsedBody as SaveAssessmentPayload;
+    const email = normalizeString(payload.email)?.toLowerCase();
+    if (!email) {
+      return json(400, { error: 'INVALID_EMAIL' });
+    }
 
-    const details: ValidationDetails = {
-      missingFields: [],
-      invalidFields: [],
+    const profileFields = {
+      name: normalizeString(payload.name ?? payload.full_name ?? null),
+      city: normalizeString(payload.city),
+      state: normalizeString(payload.state)
     };
 
-    if (!isRecord(payload.answers)) {
-      details.missingFields.push('answers');
+    const answers = payload.answers;
+    const totalScore = typeof payload.total_score === 'number' ? payload.total_score : Number(payload.total_score);
+    const scenario = normalizeString(payload.scenario);
+
+    if (!scenario || Number.isNaN(totalScore)) {
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS', details: ['total_score', 'scenario'] });
     }
 
-    if (typeof payload.total_score !== 'number' || Number.isNaN(payload.total_score)) {
-      details.missingFields.push('total_score');
+    const { data: existingProfile, error: fetchProfileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, stripe_customer_id')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (fetchProfileError) {
+      throw fetchProfileError;
     }
 
-    if (typeof payload.scenario !== 'string' || payload.scenario.trim().length === 0) {
-      details.missingFields.push('scenario');
-    }
+    let profileId = existingProfile?.id ?? null;
 
-    if (details.missingFields.length > 0 || details.invalidFields.length > 0) {
-      return json(400, { error: 'VALIDATION_ERROR', details });
-    }
-
-    const email = normalizeString(payload.email)?.toLowerCase() ?? null;
-    const fullName = normalizeString(payload.full_name);
-    const city = normalizeString(payload.city);
-    const state = normalizeString(payload.state);
-    const scenario = payload.scenario!.trim();
-    const totalScore = toInteger(payload.total_score!);
-
-    const breakdown = isRecord(payload.breakdown) ? (payload.breakdown as ScoreBreakdown) : undefined;
-
-    const mapBreakdown = (key: keyof ScoreBreakdown): number | null => {
-      if (!breakdown) return null;
-      const value = breakdown[key];
-      return typeof value === 'number' && Number.isFinite(value) ? toInteger(value) : null;
-    };
-
-    let supabase;
-    try {
-      supabase = createServerSupabase();
-    } catch (clientError: any) {
-      console.error('[save-assessment] Failed to create Supabase client:', clientError?.message || clientError);
-      return json(500, { error: 'SERVER_ERROR' });
-    }
-
-    const assessmentInsert: Record<string, unknown> = {
-      answers: payload.answers,
-      total_score: totalScore,
-      scenario,
-    };
-
-    if (email) assessmentInsert.email_entered = email;
-    if (fullName) assessmentInsert.full_name_entered = fullName;
-    if (city) assessmentInsert.city = city;
-    if (state) assessmentInsert.state = state;
-
-    const operationalScore = mapBreakdown('operational');
-    const licensingScore = mapBreakdown('licensing');
-    const feedbackScore = mapBreakdown('feedback');
-    const certificationsScore = mapBreakdown('certifications');
-    const digitalScore = mapBreakdown('digital');
-
-    if (operationalScore !== null) assessmentInsert.operational_score = operationalScore;
-    if (licensingScore !== null) assessmentInsert.licensing_score = licensingScore;
-    if (feedbackScore !== null) assessmentInsert.feedback_score = feedbackScore;
-    if (certificationsScore !== null) assessmentInsert.certifications_score = certificationsScore;
-    if (digitalScore !== null) assessmentInsert.digital_score = digitalScore;
-
-    try {
-      const { data, error } = await supabase
-        .from('assessments')
-        .insert(assessmentInsert)
-        .select('id, email_entered')
+    if (!profileId) {
+      const { data: insertedProfile, error: insertProfileError } = await supabaseAdmin
+        .from('profiles')
+        .insert({ email })
+        .select('id')
         .single();
 
-      if (error || !data) {
-        console.error('[save-assessment] Supabase insert error:', error?.message || error);
-        return json(500, { error: 'SERVER_ERROR' });
+      if (insertProfileError) {
+        throw insertProfileError;
       }
 
-      return json(200, {
-        success: true,
-        assessment_id: data.id,
-        profile_id: null,
-        email: data.email_entered ?? email,
-      });
-    } catch (dbError: any) {
-      console.error('[save-assessment] Unexpected Supabase error:', dbError?.message || dbError);
-      return json(500, { error: 'SERVER_ERROR' });
+      profileId = insertedProfile.id;
     }
-  } catch (unhandledError: any) {
-    console.error('[save-assessment] Unhandled error:', unhandledError?.message || unhandledError);
-    return json(500, { error: 'SERVER_ERROR' });
+
+    const assessmentRow = {
+      user_id: payload.user_id ?? null,
+      profile_id: profileId,
+      email_entered: email,
+      answers,
+      total_score: totalScore,
+      operational_score: payload.operational_score ?? null,
+      licensing_score: payload.licensing_score ?? null,
+      feedback_score: payload.feedback_score ?? null,
+      certifications_score: payload.certifications_score ?? null,
+      digital_score: payload.digital_score ?? null,
+      scenario,
+      pci_rating: payload.pci_rating ?? null,
+      intended_membership_tier: payload.intended_membership_tier ?? null,
+      full_name_entered: profileFields.name,
+      state: profileFields.state,
+      city: profileFields.city
+    };
+
+    const { data: assessment, error: assessmentError } = await supabaseAdmin
+      .from('assessments')
+      .insert(assessmentRow)
+      .select('id')
+      .single();
+
+    if (assessmentError) {
+      throw assessmentError;
+    }
+
+    return json(200, { success: true, assessment_id: assessment.id, profile_id: profileId });
+  } catch (error: any) {
+    console.error('[save-assessment] error', error);
+    return json(500, { error: 'ASSESSMENT_SAVE_FAILED', message: error?.message ?? 'Unknown error' });
   }
 };
