@@ -1,17 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-
-// Service role key for server-side operations
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  console.error('Missing Supabase environment variables');
-}
-
-const supabase = createClient(
-  supabaseUrl!,
-  supabaseServiceRoleKey!
-);
+import { supabaseServer } from './_utils/supabase.js';
 
 // Validation schemas
 const US_STATES = [

@@ -1,5 +1,6 @@
 // netlify/functions/create-checkout-session.ts
 import Stripe from 'stripe';
+import { serverEnv } from './_utils/env.js';
 
 const json = (status: number, body: unknown) => ({
   statusCode: status,
@@ -11,10 +12,7 @@ const json = (status: number, body: unknown) => ({
 });
 
 const TIER_TO_ENV: Record<string, string> = {
-  'founding-member': 'STRIPE_PRICE_FOUNDING_MEMBER',
-  'bronze': 'STRIPE_PRICE_BRONZE',
-  'silver': 'STRIPE_PRICE_SILVER',
-  'gold': 'STRIPE_PRICE_GOLD',
+  'founding-member': 'PRICE_FOUNDING_MEMBER',
 };
 
 // helper: choose the correct origin for this deploy
@@ -48,10 +46,26 @@ function resolveBaseUrl(event: any): string {
 
 export const handler = async (event: any) => {
   try {
+    // Validate required environment variables at the top
+    try {
+      // Import validates envs, will throw if missing
+      const envCheck = serverEnv;
+    } catch (envError) {
+      console.error('[create-checkout-session] Environment validation failed:', envError);
+      return json(400, { 
+        error: 'CONFIG_ERROR', 
+        missing: ['Required environment variables not configured']
+      });
+    }
+
     // Debug mode - GET request with debug=1 query parameter
     if (event.httpMethod === 'GET' && event.queryStringParameters?.debug === '1') {
       const baseUrl = resolveBaseUrl(event);
-      return json(200, { baseUrl });
+      return json(200, { 
+        ok: true, 
+        baseUrl,
+        hasStripe: true
+      });
     }
     
     if (event.httpMethod !== 'POST') {
@@ -81,31 +95,16 @@ export const handler = async (event: any) => {
       return json(400, { error: 'MISSING_TIER', details: { tier, intendedTier } });
     }
 
-    // Validate environment variables upfront
-    const secret = process.env.STRIPE_SECRET_KEY;
-    if (!secret) {
-      console.error('Missing STRIPE_SECRET_KEY in this deploy context');
-      return json(500, { error: 'MISSING_ENV', key: 'STRIPE_SECRET_KEY' });
-    }
+    // Use validated environment from serverEnv
+    const secret = serverEnv.STRIPE_SECRET_KEY;
 
     // Get email from assessment if not provided directly
     let customerEmail = email;
     if (!customerEmail && assessmentId) {
       try {
-        const { createClient } = await import('@supabase/supabase-js');
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const { supabaseServer } = await import('./_utils/supabase.js');
         
-        if (!supabaseUrl || !supabaseServiceRoleKey) {
-          console.error('Missing Supabase environment variables (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)');
-          return json(500, { error: 'Database not available' });
-        }
-
-        const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
-          auth: { autoRefreshToken: false, persistSession: false }
-        });
-        
-        const { data: assessment, error } = await supabase
+        const { data: assessment, error } = await supabaseServer
           .from('assessments')
           .select('email_entered')
           .eq('id', assessmentId)
@@ -135,16 +134,13 @@ export const handler = async (event: any) => {
     // Convert tier name to env key format
     const tierSlug = tierName.toLowerCase().replace(/\s+/g, '-');
     const priceEnvKey = TIER_TO_ENV[tierSlug];
-    const priceId = priceEnvKey ? process.env[priceEnvKey] : undefined;
+    const priceId = priceEnvKey === 'PRICE_FOUNDING_MEMBER' ? serverEnv.PRICE_FOUNDING_MEMBER : undefined;
 
     if (!priceId) {
       console.error('Missing price ID for tier:', tierName, 'slug:', tierSlug, 'envKey:', priceEnvKey);
-      return json(500, { 
-        error: 'MISSING_PRICE_ID', 
-        tier: tierName, 
-        tierSlug, 
-        envKey: priceEnvKey,
-        availableEnvKeys: Object.keys(TIER_TO_ENV)
+      return json(400, { 
+        error: 'CHECKOUT_CREATE_FAILED', 
+        detail: `Invalid tier: ${tierName}`
       });
     }
 
@@ -184,13 +180,10 @@ export const handler = async (event: any) => {
       message: err?.message,
       type: err?.type,
       code: err?.code,
-      raw: err?.raw?.message,
-      context: process.env.DEPLOYMENT_CONTEXT,
     });
-    return json(500, {
+    return json(400, {
       error: 'CHECKOUT_CREATE_FAILED',
-      message: err?.message || 'Unknown error',
-      code: err?.code || null,
+      detail: err?.message || 'Unknown error'
     });
   }
 };
