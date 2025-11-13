@@ -196,7 +196,10 @@ export const handler = async (event: any) => {
       state: assessmentInputs.state,
       city: normalizedCity,
       years_in_business: answers.yearsInBusiness || null,
-      services: servicesArray.length > 0 ? servicesArray : null
+      services: servicesArray.length > 0 ? servicesArray : null,
+      // Add missing Step 1 fields
+      business_description: answers.businessDescription?.trim() || null,
+      primary_service_city: answers.city?.trim() || null
     };
 
     const { data: existingProfile } = await supabase
@@ -252,7 +255,13 @@ export const handler = async (event: any) => {
       pci_rating: scores.grade,
       scenario: scores.isEligibleForCertification ? 'eligible' : 'not_eligible',
       eligibility_reasons: scores.eligibilityReasons,
-      opportunities: scores.opportunities
+      opportunities: scores.opportunities,
+      // Complete Step 1 field mapping
+      business_name: answers.businessName?.trim() || null,
+      business_description: answers.businessDescription?.trim() || null,
+      primary_service_city: answers.city?.trim() || null,
+      years_in_business: answers.yearsInBusiness || null,
+      services_offered: servicesArray.length > 0 ? servicesArray : null
     };
 
     const { data: assessment, error: assessmentError } = await supabase
