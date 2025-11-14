@@ -1,8 +1,8 @@
 import Stripe from 'stripe';
 import { assertEnv } from '../lib/assertEnv';
-import { supabaseAdmin } from '../lib/supabaseServer';
+import { supabase } from '../lib/supabaseServer';
 
-const { STRIPE_SECRET_KEY } = assertEnv(['STRIPE_SECRET_KEY'] as const);
+const { STRIPE_SECRET_KEY } = assertEnv();
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: '2024-06-20'
 });
@@ -20,7 +20,7 @@ const json = (status: number, body: unknown) => ({
 
 export const handler = async (event: any) => {
   try {
-    const serverClient = supabaseAdmin;
+    const serverClient = supabase;
 
     // CORS preflight
     if (event.httpMethod === 'OPTIONS') {

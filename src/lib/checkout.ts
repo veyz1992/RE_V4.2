@@ -2,6 +2,12 @@ import { FUNCTION_ENDPOINTS } from './functions';
 
 const CHECKOUT_ENDPOINT = FUNCTION_ENDPOINTS.CHECKOUT;
 
+const logCheckoutDebug = (...args: unknown[]) => {
+  if (import.meta.env?.DEV) {
+    console.log(...args);
+  }
+};
+
 export interface StartCheckoutParams {
   assessmentId: string | number;
   email: string;
@@ -27,6 +33,8 @@ export const startCheckout = async ({ assessmentId, email, plan, profileId, meta
     profile_id: profileId ?? null,
     metadata: metadata ?? undefined,
   };
+
+  logCheckoutDebug('[Checkout] create-checkout-session payload', payload);
 
   try {
     const response = await fetch(CHECKOUT_ENDPOINT, {
@@ -55,6 +63,8 @@ export const startCheckout = async ({ assessmentId, email, plan, profileId, meta
       console.error('[Checkout] create-checkout-session parse error:', { payload, responseText, parseError });
       throw new Error('Checkout session response was not valid JSON.');
     }
+
+    logCheckoutDebug('[Checkout] create-checkout-session response', data);
 
     if (!data.url || !data.id) {
       console.error('[Checkout] create-checkout-session missing data:', { payload, data });

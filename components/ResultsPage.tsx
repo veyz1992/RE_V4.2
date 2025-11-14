@@ -15,6 +15,12 @@ import {
 
 const ASSESSMENT_SCENARIO = 'member_self_assessment';
 
+const logCheckoutDebug = (...args: unknown[]) => {
+    if (import.meta.env.DEV) {
+        console.log(...args);
+    }
+};
+
 const AnimatedScore: React.FC<{ score: number }> = ({ score }) => {
     const [displayScore, setDisplayScore] = useState(0);
 
@@ -180,7 +186,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
     const [previewedTier, setPreviewedTier] = useState<{ name: string; features: string[] } | null>(null);
     const [checkoutError, setCheckoutError] = useState<string | null>(null);
     const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
-    const savedAssessmentRef = useRef<{ assessmentId: string | number; email: string } | null>(null);
+    const savedAssessmentRef = useRef<{ assessmentId: string | number; profileId: string | number; email: string } | null>(null);
 
     useEffect(() => {
         if (isEligibleForCertification) {
@@ -213,32 +219,33 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
             return;
         }
 
-        const breakdown: Record<string, number> = {};
-        const maybeSetBreakdown = (key: string, value: unknown) => {
+        const roundScore = (value: unknown) => {
             if (typeof value === 'number' && Number.isFinite(value)) {
-                breakdown[key] = Math.round(value);
+                return Math.round(value);
             }
+            return null;
         };
 
-        maybeSetBreakdown('operational', result.operational);
-        maybeSetBreakdown('licensing', result.licensing);
-        maybeSetBreakdown('feedback', result.feedback);
-        maybeSetBreakdown('certifications', result.certifications);
-        maybeSetBreakdown('digital', result.digital);
-
         const assessmentPayload: Record<string, unknown> = {
+            email,
             answers: result.answers || {},
             total_score: typeof result.total === 'number' ? Math.round(result.total) : 0,
             scenario: ASSESSMENT_SCENARIO,
+            operational_score: roundScore(result.operational),
+            licensing_score: roundScore(result.licensing),
+            feedback_score: roundScore(result.feedback),
+            certifications_score: roundScore(result.certifications),
+            digital_score: roundScore(result.digital),
         };
 
-        if (email) assessmentPayload.email = email;
         if (fullName) assessmentPayload.full_name = fullName;
         if (cityValue) assessmentPayload.city = cityValue;
         if (stateValue) assessmentPayload.state = stateValue;
-        if (Object.keys(breakdown).length > 0) {
-            assessmentPayload.breakdown = breakdown;
+        if (typeof result.intendedMembershipTier === 'string' && result.intendedMembershipTier.trim()) {
+            assessmentPayload.intended_membership_tier = result.intendedMembershipTier.trim();
         }
+
+        logCheckoutDebug('[Checkout] save-assessment payload', assessmentPayload);
 
         const clearPlanSelection = () => {
             if (typeof window !== 'undefined') {
@@ -277,6 +284,8 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
                 console.error('[Checkout] Failed to parse save-assessment response:', { responseText, parseError });
             }
 
+            logCheckoutDebug('[Checkout] save-assessment response', parsedSave);
+
             if (!saveResponse.ok || !parsedSave?.success) {
                 console.error('[Checkout] Save assessment failed:', {
                     status: saveResponse.status,
@@ -290,8 +299,9 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
             }
 
             const assessmentId = parsedSave?.assessment_id;
-            if (!assessmentId) {
-                console.error('[Checkout] Save assessment response missing assessment_id:', parsedSave);
+            const profileId = parsedSave?.profile_id;
+            if (!assessmentId || !profileId) {
+                console.error('[Checkout] Save assessment response missing identifiers:', parsedSave);
                 clearPlanSelection();
                 const errorMessage = 'We could not verify your saved assessment. Please try again.';
                 setCheckoutError(errorMessage);
@@ -302,6 +312,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
 
             savedAssessmentRef.current = {
                 assessmentId,
+                profileId,
                 email: normalizedEmail,
             };
 
@@ -311,19 +322,27 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
                 window.localStorage.removeItem(CHECKOUT_SESSION_STORAGE_KEY);
             }
 
-            const stripeMetadata: Record<string, string> = { email_entered: email };
+            const stripeMetadata: Record<string, string> = { email_entered: email, profile_id: String(profileId) };
             if (fullName) {
                 stripeMetadata.full_name_entered = fullName;
             }
+
+            logCheckoutDebug('[Checkout] create-checkout request', {
+                assessmentId,
+                profileId,
+                email: normalizedEmail,
+            });
 
             let session;
             try {
                 session = await startCheckout({
                     assessmentId,
+                    profileId,
                     email: normalizedEmail,
                     plan: 'founding-member',
                     metadata: stripeMetadata,
                 });
+                logCheckoutDebug('[Checkout] create-checkout response', session);
             } catch (checkoutError) {
                 console.error('[Checkout] Failed to create checkout session:', {
                     checkoutError,
