@@ -1,6 +1,6 @@
 
 
-import { Answers, ServiceRequestPriority } from './types';
+import { Answers, ServiceRequestPriority, ServiceRequestType } from './types';
 
 export const MAX_SCORES = {
   operational: 20,
@@ -101,3 +101,36 @@ export const PRIORITY_OPTIONS: { label: string; value: ServiceRequestPriority }[
   { label: PRIORITY_LABELS.normal, value: 'normal' },
   { label: PRIORITY_LABELS.high, value: 'high' },
 ];
+
+export const SERVICE_REQUEST_TYPE_LABELS: Record<ServiceRequestType, string> = {
+  seo_blog_post: 'SEO Blog Post',
+  spotlight_article: 'Spotlight Article',
+  website_review: 'Website Review',
+  badge_support: 'Badge / Trust Badge Support',
+  consultation: 'Consultation',
+  other: 'Other',
+};
+
+export const SERVICE_REQUEST_TYPE_OPTIONS: { label: string; value: ServiceRequestType }[] = [
+  { label: SERVICE_REQUEST_TYPE_LABELS.seo_blog_post, value: 'seo_blog_post' },
+  { label: SERVICE_REQUEST_TYPE_LABELS.spotlight_article, value: 'spotlight_article' },
+  { label: SERVICE_REQUEST_TYPE_LABELS.website_review, value: 'website_review' },
+  { label: SERVICE_REQUEST_TYPE_LABELS.badge_support, value: 'badge_support' },
+  { label: SERVICE_REQUEST_TYPE_LABELS.consultation, value: 'consultation' },
+  { label: SERVICE_REQUEST_TYPE_LABELS.other, value: 'other' },
+];
+
+export const SERVICE_REQUEST_TYPE_LABEL_TO_VALUE: Record<string, ServiceRequestType> = {
+  [SERVICE_REQUEST_TYPE_LABELS.seo_blog_post]: 'seo_blog_post',
+  [SERVICE_REQUEST_TYPE_LABELS.spotlight_article]: 'spotlight_article',
+  [SERVICE_REQUEST_TYPE_LABELS.website_review]: 'website_review',
+  [SERVICE_REQUEST_TYPE_LABELS.badge_support]: 'badge_support',
+  [SERVICE_REQUEST_TYPE_LABELS.consultation]: 'consultation',
+  [SERVICE_REQUEST_TYPE_LABELS.other]: 'other',
+  'Badge Support': 'badge_support',
+  'Trust Badge Support': 'badge_support',
+  'Badge / Trust Badge Support': 'badge_support',
+  'Consultation': 'consultation',
+  'Strategy Call': 'consultation',
+  'Consultation / Strategy Call': 'consultation',
+};
