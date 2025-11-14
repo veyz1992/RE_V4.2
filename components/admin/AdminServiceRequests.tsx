@@ -7,6 +7,7 @@ import {
     ServiceRequestPriority,
     ServiceRequestStatus,
 } from '../../types';
+import { PRIORITY_LABELS, PRIORITY_OPTIONS } from '../../constants';
 import { ClipboardIcon, ChevronDownIcon } from '../icons';
 
 interface AdminServiceRequestsProps {
@@ -35,6 +36,7 @@ interface SupabaseServiceRequestRow {
     title?: string | null;
     description?: string | null;
     priority?: string | null;
+    priority_level?: string | null;
     status?: string | null;
     admin_notes?: string | null;
     assigned_admin_id?: string | null;
@@ -112,7 +114,10 @@ const normalizePriority = (priority?: string | null): ServiceRequestPriority => 
     if (normalized.includes('low')) {
         return 'low';
     }
-    return 'medium';
+    if (normalized.includes('normal') || normalized.includes('medium')) {
+        return 'normal';
+    }
+    return 'normal';
 };
 
 const mapRequestRow = (row: SupabaseServiceRequestRow): MemberServiceRequest => ({
@@ -121,7 +126,7 @@ const mapRequestRow = (row: SupabaseServiceRequestRow): MemberServiceRequest => 
     requestType: row.request_type ?? 'Service Request',
     title: row.title ?? 'Untitled Request',
     description: row.description ?? null,
-    priority: normalizePriority(row.priority),
+    priority: normalizePriority(row.priority ?? row.priority_level),
     status: normalizeStatus(row.status),
     adminNotes: row.admin_notes ?? null,
     assignedAdminId: row.assigned_admin_id !== null && row.assigned_admin_id !== undefined
@@ -155,12 +160,6 @@ const STATUS_BADGE_CLASSES: Record<ServiceRequestStatus, string> = {
     canceled: 'bg-gray-200 text-gray-500',
 };
 
-const PRIORITY_LABELS: Record<ServiceRequestPriority, string> = {
-    low: 'Low',
-    medium: 'Medium',
-    high: 'High',
-};
-
 const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }) => {
     const { session } = useAuth();
     const [requests, setRequests] = useState<MemberServiceRequest[]>([]);
@@ -172,7 +171,10 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
     const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null);
 
     const statusOptions: ServiceRequestStatus[] = ['open', 'in_progress', 'completed', 'canceled'];
-    const priorityOptions: ServiceRequestPriority[] = ['low', 'medium', 'high'];
+    const priorityOptions = useMemo(
+        () => PRIORITY_OPTIONS.map(({ value }) => value),
+        [],
+    );
 
     const fetchAdminProfiles = useCallback(async () => {
         const { data, error: adminError } = await supabase
@@ -196,7 +198,7 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
                 supabase
                     .from('service_requests')
                     .select(
-                        'id, profile_id, request_type, title, description, priority, status, admin_notes, assigned_admin_id, created_at, updated_at',
+                        'id, profile_id, request_type, title, description, priority_level, status, admin_notes, assigned_admin_id, created_at, updated_at',
                     )
                     .in('status', ['open', 'in_progress'])
                     .order('created_at', { ascending: false }),
@@ -359,7 +361,7 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
                 supabaseUpdates.status = updates.status;
             }
             if (Object.prototype.hasOwnProperty.call(updates, 'priority')) {
-                supabaseUpdates.priority = updates.priority;
+                supabaseUpdates.priority_level = updates.priority;
             }
             if (Object.prototype.hasOwnProperty.call(updates, 'adminNotes')) {
                 supabaseUpdates.admin_notes = updates.adminNotes ?? null;

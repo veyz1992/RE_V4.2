@@ -1,6 +1,6 @@
 
 
-import { Answers } from './types';
+import { Answers, ServiceRequestPriority } from './types';
 
 export const MAX_SCORES = {
   operational: 20,
@@ -87,4 +87,17 @@ export const REJECTION_REASONS = [
     "Uploaded document is blurry, illegible, or incomplete.",
     "Business name on documents does not match the application.",
     "Workers' compensation policy information is missing.",
+];
+
+// Central source of truth for member service request priority labels and Supabase enum values.
+export const PRIORITY_LABELS: Record<ServiceRequestPriority, string> = {
+  low: 'Low',
+  normal: 'Medium',
+  high: 'High',
+};
+
+export const PRIORITY_OPTIONS: { label: string; value: ServiceRequestPriority }[] = [
+  { label: PRIORITY_LABELS.low, value: 'low' },
+  { label: PRIORITY_LABELS.normal, value: 'normal' },
+  { label: PRIORITY_LABELS.high, value: 'high' },
 ];

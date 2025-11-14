@@ -13,6 +13,7 @@ import ConfirmationModal from './admin/ConfirmationModal';
 import MemberBlueprint from './MemberBlueprint';
 import ThemeToggle from './ThemeToggle';
 import { ADMIN_MEMBERS } from '../lib/mockData';
+import { PRIORITY_LABELS, PRIORITY_OPTIONS } from '../constants';
 import { supabase } from '@/lib/supabase';
 import type { PostgrestError } from '@supabase/supabase-js';
 
@@ -248,6 +249,7 @@ interface SupabaseServiceRequest {
     description?: string | null;
     status?: string | null;
     priority?: string | null;
+    priority_level?: string | null;
     admin_notes?: string | null;
     assigned_admin_id?: string | null;
     created_at?: string | null;
@@ -512,7 +514,11 @@ const normalizeServiceRequestPriority = (priority?: string | null): ServiceReque
         return 'low';
     }
 
-    return 'medium';
+    if (normalized.includes('normal') || normalized.includes('medium')) {
+        return 'normal';
+    }
+
+    return 'normal';
 };
 
 const REQUEST_STATUS_LABELS: Record<ServiceRequestStatus, DashboardServiceRequestStatus> = {
@@ -520,12 +526,6 @@ const REQUEST_STATUS_LABELS: Record<ServiceRequestStatus, DashboardServiceReques
     in_progress: 'In progress',
     completed: 'Completed',
     canceled: 'Canceled',
-};
-
-const REQUEST_PRIORITY_LABELS: Record<ServiceRequestPriority, string> = {
-    low: 'Low',
-    medium: 'Medium',
-    high: 'High',
 };
 
 const normalizeRequestStatus = (status?: string | null): DashboardServiceRequestStatus => {
@@ -599,7 +599,8 @@ const mapDocumentRow = (document: SupabaseMemberDocument): DashboardDocument => 
 };
 
 const mapServiceRequestRow = (request: SupabaseServiceRequest): DashboardServiceRequest => {
-    const normalizedPriority = normalizeServiceRequestPriority(request.priority);
+    const rawPriority = request.priority ?? request.priority_level;
+    const normalizedPriority = normalizeServiceRequestPriority(rawPriority);
 
     return {
         id: String(request.id),
@@ -607,7 +608,7 @@ const mapServiceRequestRow = (request: SupabaseServiceRequest): DashboardService
         title: request.title ?? 'Untitled Request',
         status: normalizeRequestStatus(request.status),
         createdAt: request.created_at ?? request.updated_at ?? null,
-        priority: REQUEST_PRIORITY_LABELS[normalizedPriority],
+        priority: PRIORITY_LABELS[normalizedPriority],
     };
 };
 
@@ -617,7 +618,7 @@ const mapMemberServiceRequestRow = (request: SupabaseServiceRequest): MemberServ
     requestType: request.request_type ?? request.service ?? 'Service Request',
     title: request.title ?? 'Untitled Request',
     description: request.description ?? null,
-    priority: normalizeServiceRequestPriority(request.priority),
+    priority: normalizeServiceRequestPriority(request.priority ?? request.priority_level),
     status: normalizeServiceRequestStatus(request.status),
     adminNotes: request.admin_notes ?? null,
     assignedAdminId:
@@ -649,7 +650,7 @@ const STATUS_BADGE_CLASSES: Record<ServiceRequestStatus, string> = {
 
 const PRIORITY_BADGE_CLASSES: Record<ServiceRequestPriority, string> = {
     low: 'bg-gray-100 text-gray-700',
-    medium: 'bg-gray-200 text-gray-800',
+    normal: 'bg-gray-200 text-gray-800',
     high: 'bg-error/20 text-error',
 };
 
@@ -948,7 +949,7 @@ const MyRequests: React.FC<{
             const { data, error: requestError } = await supabase
                 .from('service_requests')
                 .select(
-                    'id, profile_id, request_type, service, title, description, priority, status, admin_notes, assigned_admin_id, created_at, updated_at',
+                    'id, profile_id, request_type, service, title, description, priority_level, status, admin_notes, assigned_admin_id, created_at, updated_at',
                 )
                 .eq('profile_id', session.user.id)
                 .order('created_at', { ascending: false });
@@ -1235,7 +1236,7 @@ const MyRequests: React.FC<{
                                                 </td>
                                                 <td className="py-3 px-4">
                                                     <span className={`px-3 py-1 text-xs font-semibold rounded-full ${PRIORITY_BADGE_CLASSES[request.priority]}`}>
-                                                        {REQUEST_PRIORITY_LABELS[request.priority]}
+                                                        {PRIORITY_LABELS[request.priority]}
                                                     </span>
                                                 </td>
                                                 <td className="py-3 px-4 text-sm text-[var(--text-muted)] max-w-xs truncate">
@@ -1281,7 +1282,7 @@ const MyRequests: React.FC<{
                                         </p>
                                         <div className="flex justify-between items-center text-sm text-[var(--text-muted)]">
                                             <span className={`px-2 py-1 rounded-full ${PRIORITY_BADGE_CLASSES[request.priority]} font-semibold`}>
-                                                {REQUEST_PRIORITY_LABELS[request.priority]}
+                                                {PRIORITY_LABELS[request.priority]}
                                             </span>
                                             <button className="font-semibold text-[var(--accent-dark)] hover:underline">View details →</button>
                                         </div>
@@ -4042,7 +4043,7 @@ const RequestDetailModal: React.FC<{
                             <div>
                                 <h3 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wide">Priority</h3>
                                 <span className={`inline-flex items-center px-3 py-1 mt-2 text-xs font-semibold rounded-full ${PRIORITY_BADGE_CLASSES[request.priority]}`}>
-                                    {REQUEST_PRIORITY_LABELS[request.priority]}
+                                    {PRIORITY_LABELS[request.priority]}
                                 </span>
                             </div>
                             <div>
@@ -4128,15 +4129,9 @@ const NewRequestModal: React.FC<{
     const [requestType, setRequestType] = useState('SEO Blog Post');
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
-    const [priority, setPriority] = useState<ServiceRequestPriority>('medium');
+    const [priority, setPriority] = useState<ServiceRequestPriority>('normal');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formError, setFormError] = useState<string | null>(null);
-
-    const priorityLabels: Record<ServiceRequestPriority, string> = {
-        low: 'Low',
-        medium: 'Medium',
-        high: 'High',
-    };
 
     const requestOptions = [
         'SEO Blog Post',
@@ -4185,7 +4180,7 @@ const NewRequestModal: React.FC<{
                     request_type: requestType,
                     title: title.trim(),
                     description: description.trim(),
-                    priority,
+                    priority_level: priority,
                     status: 'open',
                 });
 
@@ -4273,9 +4268,9 @@ const NewRequestModal: React.FC<{
                                 onChange={(event) => setPriority(event.target.value as ServiceRequestPriority)}
                                 className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]"
                             >
-                                {(Object.keys(priorityLabels) as ServiceRequestPriority[]).map((value) => (
+                                {PRIORITY_OPTIONS.map(({ label, value }) => (
                                     <option key={value} value={value}>
-                                        {priorityLabels[value]}
+                                        {label}
                                     </option>
                                 ))}
                             </select>
