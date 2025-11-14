@@ -44,41 +44,101 @@ const PlaceholderView: React.FC<{ title: string }> = ({ title }) => (
 
 // --- Page Components (Internal to Dashboard) ---
 
-type MemberStatus = 'active' | 'pending' | 'actionRequired';
-
 type IconComponent = React.ComponentType<{ className?: string }>;
 
-interface OverviewBenefitItem {
-    name: string;
-    progress?: string | null;
-    Icon: IconComponent;
+type OverviewVerificationStatus = 'unverified' | 'pending' | 'verified';
+
+interface OverviewState {
+    verificationStatus: OverviewVerificationStatus;
+    currentPlanLabel: string;
+    nextRenewalLabel: string | null;
+
+    profileViews: number;
+    profileViewsPeriodLabel: string;
+
+    badgeClicks: number;
+    badgeClicksPeriodLabel: string;
+
+    benefits: Array<{
+        id: string;
+        name: string;
+        description?: string;
+        usageText?: string;
+    }>;
+
+    recentActivity: Array<{
+        id: string;
+        label: string;
+        timestamp: string;
+    }>;
+
+    hasDocuments: boolean;
 }
 
-interface ActivityLogItem {
-    description: string;
-    timestamp: string;
-    Icon: IconComponent;
-}
+const PLAN_LABELS: Record<string, string> = {
+    free: 'Free',
+    bronze: 'Bronze',
+    silver: 'Silver',
+    gold: 'Gold',
+    founding: 'Founding Member',
+    platinum: 'Platinum',
+};
 
-interface OverviewData {
-    status: MemberStatus;
-    verificationValidUntil?: string | null;
-    verificationRating?: string | null;
-    stats: {
-        profileViewsValue?: number | null;
-        profileViewsPeriod?: string | null;
-        badgeClicksValue?: number | null;
-        badgeClicksPeriod?: string | null;
-        planName?: string | null;
-        planPrice?: string | null;
-        nextRenewal?: string | null;
-    };
-    benefits: {
-        description?: string | null;
-        items: OverviewBenefitItem[];
-    };
-    activityLog: ActivityLogItem[];
-}
+const normalizeTierKey = (tier: string): string => {
+    const normalized = tier.toLowerCase();
+
+    if (normalized.includes('founding')) {
+        return 'founding';
+    }
+
+    return normalized;
+};
+
+const BENEFITS_BY_TIER: Record<string, OverviewState['benefits']> = {
+    free: [
+        {
+            id: 'free-preview',
+            name: 'Trust Badge Preview',
+            description: 'Preview access to your Restoration Expertise listing.',
+        },
+    ],
+    founding: [
+        {
+            id: 'seo-posts',
+            name: 'SEO Blog Posts',
+            description: 'Done-for-you posts to boost local rankings.',
+            usageText: '1 of 2 used',
+        },
+        {
+            id: 'quarterly-review',
+            name: 'Quarterly Website Review',
+            description: 'Deep review of your site each quarter.',
+        },
+        {
+            id: 'network-listing',
+            name: 'Trust Badge & Network Listing',
+            description: 'Featured in the Restoration Expertise Network.',
+        },
+        {
+            id: 'priority-support',
+            name: 'Priority Support',
+            description: 'Fast-track help from our team.',
+        },
+    ],
+};
+
+const DEFAULT_OVERVIEW_STATE: OverviewState = {
+    verificationStatus: 'unverified',
+    currentPlanLabel: PLAN_LABELS.free,
+    nextRenewalLabel: null,
+    profileViews: 0,
+    profileViewsPeriodLabel: 'Last 30 days',
+    badgeClicks: 0,
+    badgeClicksPeriodLabel: 'Last 30 days',
+    benefits: BENEFITS_BY_TIER.free,
+    recentActivity: [],
+    hasDocuments: false,
+};
 
 type DocumentStatus = 'approved' | 'underReview' | 'rejected' | 'needsReplacement' | 'notUploaded';
 
@@ -397,24 +457,6 @@ const getDocumentTypeLabel = (docType?: string | null): string => {
         .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-const normalizeMemberStatus = (status?: string | null): MemberStatus => {
-    const normalized = status?.toLowerCase();
-
-    if (!normalized) {
-        return 'pending';
-    }
-
-    if (normalized.includes('active') || normalized.includes('verified')) {
-        return 'active';
-    }
-
-    if (normalized.includes('action') || normalized.includes('needs')) {
-        return 'actionRequired';
-    }
-
-    return 'pending';
-};
-
 const normalizeDocumentStatus = (status?: string | null): DocumentStatus => {
     const normalized = status?.toLowerCase();
 
@@ -615,44 +657,48 @@ const PRIORITY_BADGE_CLASSES: Record<ServiceRequestPriority, string> = {
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
 const VerificationStatusCard: React.FC<{
-    status: MemberStatus;
-    verificationValidUntil?: string | null;
-    verificationRating?: string | null;
+    status: OverviewVerificationStatus;
+    hasDocuments: boolean;
     onNavigate: (view: MemberView) => void;
-}> = ({ status, verificationValidUntil, verificationRating, onNavigate }) => {
-    const verificationDetails = [
-        verificationValidUntil ? `Valid until: ${verificationValidUntil}` : null,
-        verificationRating ? `Rating: ${verificationRating}` : null,
-    ].filter(Boolean).join(' • ');
-
-    const statusConfig = {
-        active: {
-            title: "Verified Restoration Expertise Member",
-            text: "Your badge is live and visible to homeowners.",
-            subtext: verificationDetails || null,
-            buttonText: "View Badge",
+}> = ({ status, hasDocuments, onNavigate }) => {
+    const statusConfig: Record<OverviewVerificationStatus, {
+        title: string;
+        text: string;
+        subtext: string | null;
+        buttonText: string;
+        buttonAction: () => void;
+        Icon: IconComponent;
+        color: 'success' | 'warning' | 'error';
+    }> = {
+        verified: {
+            title: 'Verified Restoration Expertise Member',
+            text: 'Your badge is live and visible to homeowners.',
+            subtext: null,
+            buttonText: 'View Badge',
             buttonAction: () => onNavigate('badge'),
             Icon: CheckCircleIcon,
-            color: 'success' as const,
+            color: 'success',
         },
         pending: {
-            title: "Verification in Progress",
-            text: "We are reviewing your documents. This typically takes 1 to 3 business days.",
+            title: 'Verification in Progress',
+            text: 'We are reviewing your documents. This typically takes 1 to 3 business days.',
             subtext: null,
-            buttonText: "View Documents",
+            buttonText: 'View Documents',
             buttonAction: () => onNavigate('documents'),
             Icon: ClockIcon,
-            color: 'warning' as const,
+            color: 'warning',
         },
-        actionRequired: {
-            title: "Action required to get verified",
-            text: "Some documents or profile details are missing.",
+        unverified: {
+            title: 'Action required to get verified',
+            text: hasDocuments
+                ? 'We have your documents, and we will notify you once the review starts.'
+                : 'Upload your business documents to start the verification process.',
             subtext: null,
-            buttonText: "Complete Profile",
-            buttonAction: () => onNavigate('profile'),
+            buttonText: hasDocuments ? 'View Documents' : 'Upload Documents',
+            buttonAction: () => onNavigate('documents'),
             Icon: ExclamationTriangleIcon,
-            color: 'error' as const,
-        }
+            color: 'error',
+        },
     };
 
     const currentStatus = statusConfig[status];
@@ -696,7 +742,7 @@ const StatCard: React.FC<{ icon: React.ReactNode, title: string, value: string, 
     );
 }
 
-const MemberOverview: React.FC<{ data: OverviewData | null; onNavigate: (view: MemberView) => void; onNewRequest: () => void; }> = ({ data, onNavigate, onNewRequest }) => {
+const MemberOverview: React.FC<{ data: OverviewState | null; onNavigate: (view: MemberView) => void; onNewRequest: () => void; }> = ({ data, onNavigate, onNewRequest }) => {
     const QuickActionButton: React.FC<{ icon: React.ElementType, label: string, onClick: () => void }> = ({ icon: Icon, label, onClick }) => (
         <button onClick={onClick} className="bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg p-4 flex flex-col items-center justify-center text-center transition-colors hover:bg-[var(--accent-dark)] h-28">
             <Icon className="w-8 h-8 mb-2" />
@@ -704,25 +750,7 @@ const MemberOverview: React.FC<{ data: OverviewData | null; onNavigate: (view: M
         </button>
     );
 
-    const safeData: OverviewData = data ?? {
-        status: 'pending',
-        verificationValidUntil: null,
-        verificationRating: null,
-        stats: {
-            profileViewsValue: null,
-            profileViewsPeriod: null,
-            badgeClicksValue: null,
-            badgeClicksPeriod: null,
-            planName: null,
-            planPrice: null,
-            nextRenewal: null,
-        },
-        benefits: {
-            description: null,
-            items: [],
-        },
-        activityLog: [],
-    };
+    const safeData: OverviewState = data ?? DEFAULT_OVERVIEW_STATE;
 
     const formatStatValue = (value?: number | string | null) => {
         if (value === null || value === undefined) {
@@ -734,12 +762,18 @@ const MemberOverview: React.FC<{ data: OverviewData | null; onNavigate: (view: M
         return value;
     };
 
+    const formatActivityTimestamp = (timestamp?: string | null) => {
+        if (!timestamp) {
+            return 'Recently';
+        }
+        return formatRelativeTime(timestamp);
+    };
+
     return (
         <div className="space-y-8 animate-fade-in">
             <VerificationStatusCard
-                status={safeData.status}
-                verificationValidUntil={safeData.verificationValidUntil}
-                verificationRating={safeData.verificationRating}
+                status={safeData.verificationStatus}
+                hasDocuments={safeData.hasDocuments}
                 onNavigate={onNavigate}
             />
 
@@ -747,48 +781,45 @@ const MemberOverview: React.FC<{ data: OverviewData | null; onNavigate: (view: M
                 <StatCard
                     icon={<EyeIcon className="w-5 h-5"/>}
                     title="Profile Views"
-                    value={formatStatValue(safeData.stats.profileViewsValue)}
-                    label={safeData.stats.profileViewsPeriod ?? 'Last 30 days'}
+                    value={formatStatValue(safeData.profileViews)}
+                    label={safeData.profileViewsPeriodLabel}
                 />
                 <StatCard
                     icon={<TrophyIcon className="w-5 h-5"/>}
                     title="Badge Clicks"
-                    value={formatStatValue(safeData.stats.badgeClicksValue)}
-                    label={safeData.stats.badgeClicksPeriod ?? 'Last 30 days'}
+                    value={formatStatValue(safeData.badgeClicks)}
+                    label={safeData.badgeClicksPeriodLabel}
                 />
                 <StatCard
                     icon={<CreditCardIcon className="w-5 h-5"/>}
                     title="Current Plan"
-                    value={safeData.stats.planName ?? '—'}
-                    label={safeData.stats.planPrice ?? ''}
+                    value={safeData.currentPlanLabel ?? '—'}
                 />
                 <StatCard
                     icon={<CalendarDaysIcon className="w-5 h-5"/>}
                     title="Next Renewal"
-                    value={safeData.stats.nextRenewal ?? '—'}
+                    value={safeData.nextRenewalLabel ?? '—'}
                 />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <Card className="lg:col-span-2">
                     <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-1">Your Benefits</h2>
-                    <p className="text-[var(--text-muted)] mb-6">{safeData.benefits.description ?? 'Your current plan gives you access to premium features to boost your online presence and credibility.'}</p>
+                    <p className="text-[var(--text-muted)] mb-6">{safeData.benefits.length > 0 ? 'Your current plan gives you access to premium features to boost your online presence and credibility.' : 'Your current plan does not include additional benefits yet.'}</p>
                     <ul className="space-y-4">
-                        {safeData.benefits.items.map((item, index) => {
-                            const Icon = item.Icon ?? ShieldCheckIcon;
-                            return (
-                                <li key={index} className="flex items-center">
-                                    <div className="bg-[var(--accent-bg-subtle)] text-[var(--accent-dark)] p-2 rounded-full mr-4">
-                                        <Icon className="w-5 h-5" />
-                                    </div>
-                                    <div className="flex-grow">
-                                        <p className="font-semibold text-[var(--text-main)]">{item.name}</p>
-                                        {item.progress && <p className="text-sm text-[var(--text-muted)]">{item.progress}</p>}
-                                    </div>
-                                </li>
-                            );
-                        })}
-                        {safeData.benefits.items.length === 0 && (
+                        {safeData.benefits.map((item) => (
+                            <li key={item.id} className="flex items-center">
+                                <div className="bg-[var(--accent-bg-subtle)] text-[var(--accent-dark)] p-2 rounded-full mr-4">
+                                    <ShieldCheckIcon className="w-5 h-5" />
+                                </div>
+                                <div className="flex-grow">
+                                    <p className="font-semibold text-[var(--text-main)]">{item.name}</p>
+                                    {item.description && <p className="text-sm text-[var(--text-muted)]">{item.description}</p>}
+                                    {item.usageText && <p className="text-xs text-[var(--text-muted)] mt-1">{item.usageText}</p>}
+                                </div>
+                            </li>
+                        ))}
+                        {safeData.benefits.length === 0 && (
                             <li className="text-[var(--text-muted)]">No benefits found for your membership yet.</li>
                         )}
                     </ul>
@@ -813,21 +844,18 @@ const MemberOverview: React.FC<{ data: OverviewData | null; onNavigate: (view: M
             <Card>
                 <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Recent Activity</h2>
                 <ul className="divide-y divide-[var(--border-subtle)]">
-                    {safeData.activityLog.map((activity, index) => {
-                        const Icon = activity.Icon ?? ClipboardIcon;
-                        return (
-                             <li key={index} className="py-4 flex items-center">
-                                <div className="bg-[var(--bg-subtle)] p-3 rounded-full mr-4 text-[var(--text-muted)]">
-                                   <Icon className="w-5 h-5" />
-                                </div>
-                                <div className="flex-grow">
-                                    <p className="text-[var(--text-main)]">{activity.description}</p>
-                                </div>
-                                <p className="text-sm text-[var(--text-muted)] ml-4 text-right whitespace-nowrap">{activity.timestamp}</p>
-                            </li>
-                        );
-                    })}
-                    {safeData.activityLog.length === 0 && (
+                    {safeData.recentActivity.map((activity) => (
+                        <li key={activity.id} className="py-4 flex items-center">
+                            <div className="bg-[var(--bg-subtle)] p-3 rounded-full mr-4 text-[var(--text-muted)]">
+                                <ClipboardIcon className="w-5 h-5" />
+                            </div>
+                            <div className="flex-grow">
+                                <p className="text-[var(--text-main)]">{activity.label}</p>
+                            </div>
+                            <p className="text-sm text-[var(--text-muted)] ml-4 text-right whitespace-nowrap">{formatActivityTimestamp(activity.timestamp)}</p>
+                        </li>
+                    ))}
+                    {safeData.recentActivity.length === 0 && (
                         <li className="py-4 text-[var(--text-muted)]">No recent activity yet. Start by submitting a service request or uploading documents.</li>
                     )}
                 </ul>
@@ -3422,7 +3450,7 @@ const MemberDashboard: React.FC = () => {
     const [subscription, setSubscription] = useState<SupabaseSubscription | null>(null);
     const [documents, setDocuments] = useState<DashboardDocument[]>([]);
     const [recentRequests, setRecentRequests] = useState<DashboardServiceRequest[]>([]);
-    const [overviewData, setOverviewData] = useState<any>(null);
+    const [overviewData, setOverviewData] = useState<OverviewState | null>(null);
     const [serviceRequests, setServiceRequests] = useState<any[]>([]);
     const [billingData, setBillingData] = useState<any>(null);
     const [invoices, setInvoices] = useState<any[]>([]);
@@ -3452,25 +3480,160 @@ const MemberDashboard: React.FC = () => {
         return mapped;
     }, [session?.user?.id]);
 
-    // Load overview data from v_member_overview view
     const loadOverviewData = useCallback(async () => {
-        if (!session?.user?.id) {
-            setOverviewData(null);
-            return;
-        }
+        try {
+            const {
+                data: { user },
+                error: userError,
+            } = await supabase.auth.getUser();
 
-        const { data, error } = await supabase
-            .from('v_member_overview')
-            .select('*')
-            .eq('profile_id', session.user.id)
-            .maybeSingle();
+            if (userError) {
+                console.error('Failed to load overview data:', userError);
+                return;
+            }
 
-        if (error) {
+            if (!user) {
+                setOverviewData(null);
+                return;
+            }
+
+            const profileId = user.id;
+
+            const [
+                { data: profile, error: profileError },
+                { data: memberships, error: membershipsError },
+                { data: subscriptions, error: subscriptionsError },
+                { data: documents, error: documentsError },
+            ] = await Promise.all([
+                supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', profileId)
+                    .maybeSingle(),
+                supabase
+                    .from('memberships')
+                    .select('*')
+                    .eq('profile_id', profileId)
+                    .order('created_at', { ascending: false })
+                    .limit(1),
+                supabase
+                    .from('subscriptions')
+                    .select('*')
+                    .eq('profile_id', profileId)
+                    .order('created_at', { ascending: false })
+                    .limit(1),
+                supabase
+                    .from('member_documents')
+                    .select('*')
+                    .eq('profile_id', profileId)
+                    .order('uploaded_at', { ascending: false }),
+            ]);
+
+            if (profileError) {
+                console.error('Failed to load profile for overview:', profileError);
+            }
+            if (membershipsError) {
+                console.error('Failed to load memberships for overview:', membershipsError);
+            }
+            if (subscriptionsError) {
+                console.error('Failed to load subscriptions for overview:', subscriptionsError);
+            }
+            if (documentsError) {
+                console.error('Failed to load documents for overview:', documentsError);
+            }
+
+            const membershipRows = (memberships as SupabaseMembership[] | null) ?? [];
+            const subscriptionRows = (subscriptions as SupabaseSubscription[] | null) ?? [];
+            const documentRows = (documents as SupabaseMemberDocument[] | null) ?? [];
+            const profileRecord = (profile as SupabaseProfile | null) ?? null;
+
+            const membershipRecord = membershipRows[0] ?? null;
+            const subscriptionRecord = subscriptionRows[0] ?? null;
+
+            const tierRaw = membershipRecord?.tier ?? profileRecord?.membership_tier ?? 'free';
+            const tierKey = normalizeTierKey(String(tierRaw ?? 'free'));
+            const currentPlanLabel = PLAN_LABELS[tierKey] ?? PLAN_LABELS.free;
+
+            const nextRenewalLabel =
+                subscriptionRecord && subscriptionRecord.status === 'active' && subscriptionRecord.current_period_end
+                    ? new Date(subscriptionRecord.current_period_end).toLocaleDateString(undefined, {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                    })
+                    : null;
+
+            const hasDocuments = documentRows.length > 0;
+            const hasPendingDocs = documentRows.some((document) => document.status === 'pending');
+
+            let verificationStatus: OverviewVerificationStatus = 'unverified';
+
+            if (membershipRecord?.verification_status === 'verified') {
+                verificationStatus = 'verified';
+            } else if (hasPendingDocs || membershipRecord) {
+                verificationStatus = 'pending';
+            }
+
+            const benefits = BENEFITS_BY_TIER[tierKey] ?? BENEFITS_BY_TIER.free;
+
+            const recentActivity: OverviewState['recentActivity'] = [];
+
+            if (membershipRecord) {
+                const membershipTimestamp =
+                    membershipRecord.activated_at ??
+                    membershipRecord.created_at ??
+                    new Date().toISOString();
+                recentActivity.push({
+                    id: `membership-${membershipRecord.id}`,
+                    label: `Membership activated (${currentPlanLabel})`,
+                    timestamp: membershipTimestamp,
+                });
+            }
+
+            if (subscriptionRecord) {
+                const subscriptionTimestamp =
+                    subscriptionRecord.created_at ??
+                    subscriptionRecord.current_period_start ??
+                    new Date().toISOString();
+                recentActivity.push({
+                    id: `subscription-${subscriptionRecord.id}`,
+                    label: `Subscription ${subscriptionRecord.status ?? 'updated'}`,
+                    timestamp: subscriptionTimestamp,
+                });
+            }
+
+            if (documentRows.length > 0) {
+                const latestDocument = documentRows[0];
+                const documentTimestamp =
+                    latestDocument.uploaded_at ??
+                    latestDocument.created_at ??
+                    latestDocument.updated_at ??
+                    new Date().toISOString();
+                recentActivity.push({
+                    id: `document-${latestDocument.id}`,
+                    label: `Document uploaded (${latestDocument.doc_type ?? latestDocument.document_type ?? 'document'})`,
+                    timestamp: documentTimestamp,
+                });
+            }
+
+            const overview: OverviewState = {
+                verificationStatus,
+                currentPlanLabel,
+                nextRenewalLabel,
+                profileViews: 0,
+                profileViewsPeriodLabel: 'Last 30 days',
+                badgeClicks: 0,
+                badgeClicksPeriodLabel: 'Last 30 days',
+                benefits,
+                recentActivity,
+                hasDocuments,
+            };
+
+            setOverviewData(overview);
+        } catch (error) {
             console.error('Failed to load overview data:', error);
-        } else {
-            setOverviewData(data);
         }
-    }, [session?.user?.id]);
+    }, []);
 
     // Load service requests and activity
     const loadServiceRequests = useCallback(async () => {
@@ -3692,221 +3855,7 @@ const MemberDashboard: React.FC = () => {
         setIsSidebarOpen(false);
     };
 
-    const computedOverviewData = useMemo<OverviewData>(() => {
-        // Use data from v_member_overview view if available, otherwise compute from individual tables
-        if (overviewData) {
-            return {
-                status: normalizeMemberStatus(overviewData.member_status),
-                verificationValidUntil: formatDate(overviewData.verification_valid_until),
-                verificationRating: overviewData.verification_rating,
-                stats: {
-                    profileViewsValue: overviewData.profile_views_value,
-                    profileViewsPeriod: overviewData.profile_views_period || 'Last 30 days',
-                    badgeClicksValue: overviewData.badge_clicks_value,
-                    badgeClicksPeriod: overviewData.badge_clicks_period || 'Last 30 days',
-                    planName: overviewData.plan_name,
-                    planPrice: overviewData.plan_price,
-                    nextRenewal: formatDate(overviewData.next_renewal)
-                },
-                benefits: {
-                    description: overviewData.benefits_description,
-                    items: parsePossibleJson<Array<{ name: string; progress?: string | null; icon?: string | null }>>(overviewData.benefits)?.map(benefit => ({
-                        name: benefit.name ?? 'Benefit',
-                        progress: benefit.progress ?? null,
-                        Icon: ensureIcon(benefit.icon ?? undefined),
-                    })) || []
-                },
-                activityLog: parsePossibleJson<Array<{ description: string; timestamp?: string | null; icon?: string | null }>>(overviewData.activity_log)?.map(activity => ({
-                    description: activity.description ?? 'Account activity',
-                    timestamp: activity.timestamp ? formatRelativeTime(activity.timestamp) : 'Recently',
-                    Icon: ensureIcon(activity.icon ?? undefined),
-                })) || []
-            };
-        }
-
-        // Fallback to computed data from individual tables
-        const statusSource =
-            profile?.member_status ??
-            profile?.verification_status ??
-            membership?.status ??
-            subscription?.status;
-        const status = normalizeMemberStatus(statusSource ?? undefined);
-
-        const verificationValidUntilRaw =
-            (profile?.['verification_valid_until'] as string | null | undefined) ??
-            (membership?.['verification_valid_until'] as string | null | undefined) ??
-            (membership?.['renewal_date'] as string | null | undefined) ??
-            null;
-        const verificationValidUntil = formatDate(verificationValidUntilRaw) ?? null;
-
-        const verificationRating =
-            (profile?.['verification_rating'] as string | null | undefined) ??
-            membership?.badge_rating ??
-            profile?.badge_rating ??
-            currentUser?.plan?.rating ??
-            null;
-
-        const planName =
-            membership?.tier ??
-            subscription?.tier ??
-            profile?.membership_tier ??
-            null;
-
-        let planPrice: string | null = null;
-        if (subscription?.unit_amount_cents !== null && subscription?.unit_amount_cents !== undefined) {
-            const amountInDollars = subscription.unit_amount_cents / 100;
-            const formattedAmount = formatCurrency(amountInDollars);
-            if (formattedAmount) {
-                const billingCycle = subscription.billing_cycle?.toLowerCase();
-                if (billingCycle?.includes('year')) {
-                    planPrice = `${formattedAmount}/year`;
-                } else if (billingCycle?.includes('month')) {
-                    planPrice = `${formattedAmount}/month`;
-                } else if (billingCycle) {
-                    planPrice = `${formattedAmount}/${billingCycle}`;
-                } else {
-                    planPrice = formattedAmount;
-                }
-            }
-        }
-
-        const nextRenewal =
-            formatDate(
-                subscription?.current_period_end ??
-                profile?.next_billing_date ??
-                null,
-            ) ?? null;
-
-        const profileViewsValue =
-            (profile?.['profile_views_value'] as number | null | undefined) ??
-            (profile?.['profile_views'] as number | null | undefined) ??
-            null;
-        const profileViewsPeriod =
-            (profile?.['profile_views_period'] as string | null | undefined) ??
-            'Last 30 days';
-        const badgeClicksValue =
-            (profile?.['badge_clicks_value'] as number | null | undefined) ??
-            (profile?.['badge_clicks'] as number | null | undefined) ??
-            null;
-        const badgeClicksPeriod =
-            (profile?.['badge_clicks_period'] as string | null | undefined) ??
-            'Last 30 days';
-
-        const parsedBenefits = parsePossibleJson<Array<{ name: string; progress?: string | null; icon?: string | null }>>(
-            (membership?.['benefits'] as unknown) ?? (profile?.['benefits'] as unknown),
-        );
-
-        const benefitsDescription =
-            (membership?.['benefits_description'] as string | null | undefined) ??
-            (profile?.['benefits_description'] as string | null | undefined) ??
-            null;
-
-        const fallbackBenefits = (currentUser?.benefits ?? []).map((benefit) => ({
-            name: benefit.title,
-            progress:
-                benefit.quota !== undefined && benefit.used !== undefined
-                    ? `${benefit.used} of ${benefit.quota} used`
-                    : benefit.status ?? benefit.nextDate ?? (benefit.isIncluded ? 'Included' : null),
-            Icon: ensureIcon(benefit.icon),
-        }));
-
-        const benefitsItems = parsedBenefits && parsedBenefits.length > 0
-            ? parsedBenefits.map((benefit) => ({
-                name: benefit.name ?? 'Benefit',
-                progress: benefit.progress ?? null,
-                Icon: ensureIcon(benefit.icon ?? undefined),
-            }))
-            : fallbackBenefits;
-
-        type InternalActivity = ActivityLogItem & { createdAt?: string | null };
-
-        const activities: InternalActivity[] = [];
-
-        const profileActivities = parsePossibleJson<
-            Array<{ description: string; timestamp?: string | null; icon?: string | null }>
-        >(profile?.activity_log) ?? [];
-
-        profileActivities.forEach((activity) => {
-            const createdAt = activity.timestamp ?? null;
-            activities.push({
-                description: activity.description ?? 'Account activity',
-                timestamp: activity.timestamp ? formatRelativeTime(activity.timestamp) : 'Recently',
-                Icon: ensureIcon(activity.icon ?? undefined),
-                createdAt,
-            });
-        });
-
-        recentRequests.forEach((request) => {
-            activities.push({
-                description: `${request.service}: ${request.title}`,
-                timestamp: request.createdAt ? formatRelativeTime(request.createdAt) : 'Recently',
-                Icon: getServiceIcon(request.service),
-                createdAt: request.createdAt,
-            });
-        });
-
-        documents.forEach((doc) => {
-            if (!doc.rawTimestamp) {
-                return;
-            }
-            const statusDescriptor =
-                doc.status === 'approved'
-                    ? 'approved'
-                    : doc.status === 'underReview'
-                        ? 'submitted for review'
-                        : 'needs attention';
-            const icon =
-                doc.status === 'approved'
-                    ? CheckCircleIcon
-                    : doc.status === 'underReview'
-                        ? ClockIcon
-                        : ExclamationTriangleIcon;
-
-            activities.push({
-                description: `${doc.name} ${statusDescriptor}`,
-                timestamp: formatRelativeTime(doc.rawTimestamp),
-                Icon: icon,
-                createdAt: doc.rawTimestamp,
-            });
-        });
-
-        const sortedActivities = activities
-            .sort((a, b) => {
-                const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-                const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-                return dateB - dateA;
-            })
-            .slice(0, 5)
-            .map(({ createdAt, ...rest }) => rest);
-
-        return {
-            status,
-            verificationValidUntil,
-            verificationRating,
-            stats: {
-                profileViewsValue,
-                profileViewsPeriod,
-                badgeClicksValue,
-                badgeClicksPeriod,
-                planName,
-                planPrice,
-                nextRenewal,
-            },
-            benefits: {
-                description: benefitsDescription,
-                items: benefitsItems,
-            },
-            activityLog: sortedActivities,
-        };
-    }, [
-        overviewData,
-        profile,
-        membership,
-        subscription,
-        documents,
-        recentRequests,
-        currentUser,
-    ]);
+    const computedOverviewData = useMemo<OverviewState>(() => overviewData ?? DEFAULT_OVERVIEW_STATE, [overviewData]);
 
     const docsNeedAttention = documents.some(doc => ['notUploaded', 'needsReplacement', 'rejected'].includes(doc.status));
 
