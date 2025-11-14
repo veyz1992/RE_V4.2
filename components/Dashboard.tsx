@@ -8,12 +8,19 @@ import {
     ServiceRequestActivityLog,
     ServiceRequestPriority,
     ServiceRequestStatus,
+    ServiceRequestType,
 } from '../types';
 import ConfirmationModal from './admin/ConfirmationModal';
 import MemberBlueprint from './MemberBlueprint';
 import ThemeToggle from './ThemeToggle';
 import { ADMIN_MEMBERS } from '../lib/mockData';
-import { PRIORITY_LABELS, PRIORITY_OPTIONS } from '../constants';
+import {
+    PRIORITY_LABELS,
+    PRIORITY_OPTIONS,
+    SERVICE_REQUEST_TYPE_LABELS,
+    SERVICE_REQUEST_TYPE_LABEL_TO_VALUE,
+    SERVICE_REQUEST_TYPE_OPTIONS,
+} from '../constants';
 import { supabase } from '@/lib/supabase';
 import type { PostgrestError } from '@supabase/supabase-js';
 
@@ -571,6 +578,31 @@ const getServiceIcon = (service?: string | null): IconComponent => {
     return ClipboardIcon;
 };
 
+const getServiceRequestTypeLabel = (value?: string | null): string => {
+    if (!value) {
+        return 'Service Request';
+    }
+
+    const trimmed = value.trim();
+    const requestTypeValue = trimmed as ServiceRequestType;
+
+    if (SERVICE_REQUEST_TYPE_LABELS[requestTypeValue]) {
+        return SERVICE_REQUEST_TYPE_LABELS[requestTypeValue];
+    }
+
+    const normalized = trimmed.toLowerCase();
+    const synonymEntry = Object.entries(SERVICE_REQUEST_TYPE_LABEL_TO_VALUE).find(
+        ([label]) => label.toLowerCase() === normalized,
+    );
+
+    if (synonymEntry) {
+        const [, matchedValue] = synonymEntry;
+        return SERVICE_REQUEST_TYPE_LABELS[matchedValue];
+    }
+
+    return trimmed;
+};
+
 const mapDocumentRow = (document: SupabaseMemberDocument): DashboardDocument => {
     const uploadedAt = document.uploaded_at ?? document.created_at ?? document.updated_at ?? null;
     const docType = document.doc_type ?? document.document_type ?? null;
@@ -604,7 +636,7 @@ const mapServiceRequestRow = (request: SupabaseServiceRequest): DashboardService
 
     return {
         id: String(request.id),
-        service: request.request_type ?? request.service ?? 'Service Request',
+        service: getServiceRequestTypeLabel(request.request_type ?? request.service),
         title: request.title ?? 'Untitled Request',
         status: normalizeRequestStatus(request.status),
         createdAt: request.created_at ?? request.updated_at ?? null,
@@ -615,7 +647,7 @@ const mapServiceRequestRow = (request: SupabaseServiceRequest): DashboardService
 const mapMemberServiceRequestRow = (request: SupabaseServiceRequest): MemberServiceRequest => ({
     id: String(request.id),
     profileId: request.profile_id ?? '',
-    requestType: request.request_type ?? request.service ?? 'Service Request',
+    requestType: getServiceRequestTypeLabel(request.request_type ?? request.service),
     title: request.title ?? 'Untitled Request',
     description: request.description ?? null,
     priority: normalizeServiceRequestPriority(request.priority ?? request.priority_level),
@@ -4126,31 +4158,23 @@ const NewRequestModal: React.FC<{
     onCreated: () => void;
 }> = ({ onClose, showToast, onCreated }) => {
     const { currentUser, session } = useAuth();
-    const [requestType, setRequestType] = useState('SEO Blog Post');
+    const [requestType, setRequestType] = useState<ServiceRequestType>('seo_blog_post');
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState<ServiceRequestPriority>('normal');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formError, setFormError] = useState<string | null>(null);
 
-    const requestOptions = [
-        'SEO Blog Post',
-        'Spotlight Article',
-        'Website Review',
-        'Badge Support',
-        'Other',
-    ];
-
     const benefitNote = useMemo(() => {
         if (!currentUser?.benefits) return '';
-        if (requestType === 'SEO Blog Post') {
+        if (requestType === 'seo_blog_post') {
             const benefit = currentUser.benefits.find((benefit) => benefit.title === 'SEO Blog Posts');
             if (benefit && benefit.quota !== undefined && benefit.used !== undefined) {
                 const remaining = Math.max(benefit.quota - benefit.used, 0);
                 return `You have ${remaining} of ${benefit.quota} SEO blog posts remaining this year.`;
             }
         }
-        if (requestType === 'Website Review') {
+        if (requestType === 'website_review') {
             return 'Your plan includes quarterly website reviews.';
         }
         return '';
@@ -4188,6 +4212,9 @@ const NewRequestModal: React.FC<{
         setIsSubmitting(true);
 
         try {
+            const consumesBlogPostQuota = requestType === 'seo_blog_post';
+            const consumesSpotlightQuota = requestType === 'spotlight_article';
+
             const payload = {
                 profile_id: session.user.id,
                 request_type: requestType,
@@ -4195,7 +4222,15 @@ const NewRequestModal: React.FC<{
                 description: description.trim(),
                 priority: mapUiPriorityToDb(priority),
                 status: 'open' as const,
+                consumes_blog_post_quota: consumesBlogPostQuota,
+                consumes_spotlight_quota: consumesSpotlightQuota,
+                source: 'member_portal',
+                due_date: null as string | null,
             };
+
+            if (process.env.NODE_ENV !== 'production') {
+                console.log('Creating service request payload', payload);
+            }
 
             const { error } = await supabase.from('service_requests').insert(payload);
 
@@ -4243,12 +4278,12 @@ const NewRequestModal: React.FC<{
                         <select
                             id="service-type"
                             value={requestType}
-                            onChange={(event) => setRequestType(event.target.value)}
+                            onChange={(event) => setRequestType(event.target.value as ServiceRequestType)}
                             className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]"
                         >
-                            {requestOptions.map((option) => (
-                                <option key={option} value={option}>
-                                    {option}
+                            {SERVICE_REQUEST_TYPE_OPTIONS.map(({ label, value }) => (
+                                <option key={value} value={value}>
+                                    {label}
                                 </option>
                             ))}
                         </select>

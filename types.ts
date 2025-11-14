@@ -98,6 +98,13 @@ export interface User {
 
 export type ServiceRequestStatus = 'open' | 'in_progress' | 'completed' | 'canceled';
 export type ServiceRequestPriority = 'low' | 'normal' | 'high';
+export type ServiceRequestType =
+  | 'seo_blog_post'
+  | 'spotlight_article'
+  | 'website_review'
+  | 'badge_support'
+  | 'consultation'
+  | 'other';
 
 export interface MemberServiceRequest {
     id: string;
