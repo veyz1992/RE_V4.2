@@ -412,10 +412,17 @@ const SuccessPage: React.FC = () => {
         throw new Error('Supabase client not available');
       }
       
+      const origin =
+        typeof window !== "undefined"
+          ? window.location.origin
+          : import.meta.env.VITE_APP_BASE_URL ?? "";
+
+      const redirectTo = `${origin}/member/dashboard`;
+
       const { error } = await supabase.auth.signInWithOtp({
         email: emailToUse,
         options: { 
-          emailRedirectTo: `${window.location.origin}/auth/callback` 
+          emailRedirectTo: redirectTo
         }
       });
 

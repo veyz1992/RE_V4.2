@@ -423,12 +423,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [session, user]);
 
   const login = useCallback(async (email: string) => {
-    const redirectUrl = getMagicLinkRedirectUrl();
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : import.meta.env.VITE_APP_BASE_URL ?? "";
+
+    const redirectTo = `${origin}/member/dashboard`;
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
         shouldCreateUser: false,
-        emailRedirectTo: redirectUrl || `${window.location.origin}/member`
+        emailRedirectTo: redirectTo,
       },
     });
 
