@@ -197,7 +197,31 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
         }
     }, [isEligibleForCertification]);
 
-    const beginCheckout = async () => {
+    useEffect(() => {
+        if (savedAssessmentRef.current) {
+            return;
+        }
+
+        const normalizedEmail = typeof result.emailEntered === 'string'
+            ? result.emailEntered.trim().toLowerCase()
+            : '';
+        const resolvedAssessmentId = result.assessmentId ?? result.id;
+        const resolvedProfileId = result.profileId ?? null;
+
+        if (
+            normalizedEmail &&
+            resolvedAssessmentId != null &&
+            resolvedProfileId != null
+        ) {
+            savedAssessmentRef.current = {
+                assessmentId: resolvedAssessmentId,
+                profileId: resolvedProfileId,
+                email: normalizedEmail,
+            };
+        }
+    }, [result.assessmentId, result.id, result.profileId, result.emailEntered]);
+
+    const handleFoundingMemberCheckout = async () => {
         if (isProcessingCheckout) {
             console.debug('[Checkout] Request ignored – checkout already in progress');
             return;
@@ -226,27 +250,6 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
             return null;
         };
 
-        const assessmentPayload: Record<string, unknown> = {
-            email,
-            answers: result.answers || {},
-            total_score: typeof result.total === 'number' ? Math.round(result.total) : 0,
-            scenario: ASSESSMENT_SCENARIO,
-            operational_score: roundScore(result.operational),
-            licensing_score: roundScore(result.licensing),
-            feedback_score: roundScore(result.feedback),
-            certifications_score: roundScore(result.certifications),
-            digital_score: roundScore(result.digital),
-        };
-
-        if (fullName) assessmentPayload.full_name = fullName;
-        if (cityValue) assessmentPayload.city = cityValue;
-        if (stateValue) assessmentPayload.state = stateValue;
-        if (typeof result.intendedMembershipTier === 'string' && result.intendedMembershipTier.trim()) {
-            assessmentPayload.intended_membership_tier = result.intendedMembershipTier.trim();
-        }
-
-        logCheckoutDebug('[Checkout] save-assessment payload', assessmentPayload);
-
         const clearPlanSelection = () => {
             if (typeof window !== 'undefined') {
                 window.localStorage.removeItem(PLAN_STORAGE_KEY);
@@ -261,97 +264,169 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
                 window.localStorage.setItem(PLAN_STORAGE_KEY, 'Founding Member');
             }
 
-            let saveResponse: Response;
-            try {
-                saveResponse = await fetch(FUNCTION_ENDPOINTS.SAVE_ASSESSMENT, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(assessmentPayload),
-                });
-            } catch (networkError) {
-                console.error('[Checkout] Save assessment network error:', { error: networkError, payload: assessmentPayload });
-                clearPlanSelection();
-                const errorMessage = 'Network error while saving your assessment. Please try again.';
-                setCheckoutError(errorMessage);
-                return;
-            }
+            const ensureAssessmentSaved = async () => {
+                if (savedAssessmentRef.current) {
+                    return savedAssessmentRef.current;
+                }
 
-            const responseText = await saveResponse.text();
-            let parsedSave: any = {};
-            try {
-                parsedSave = responseText ? JSON.parse(responseText) : {};
-            } catch (parseError) {
-                console.error('[Checkout] Failed to parse save-assessment response:', { responseText, parseError });
-            }
+                if (result.assessmentId && result.profileId) {
+                    const cached = {
+                        assessmentId: result.assessmentId,
+                        profileId: result.profileId,
+                        email,
+                    };
+                    savedAssessmentRef.current = cached;
 
-            logCheckoutDebug('[Checkout] save-assessment response', parsedSave);
+                    if (typeof window !== 'undefined') {
+                        window.localStorage.setItem(ASSESSMENT_ID_STORAGE_KEY, String(result.assessmentId));
+                        window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
+                        window.localStorage.removeItem(CHECKOUT_SESSION_STORAGE_KEY);
+                    }
 
-            if (!saveResponse.ok || !parsedSave?.success) {
-                console.error('[Checkout] Save assessment failed:', {
-                    status: saveResponse.status,
-                    payload: assessmentPayload,
-                    responseText,
-                });
-                clearPlanSelection();
-                const errorCode = typeof parsedSave?.error === 'string' ? parsedSave.error : 'ASSESSMENT_SAVE_FAILED';
-                setCheckoutError(errorCode);
-                return;
-            }
+                    return cached;
+                }
 
-            const assessmentId = parsedSave?.assessment_id;
-            const profileId = parsedSave?.profile_id;
-            if (!assessmentId || !profileId) {
-                console.error('[Checkout] Save assessment response missing identifiers:', parsedSave);
-                clearPlanSelection();
-                const errorMessage = 'We could not verify your saved assessment. Please try again.';
-                setCheckoutError(errorMessage);
-                return;
-            }
+                const savePayload: Record<string, unknown> = {
+                    email,
+                    answers: result.answers || {},
+                    total_score: typeof result.total === 'number' ? Math.round(result.total) : 0,
+                    scenario: result.scenario ?? ASSESSMENT_SCENARIO,
+                    operational_score: roundScore(result.operational),
+                    licensing_score: roundScore(result.licensing),
+                    feedback_score: roundScore(result.feedback),
+                    certifications_score: roundScore(result.certifications),
+                    digital_score: roundScore(result.digital),
+                    full_name: fullName || null,
+                    city: cityValue || null,
+                    state: stateValue || null,
+                };
 
-            const normalizedEmail = typeof parsedSave?.email === 'string' && parsedSave.email ? parsedSave.email : email;
+                if (typeof result.intendedMembershipTier === 'string' && result.intendedMembershipTier.trim()) {
+                    savePayload.intended_membership_tier = result.intendedMembershipTier.trim();
+                }
 
-            savedAssessmentRef.current = {
-                assessmentId,
-                profileId,
-                email: normalizedEmail,
+                if (result.userId) {
+                    savePayload.user_id = result.userId;
+                }
+
+                if (result.profileId) {
+                    savePayload.profile_id = result.profileId;
+                }
+
+                const existingAssessmentId = result.assessmentId ?? result.id;
+                if (existingAssessmentId) {
+                    savePayload.assessment_id = existingAssessmentId;
+                }
+
+                logCheckoutDebug('[Checkout] save-assessment payload', savePayload);
+
+                let saveResponse: Response;
+                try {
+                    saveResponse = await fetch(FUNCTION_ENDPOINTS.SAVE_ASSESSMENT, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(savePayload),
+                    });
+                } catch (networkError) {
+                    console.error('[Checkout] Save assessment network error:', { error: networkError, payload: savePayload });
+                    throw new Error('Network error while saving your assessment. Please try again.');
+                }
+
+                const responseText = await saveResponse.text();
+                let parsedSave: any = {};
+                try {
+                    parsedSave = responseText ? JSON.parse(responseText) : {};
+                } catch (parseError) {
+                    console.error('[Checkout] Failed to parse save-assessment response:', { responseText, parseError });
+                }
+
+                logCheckoutDebug('[Checkout] save-assessment response', parsedSave);
+
+                if (!saveResponse.ok || !parsedSave?.success) {
+                    console.error('[Checkout] Save assessment failed:', {
+                        status: saveResponse.status,
+                        payload: savePayload,
+                        responseText,
+                    });
+                    throw new Error('ASSESSMENT_SAVE_FAILED');
+                }
+
+                const assessmentId = parsedSave?.assessment_id;
+                const profileId = parsedSave?.profile_id;
+                if (!assessmentId || !profileId) {
+                    console.error('[Checkout] Save assessment response missing identifiers:', parsedSave);
+                    throw new Error('We could not verify your saved assessment. Please try again.');
+                }
+
+                const normalizedEmail = typeof parsedSave?.email === 'string' && parsedSave.email
+                    ? parsedSave.email
+                    : email;
+
+                const savedRecord = {
+                    assessmentId,
+                    profileId,
+                    email: normalizedEmail,
+                };
+
+                savedAssessmentRef.current = savedRecord;
+
+                if (typeof window !== 'undefined') {
+                    window.localStorage.setItem(ASSESSMENT_ID_STORAGE_KEY, String(assessmentId));
+                    window.localStorage.setItem(EMAIL_STORAGE_KEY, normalizedEmail);
+                    window.localStorage.removeItem(CHECKOUT_SESSION_STORAGE_KEY);
+                }
+
+                return savedRecord;
             };
 
-            if (typeof window !== 'undefined') {
-                window.localStorage.setItem(ASSESSMENT_ID_STORAGE_KEY, String(assessmentId));
-                window.localStorage.setItem(EMAIL_STORAGE_KEY, normalizedEmail);
-                window.localStorage.removeItem(CHECKOUT_SESSION_STORAGE_KEY);
-            }
+            const savedAssessment = await ensureAssessmentSaved();
 
-            const stripeMetadata: Record<string, string> = { email_entered: email, profile_id: String(profileId) };
+            const stripeMetadata: Record<string, string> = {
+                email_entered: email,
+                profile_id: String(savedAssessment.profileId),
+            };
             if (fullName) {
                 stripeMetadata.full_name_entered = fullName;
             }
 
             logCheckoutDebug('[Checkout] create-checkout request', {
-                assessmentId,
-                profileId,
-                email: normalizedEmail,
+                assessmentId: savedAssessment.assessmentId,
+                profileId: savedAssessment.profileId,
+                email: savedAssessment.email,
             });
 
             let session;
             try {
+                const origin = typeof window !== 'undefined' ? window.location.origin : '';
+                const successUrl = origin
+                    ? `${origin}/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}`
+                    : undefined;
+                const cancelUrl = origin ? `${origin}/results?checkout=cancelled` : undefined;
+
                 session = await startCheckout({
-                    assessmentId,
-                    profileId,
-                    email: normalizedEmail,
+                    assessmentId: savedAssessment.assessmentId,
+                    profileId: savedAssessment.profileId,
+                    email: savedAssessment.email,
                     plan: 'founding-member',
                     metadata: stripeMetadata,
+                    successUrl,
+                    cancelUrl,
                 });
                 logCheckoutDebug('[Checkout] create-checkout response', session);
             } catch (checkoutError) {
                 console.error('[Checkout] Failed to create checkout session:', {
                     checkoutError,
-                    assessmentPayload,
                     savedAssessment: savedAssessmentRef.current,
                 });
-                clearPlanSelection();
-                setCheckoutError('We were unable to start checkout. Please try again or contact support.');
-                return;
+                throw new Error('We were unable to start checkout. Please try again or contact support.');
+            }
+
+            if (!session || typeof session !== 'object' || !session.url || !session.id) {
+                console.error('[Checkout] Missing session data after create-checkout:', {
+                    session,
+                    savedAssessment: savedAssessmentRef.current,
+                });
+                throw new Error('Checkout session did not return the expected data. Please try again.');
             }
 
             if (typeof window !== 'undefined') {
@@ -360,14 +435,16 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
             } else {
                 console.warn('[Checkout] Cannot redirect to Stripe – window is undefined');
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('[Checkout] Unexpected error while starting checkout:', {
                 error,
-                payload: assessmentPayload,
                 savedAssessment: savedAssessmentRef.current,
             });
             clearPlanSelection();
-            const errorMessage = 'We were unable to start checkout. Please try again or contact support.';
+            const fallbackMessage = 'We were unable to start checkout. Please try again or contact support.';
+            const errorMessage = typeof error?.message === 'string' && error.message !== 'ASSESSMENT_SAVE_FAILED'
+                ? error.message
+                : fallbackMessage;
             setCheckoutError(errorMessage);
         } finally {
             setIsProcessingCheckout(false);
@@ -376,8 +453,8 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ result, onRetake, onJoin }) =
 
     const handleClaimAndJoin = () => {
         setIsModalOpen(false);
-        beginCheckout().catch(() => {
-            /* Error surface handled inside beginCheckout */
+        handleFoundingMemberCheckout().catch(() => {
+            /* Error surface handled inside handleFoundingMemberCheckout */
         });
     };
 

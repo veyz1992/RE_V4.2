@@ -401,6 +401,8 @@ export interface StoredAssessmentResult extends ScoreBreakdown {
   id?: number | string;
   createdAt?: string;
   userId?: string | null;
+  profileId?: string | number | null;
+  assessmentId?: string | number | null;
   emailEntered?: string | null;
   fullNameEntered?: string | null;
   state?: string | null;
