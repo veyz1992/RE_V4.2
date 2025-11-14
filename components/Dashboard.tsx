@@ -4156,6 +4156,21 @@ const NewRequestModal: React.FC<{
         return '';
     }, [currentUser?.benefits, requestType]);
 
+    const mapUiPriorityToDb = (uiPriority: string): ServiceRequestPriority => {
+        const normalized = uiPriority?.toLowerCase();
+
+        switch (normalized) {
+            case 'low':
+                return 'low';
+            case 'high':
+                return 'high';
+            case 'medium':
+            case 'normal':
+            default:
+                return 'normal';
+        }
+    };
+
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
         setFormError(null);
@@ -4173,18 +4188,23 @@ const NewRequestModal: React.FC<{
         setIsSubmitting(true);
 
         try {
-            const { error } = await supabase
-                .from('service_requests')
-                .insert({
-                    profile_id: session.user.id,
-                    request_type: requestType,
-                    title: title.trim(),
-                    description: description.trim(),
-                    priority_level: priority,
-                    status: 'open',
-                });
+            const payload = {
+                profile_id: session.user.id,
+                request_type: requestType,
+                title: title.trim(),
+                description: description.trim(),
+                priority: mapUiPriorityToDb(priority),
+                status: 'open' as const,
+            };
+
+            const { error } = await supabase.from('service_requests').insert(payload);
 
             if (error) {
+                console.error('Supabase insert error creating service request', {
+                    errorMessage: error.message,
+                    errorDetails: error,
+                    payload,
+                });
                 throw error;
             }
 
