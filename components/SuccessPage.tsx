@@ -106,6 +106,7 @@ const SuccessPage: React.FC = () => {
   const search = typeof window !== 'undefined' ? window.location.search : '';
   const params = new URLSearchParams(search || '');
   const sessionIdFromUrl = params.get('session_id');
+  const checkoutStatusFromUrl = params.get('checkout');
   
   // Safely access auth context with fallback
   let currentUser: any = null;
@@ -135,6 +136,11 @@ const SuccessPage: React.FC = () => {
     full_name_entered: string | null;
     plan: string | null;
   } | null>(null);
+  const [checkoutState, setCheckoutState] = useState<'success' | 'cancelled' | null>(() => {
+    if (checkoutStatusFromUrl === 'success') return 'success';
+    if (checkoutStatusFromUrl === 'cancelled') return 'cancelled';
+    return null;
+  });
 
   // State for success summary data
   const [successData, setSuccessData] = useState<{
@@ -156,6 +162,7 @@ const SuccessPage: React.FC = () => {
   
   const planConfig = planDetails[resolvedPlan];
   const isFounding = resolvedPlan === 'founding-member';
+  const hasCheckoutSuccessFlag = checkoutState === 'success';
 
   // Display variables - bind directly to API response
   const displayBusinessName = useMemo(() => {
@@ -209,14 +216,27 @@ const SuccessPage: React.FC = () => {
   // Initialize session_id and clear localStorage if session_id present
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    
+
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const urlSessionId = urlParams.get('session_id');
-      
+      const urlCheckoutStatus = urlParams.get('checkout');
+
       setSessionId(urlSessionId);
       console.log('[SuccessPage] session_id from URL:', urlSessionId);
-      
+      setCheckoutState(() => {
+        if (urlCheckoutStatus === 'success') {
+          return 'success';
+        }
+        if (urlCheckoutStatus === 'cancelled') {
+          return 'cancelled';
+        }
+        return null;
+      });
+      if (urlCheckoutStatus && urlCheckoutStatus !== 'success') {
+        console.warn('[SuccessPage] Unexpected checkout status flag:', urlCheckoutStatus);
+      }
+
       if (urlSessionId) {
         // Clear localStorage when session_id is present - we want fresh data
         console.log('[SuccessPage] session_id present - clearing localStorage');
@@ -438,6 +458,10 @@ const SuccessPage: React.FC = () => {
   useEffect(() => {
     try {
       if (sessionId) {
+        if (!hasCheckoutSuccessFlag) {
+          console.warn('[SuccessPage] Checkout flag did not indicate success – postponing magic link send.');
+          return;
+        }
         // If session_id present: only trigger after successData is loaded
         if (successData?.email && actionState === 'idle') {
           triggerMagicLink();
@@ -455,7 +479,7 @@ const SuccessPage: React.FC = () => {
     } catch (error) {
       console.error('Error in magic link auto-trigger:', error);
     }
-  }, [sessionId, successData?.email, cachedEmail, displayEmail, actionState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId, successData?.email, cachedEmail, displayEmail, actionState, hasCheckoutSuccessFlag]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (typeof document === 'undefined') {

@@ -10,6 +10,7 @@ import SuccessPage from './components/SuccessPage';
 import AuthCallback from './components/AuthCallback';
 import { ThemeProvider } from './components/ThemeContext';
 import { supabase } from '@/lib/supabase';
+import { FUNCTION_ENDPOINTS } from '@/lib/functions';
 import { useAuth } from '@/context/AuthContext';
 import type { Answers, ScoreBreakdown, StoredAssessmentResult } from './types';
 
@@ -219,80 +220,67 @@ const AppRoutes: React.FC = () => {
     };
 
     try {
-      // Normalize payload to match database schema exactly
       const normalizedPayload = {
-        user_id: session?.user?.id ?? null,
-        profile_id: profile?.id ?? null,
-        email_entered: emailEntered,
-        full_name_entered: result.fullNameEntered?.trim() || null,
-        state: result.state?.trim() || null,
-        city: result.cityEntered?.trim() || null,
-        answers: result.answers, // This should be valid JSONB
-        // Ensure all score fields are integers and match DB columns exactly
+        email: emailEntered,
+        answers: result.answers,
         total_score: toInt(result.total),
         operational_score: toInt(result.operational),
         licensing_score: toInt(result.licensing),
         feedback_score: toInt(result.feedback),
-        certifications_score: toInt(result.certifications), // NOT "certifications"
+        certifications_score: toInt(result.certifications),
         digital_score: toInt(result.digital),
         scenario,
-        pci_rating: result.grade,
         intended_membership_tier: intendedMembershipTier,
+        full_name: result.fullNameEntered?.trim() || null,
+        city: result.cityEntered?.trim() || null,
+        state: result.state?.trim() || null,
+        user_id: session?.user?.id ?? null,
+        profile_id: profile?.id ?? null,
+        assessment_id: result.assessmentId ?? result.id ?? null,
       };
 
-      console.log('Saving assessment (App.tsx) with normalized payload:', {
+      console.log('Saving assessment via function (App.tsx):', {
         keys: Object.keys(normalizedPayload),
-        types: Object.entries(normalizedPayload).reduce((acc, [key, value]) => {
-          acc[key] = typeof value;
-          return acc;
-        }, {} as Record<string, string>)
       });
 
-      const { data, error } = await supabase
-        .from('assessments')
-        .insert(normalizedPayload)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Assessment insert failed:', error);
-        console.error('Failed payload details:', {
-          payload: normalizedPayload,
-          payloadKeys: Object.keys(normalizedPayload),
-          payloadTypes: Object.entries(normalizedPayload).reduce((acc, [key, value]) => {
-            acc[key] = typeof value;
-            return acc;
-          }, {} as Record<string, string>)
+      let saveResponse: Response;
+      try {
+        saveResponse = await fetch(FUNCTION_ENDPOINTS.SAVE_ASSESSMENT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(normalizedPayload),
         });
-        throw error;
+      } catch (networkError) {
+        console.error('save-assessment network error:', networkError);
+        throw networkError;
       }
 
-      type SupabaseAssessmentRow = {
-        id?: number | string;
-        created_at?: string;
-        user_id?: string | null;
-        profile_id?: string | null;
-        email_entered?: string | null;
-        full_name_entered?: string | null;
-        state?: string | null;
-        city?: string | null;
-        answers?: Answers;
-        total_score?: number;
-        operational_score?: number;
-        licensing_score?: number;
-        feedback_score?: number;
-        certifications_score?: number;
-        digital_score?: number;
-        scenario?: string | null;
-        pci_rating?: string | null;
-        intended_membership_tier?: string | null;
-      };
+      const responseText = await saveResponse.text();
+      let parsedSave: any = {};
 
-      const row = data as SupabaseAssessmentRow;
+      try {
+        parsedSave = responseText ? JSON.parse(responseText) : {};
+      } catch (parseError) {
+        console.error('Failed to parse save-assessment response:', {
+          responseText,
+          parseError,
+        });
+      }
 
-      if (profile?.id && row.id != null) {
+      if (!saveResponse.ok || !parsedSave?.success) {
+        console.error('save-assessment failed:', {
+          status: saveResponse.status,
+          responseText,
+        });
+        throw new Error(parsedSave?.error ?? 'ASSESSMENT_SAVE_FAILED');
+      }
+
+      const assessmentId = parsedSave?.assessment_id ?? null;
+      const profileIdFromResponse = parsedSave?.profile_id ?? profile?.id ?? null;
+
+      if (profile?.id && assessmentId != null) {
         try {
-          await updateProfileWithAssessment(profile.id, row.id, result.total);
+          await updateProfileWithAssessment(profile.id, assessmentId, toInt(result.total));
         } catch (profileUpdateError) {
           console.error('Failed to update profile with assessment', profileUpdateError);
           alert('We saved your assessment but could not update your profile.');
@@ -303,7 +291,7 @@ const AppRoutes: React.FC = () => {
             await createPendingMembership(
               profile.id,
               intendedMembershipTier,
-              row.id,
+              assessmentId,
             );
           } catch (membershipError) {
             console.error('Failed to create pending membership', membershipError);
@@ -316,29 +304,24 @@ const AppRoutes: React.FC = () => {
 
       const storedResult: StoredAssessmentResult = {
         ...result,
-        answers: (row.answers as Answers) ?? result.answers,
-        operational: row.operational_score ?? result.operational,
-        licensing: row.licensing_score ?? result.licensing,
-        feedback: row.feedback_score ?? result.feedback,
-        certifications: row.certifications_score ?? result.certifications,
-        digital: row.digital_score ?? result.digital,
-        total: row.total_score ?? result.total,
-        grade:
-          (row.pci_rating as ScoreBreakdown['grade']) ?? result.grade,
-        isEligibleForCertification: row.scenario
-          ? row.scenario === 'eligible'
-          : result.isEligibleForCertification,
-        scenario: row.scenario ?? scenario,
-        pciRating: row.pci_rating ?? result.grade,
-        intendedMembershipTier:
-          row.intended_membership_tier ?? intendedMembershipTier,
-        id: row.id,
-        createdAt: row.created_at,
-        userId: row.user_id ?? session?.user?.id ?? null,
-        emailEntered: row.email_entered ?? emailEntered,
-        fullNameEntered: row.full_name_entered ?? result.fullNameEntered,
-        state: row.state ?? result.state,
-        cityEntered: row.city ?? result.cityEntered,
+        operational: toInt(result.operational),
+        licensing: toInt(result.licensing),
+        feedback: toInt(result.feedback),
+        certifications: toInt(result.certifications),
+        digital: toInt(result.digital),
+        total: toInt(result.total),
+        scenario,
+        pciRating: result.grade,
+        intendedMembershipTier,
+        id: assessmentId ?? result.id,
+        assessmentId: assessmentId ?? result.assessmentId ?? result.id ?? null,
+        profileId: profileIdFromResponse,
+        createdAt: result.createdAt,
+        userId: session?.user?.id ?? null,
+        emailEntered,
+        fullNameEntered: result.fullNameEntered,
+        state: result.state,
+        cityEntered: result.cityEntered,
       };
 
       setAssessmentResult(storedResult);

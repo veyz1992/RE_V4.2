@@ -14,6 +14,19 @@ const normalizeString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const normalizeId = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return null;
+};
+
 const normalizeNumber = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -58,6 +71,9 @@ export const handler: Handler = async event => {
     const fullName = normalizeString(payload.full_name);
     const city = normalizeString(payload.city);
     const state = normalizeString(payload.state);
+    const providedUserId = normalizeString(payload.user_id ?? payload.userId);
+    let profileId = normalizeId(payload.profile_id ?? payload.profileId);
+    let existingAssessmentId = normalizeId(payload.assessment_id ?? payload.assessmentId);
 
     const operationalScore = normalizeNumber(payload.operational_score);
     const licensingScore = normalizeNumber(payload.licensing_score);
@@ -66,17 +82,39 @@ export const handler: Handler = async event => {
     const digitalScore = normalizeNumber(payload.digital_score);
     const intendedTier = normalizeString(payload.intended_membership_tier);
 
-    const { data: existingProfile, error: profileLookupError } = await supabase
-      .from('profiles')
-      .select('id, full_name, city, state, email, stripe_customer_id')
-      .eq('email', email)
-      .maybeSingle();
+    let existingProfile: { id: string; full_name: string | null; city: string | null; state: string | null } | null = null;
 
-    if (profileLookupError) {
-      throw profileLookupError;
+    if (profileId) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, city, state')
+        .eq('id', profileId)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      existingProfile = data ?? null;
+
+      if (!existingProfile) {
+        profileId = null;
+      }
     }
 
-    let profileId: string;
+    if (!profileId) {
+      const { data: profileMatch, error: profileLookupError } = await supabase
+        .from('profiles')
+        .select('id, full_name, city, state')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (profileLookupError) {
+        throw profileLookupError;
+      }
+
+      existingProfile = profileMatch ?? null;
+    }
 
     if (!existingProfile) {
       try {
@@ -91,7 +129,6 @@ export const handler: Handler = async event => {
         });
 
         if (createUserError && createUserError.status !== 422) {
-          // 422 typically indicates the user already exists; treat other errors as fatal
           throw createUserError;
         }
       } catch (authError: any) {
@@ -108,7 +145,7 @@ export const handler: Handler = async event => {
           city: city ?? null,
           state: state ?? null,
         })
-        .select('id')
+        .select('id, full_name, city, state')
         .single();
 
       if (insertProfileError || !insertedProfile) {
@@ -116,6 +153,7 @@ export const handler: Handler = async event => {
       }
 
       profileId = insertedProfile.id;
+      existingProfile = insertedProfile;
     } else {
       profileId = existingProfile.id;
 
@@ -142,6 +180,10 @@ export const handler: Handler = async event => {
       }
     }
 
+    if (!profileId) {
+      throw new Error('Unable to resolve profile');
+    }
+
     const assessmentRow: Record<string, unknown> = {
       profile_id: profileId,
       email_entered: email,
@@ -159,21 +201,78 @@ export const handler: Handler = async event => {
       state,
     };
 
-    const { data: assessment, error: assessmentError } = await supabase
-      .from('assessments')
-      .insert(assessmentRow)
-      .select('id')
-      .single();
-
-    if (assessmentError || !assessment) {
-      throw assessmentError ?? new Error('Failed to save assessment');
+    if (providedUserId) {
+      assessmentRow.user_id = providedUserId;
+    } else if (!existingAssessmentId) {
+      assessmentRow.user_id = null;
     }
+
+    if (!existingAssessmentId && profileId && scenario) {
+      const { data: existingAssessment, error: lookupError } = await supabase
+        .from('assessments')
+        .select('id')
+        .eq('profile_id', profileId)
+        .eq('scenario', scenario)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lookupError) {
+        throw lookupError;
+      }
+
+      if (existingAssessment?.id) {
+        existingAssessmentId = normalizeId(existingAssessment.id);
+      }
+    }
+
+    console.log('[save-assessment] persisting assessment', {
+      profileId,
+      scenario,
+      hasExisting: Boolean(existingAssessmentId),
+    });
+
+    let savedAssessmentId: string | null = null;
+
+    if (existingAssessmentId) {
+      const { data: updatedAssessment, error: updateError } = await supabase
+        .from('assessments')
+        .update(assessmentRow)
+        .eq('id', existingAssessmentId)
+        .select('id')
+        .maybeSingle();
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      savedAssessmentId = normalizeId(updatedAssessment?.id) ?? existingAssessmentId;
+    } else {
+      const { data: assessment, error: assessmentError } = await supabase
+        .from('assessments')
+        .insert(assessmentRow)
+        .select('id')
+        .single();
+
+      if (assessmentError || !assessment) {
+        throw assessmentError ?? new Error('Failed to save assessment');
+      }
+
+      savedAssessmentId = normalizeId(assessment.id);
+    }
+
+    console.log('[save-assessment] saved assessment', {
+      profileId,
+      scenario,
+      assessmentId: savedAssessmentId,
+    });
 
     return json(200, {
       success: true,
       profile_id: profileId,
-      assessment_id: assessment.id,
+      assessment_id: savedAssessmentId,
       email,
+      scenario,
     });
   } catch (error) {
     console.error('[save-assessment] error', error);

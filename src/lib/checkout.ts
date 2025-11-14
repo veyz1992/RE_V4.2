@@ -14,6 +14,8 @@ export interface StartCheckoutParams {
   plan: 'founding-member';
   profileId?: string | null;
   metadata?: Record<string, string | null | undefined>;
+  successUrl?: string;
+  cancelUrl?: string;
 }
 
 export interface CheckoutSessionResponse {
@@ -21,18 +23,26 @@ export interface CheckoutSessionResponse {
   id: string;
 }
 
-export const startCheckout = async ({ assessmentId, email, plan, profileId, metadata }: StartCheckoutParams): Promise<CheckoutSessionResponse> => {
+export const startCheckout = async ({ assessmentId, email, plan, profileId, metadata, successUrl, cancelUrl }: StartCheckoutParams): Promise<CheckoutSessionResponse> => {
   if (!assessmentId || !email || !plan) {
     throw new Error('Missing required checkout identifiers.');
   }
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     assessment_id: String(assessmentId),
     email,
     plan,
     profile_id: profileId ?? null,
     metadata: metadata ?? undefined,
   };
+
+  if (successUrl) {
+    payload.success_url = successUrl;
+  }
+
+  if (cancelUrl) {
+    payload.cancel_url = cancelUrl;
+  }
 
   logCheckoutDebug('[Checkout] create-checkout-session payload', payload);
 

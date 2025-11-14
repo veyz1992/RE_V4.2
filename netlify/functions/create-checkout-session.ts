@@ -258,19 +258,26 @@ export const handler: Handler = async event => {
 
     const origin = resolveOrigin(event);
 
+    const defaultSuccessUrl = `${origin}/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
     const successUrlPayload =
       typeof payload.success_url === 'string' && payload.success_url.trim().length > 0
         ? payload.success_url.trim()
         : typeof payload.successUrl === 'string' && payload.successUrl.trim().length > 0
           ? payload.successUrl.trim()
-          : `${origin}/success?session_id={CHECKOUT_SESSION_ID}`;
+          : defaultSuccessUrl;
 
+    const defaultCancelUrl = `${origin}/results?checkout=cancelled`;
     const cancelUrlPayload =
       typeof payload.cancel_url === 'string' && payload.cancel_url.trim().length > 0
         ? payload.cancel_url.trim()
         : typeof payload.cancelUrl === 'string' && payload.cancelUrl.trim().length > 0
           ? payload.cancelUrl.trim()
-          : `${origin}/pricing?cancelled=true`;
+          : defaultCancelUrl;
+
+    console.log('[create-checkout-session] resolved redirect URLs', {
+      successUrl: successUrlPayload,
+      cancelUrl: cancelUrlPayload,
+    });
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',

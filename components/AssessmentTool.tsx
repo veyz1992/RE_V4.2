@@ -666,9 +666,6 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
           cityEntered: assessmentInputs.city
         };
         
-        // Save assessment data to Supabase
-        saveAssessmentData(result);
-        
         onComplete(result);
     }
   };
@@ -728,62 +725,6 @@ const AssessmentTool: React.FC<{ onComplete: (result: ScoreBreakdown & { answers
       return isNaN(parsed) ? 0 : Math.round(parsed);
     }
     return 0;
-  };
-
-  // Save assessment data via server-side function
-  const saveAssessmentData = async (assessmentData: any) => {
-    try {
-      const payload = {
-        assessmentInputs: {
-          full_name_entered: assessmentInputs.full_name_entered.trim(),
-          email_entered: assessmentInputs.email_entered.trim().toLowerCase(),
-          state: assessmentInputs.state,
-          city: assessmentInputs.city.trim()
-        },
-        answers: assessmentData.answers,
-        scores: {
-          operational: toInt(assessmentData.operational),
-          licensing: toInt(assessmentData.licensing),
-          feedback: toInt(assessmentData.feedback),
-          certifications: toInt(assessmentData.certifications),
-          digital: toInt(assessmentData.digital),
-          total: toInt(assessmentData.total),
-          grade: assessmentData.grade,
-          isEligibleForCertification: assessmentData.isEligibleForCertification,
-          eligibilityReasons: assessmentData.eligibilityReasons || [],
-          opportunities: assessmentData.opportunities || []
-        },
-        planSlug: 'founding-member'
-      };
-
-      console.log('[AssessmentTool] Saving assessment via server function:', {
-        email: payload.assessmentInputs.email_entered,
-        scores: payload.scores
-      });
-
-      const response = await fetch(FUNCTION_ENDPOINTS.SAVE_ASSESSMENT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        console.error('Assessment save failed:', result);
-        console.log('Assessment save failed due to server error. Continuing without persistence.');
-        return null;
-      }
-
-      console.log('[AssessmentTool] Assessment saved successfully:', result);
-      return result;
-    } catch (error) {
-      console.error('Failed to save assessment:', error);
-      console.log('Assessment save failed. Continuing without persistence.');
-      return null;
-    }
   };
 
   const updateNestedAnswer = <K extends 'services' | 'certifications' | 'otherPlatforms', NK extends keyof Answers[K]>(key: K, nestedKey: NK, value: Answers[K][NK]) => {
