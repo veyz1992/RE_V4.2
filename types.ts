@@ -97,7 +97,7 @@ export interface User {
 }
 
 export type ServiceRequestStatus = 'open' | 'in_progress' | 'completed' | 'canceled';
-export type ServiceRequestPriority = 'low' | 'medium' | 'high';
+export type ServiceRequestPriority = 'low' | 'normal' | 'high';
 
 export interface MemberServiceRequest {
     id: string;
