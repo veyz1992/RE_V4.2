@@ -1,25 +1,28 @@
 import type { Handler } from '@netlify/functions';
-import { assertEnv } from '../lib/assertEnv';
+import { assertEnv, requiredEnvKeys } from '../lib/assertEnv';
+
+const json = (statusCode: number, body: unknown) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
 export const handler: Handler = async () => {
   try {
-    const vars = assertEnv([
-      'SUPABASE_URL',
-      'SUPABASE_SERVICE_ROLE_KEY',
-      'STRIPE_SECRET_KEY',
-      'PRICE_ID_FOUNDING_MEMBER'
-    ] as const);
-
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ok: true, present: Object.keys(vars) })
-    };
+    const env = assertEnv();
+    return json(200, {
+      ok: true,
+      visible: Object.fromEntries(requiredEnvKeys.map(key => [key, Boolean(env[key])])),
+    });
   } catch (error: any) {
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ok: false, error: error?.message ?? 'Unknown error' })
-    };
+    const visibility = Object.fromEntries(
+      requiredEnvKeys.map(key => [key, Boolean(process.env[key])]),
+    );
+
+    return json(500, {
+      ok: false,
+      error: error?.message ?? 'Unknown error',
+      visible: visibility,
+    });
   }
 };

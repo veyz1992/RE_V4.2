@@ -1,25 +1,30 @@
 import type { Handler } from '@netlify/functions';
 import Stripe from 'stripe';
 import { assertEnv } from '../lib/assertEnv';
-import { supabaseAdmin } from '../lib/supabaseServer';
-
-const { STRIPE_SECRET_KEY, PRICE_ID_FOUNDING_MEMBER } = assertEnv([
-  'STRIPE_SECRET_KEY',
-  'PRICE_ID_FOUNDING_MEMBER'
-] as const);
-
-const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+import { supabase } from '../lib/supabaseServer';
 
 const json = (statusCode: number, body: unknown) => ({
   statusCode,
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(body)
+  body: JSON.stringify(body),
 });
 
-const planPriceMap: Record<string, string> = {
-  'founding-member': PRICE_ID_FOUNDING_MEMBER,
-  'founding_member': PRICE_ID_FOUNDING_MEMBER,
-  foundingMember: PRICE_ID_FOUNDING_MEMBER
+const parseId = (value: unknown): string | null => {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return null;
+};
+
+const parseEmail = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
 };
 
 const resolveOrigin = (event: Parameters<Handler>[0]): string => {
@@ -28,7 +33,7 @@ const resolveOrigin = (event: Parameters<Handler>[0]): string => {
       return new URL(event.rawUrl).origin;
     }
   } catch {
-    // ignore
+    // ignore URL parsing errors and fall back to headers/env below
   }
 
   const forwardedProto = event.headers?.['x-forwarded-proto'] ?? event.headers?.['x-forwarded-protocol'];
@@ -52,7 +57,25 @@ const resolveOrigin = (event: Parameters<Handler>[0]): string => {
   return String(fallback).replace(/\/+$/, '');
 };
 
-export const handler: Handler = async (event) => {
+let stripeClient: Stripe | null = null;
+let cachedPriceId: string | null = null;
+
+const getStripe = () => {
+  if (!stripeClient) {
+    const { STRIPE_SECRET_KEY, PRICE_ID_FOUNDING_MEMBER } = assertEnv();
+    stripeClient = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+    cachedPriceId = PRICE_ID_FOUNDING_MEMBER;
+  }
+
+  if (!cachedPriceId) {
+    const { PRICE_ID_FOUNDING_MEMBER } = assertEnv();
+    cachedPriceId = PRICE_ID_FOUNDING_MEMBER;
+  }
+
+  return { stripe: stripeClient as Stripe, priceId: cachedPriceId as string };
+};
+
+export const handler: Handler = async event => {
   try {
     if (event.httpMethod === 'OPTIONS') {
       return json(200, { ok: true });
@@ -63,108 +86,213 @@ export const handler: Handler = async (event) => {
     }
 
     if (!event.body) {
-      return json(400, { error: 'EMPTY_BODY' });
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
     }
 
-    let payload: Record<string, any>;
+    let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(event.body);
     } catch {
       return json(400, { error: 'INVALID_JSON' });
     }
 
-    const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
-    if (!email) {
-      return json(400, { error: 'MISSING_REQUIRED_FIELDS', details: ['email'] });
-    }
+    const { stripe, priceId } = getStripe();
 
-    const requestedPriceId = typeof payload.priceId === 'string' ? payload.priceId.trim() : '';
-    const planKey = typeof payload.plan === 'string' ? payload.plan.trim() : '';
-    const priceId = requestedPriceId || (planKey ? planPriceMap[planKey] : undefined) || PRICE_ID_FOUNDING_MEMBER;
+    let assessmentId = parseId(payload.assessment_id ?? payload.assessmentId);
+    let profileId = parseId(payload.profile_id ?? payload.profileId);
+    let email = parseEmail(payload.email);
 
-    if (!priceId) {
-      return json(400, { error: 'MISSING_REQUIRED_FIELDS', details: ['priceId'] });
-    }
+    let profileRecord: { id: string; email: string | null; stripe_customer_id: string | null } | null = null;
+    let assessmentRecord: { id: string; profile_id: string | null; email_entered: string | null } | null = null;
 
-    let profileId: string | null = null;
-    let stripeCustomerId: string | null = null;
-
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('id, stripe_customer_id')
-      .eq('email', email)
-      .maybeSingle();
-
-    if (profileError) {
-      throw profileError;
-    }
-
-    if (profile) {
-      profileId = profile.id ?? null;
-      stripeCustomerId = profile.stripe_customer_id ?? null;
-    } else {
-      const { data: insertedProfile, error: insertProfileError } = await supabaseAdmin
+    if (profileId) {
+      const { data, error } = await supabase
         .from('profiles')
-        .insert({ email })
-        .select('id')
-        .single();
+        .select('id, email, stripe_customer_id')
+        .eq('id', profileId)
+        .maybeSingle();
 
-      if (insertProfileError) {
-        throw insertProfileError;
+      if (error) {
+        throw error;
       }
 
-      profileId = insertedProfile.id;
+      if (data) {
+        profileRecord = data;
+        email = email ?? parseEmail(data.email);
+      }
     }
+
+    if (assessmentId) {
+      const { data, error } = await supabase
+        .from('assessments')
+        .select('id, profile_id, email_entered')
+        .eq('id', assessmentId)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        assessmentRecord = data;
+        profileId = profileId ?? parseId(data.profile_id);
+        email = email ?? parseEmail(data.email_entered);
+      }
+    }
+
+    if (!profileRecord && profileId) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, stripe_customer_id')
+        .eq('id', profileId)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        profileRecord = data;
+        email = email ?? parseEmail(data.email);
+      }
+    }
+
+    if (!assessmentRecord && profileId) {
+      const { data, error } = await supabase
+        .from('assessments')
+        .select('id, profile_id, email_entered')
+        .eq('profile_id', profileId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        assessmentRecord = data;
+        assessmentId = assessmentId ?? parseId(data.id);
+        email = email ?? parseEmail(data.email_entered);
+      }
+    }
+
+    if (!profileRecord && email) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, stripe_customer_id')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        profileRecord = data;
+        profileId = parseId(data.id);
+      }
+    }
+
+    if (!assessmentRecord && email) {
+      const { data, error } = await supabase
+        .from('assessments')
+        .select('id, profile_id, email_entered')
+        .eq('email_entered', email)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        assessmentRecord = data;
+        assessmentId = assessmentId ?? parseId(data.id);
+        profileId = profileId ?? parseId(data.profile_id);
+        email = email ?? parseEmail(data.email_entered);
+      }
+    }
+
+    if (!assessmentId || !profileId || !email) {
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
+    }
+
+    if (!profileRecord) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, stripe_customer_id')
+        .eq('id', profileId)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        profileRecord = data;
+      }
+    }
+
+    if (!profileRecord) {
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
+    }
+
+    const normalizedEmail = parseEmail(email);
+    if (!normalizedEmail) {
+      return json(400, { error: 'MISSING_REQUIRED_FIELDS' });
+    }
+
+    let stripeCustomerId = profileRecord.stripe_customer_id ?? null;
 
     if (!stripeCustomerId) {
-      const customer = await stripe.customers.create({ email });
+      const customer = await stripe.customers.create({ email: normalizedEmail });
       stripeCustomerId = customer.id;
 
-      if (profileId) {
-        await supabaseAdmin.from('profiles').update({ stripe_customer_id: stripeCustomerId }).eq('id', profileId);
-      }
+      await supabase
+        .from('profiles')
+        .update({ stripe_customer_id: stripeCustomerId })
+        .eq('id', profileId);
     }
 
     const origin = resolveOrigin(event);
 
-    const metadata: Record<string, string> = {};
-    if (typeof payload.assessment_id === 'string') {
-      metadata.assessment_id = payload.assessment_id;
-    }
-    if (typeof payload.profile_id === 'string') {
-      metadata.profile_id = payload.profile_id;
-    }
-    if (planKey) {
-      metadata.plan = planKey;
-    }
-    if (payload.metadata && typeof payload.metadata === 'object') {
-      for (const [key, value] of Object.entries(payload.metadata)) {
-        if (typeof value === 'string') {
-          metadata[key] = value;
-        }
-      }
-    }
+    const successUrlPayload =
+      typeof payload.success_url === 'string' && payload.success_url.trim().length > 0
+        ? payload.success_url.trim()
+        : typeof payload.successUrl === 'string' && payload.successUrl.trim().length > 0
+          ? payload.successUrl.trim()
+          : `${origin}/success?session_id={CHECKOUT_SESSION_ID}`;
+
+    const cancelUrlPayload =
+      typeof payload.cancel_url === 'string' && payload.cancel_url.trim().length > 0
+        ? payload.cancel_url.trim()
+        : typeof payload.cancelUrl === 'string' && payload.cancelUrl.trim().length > 0
+          ? payload.cancelUrl.trim()
+          : `${origin}/pricing?cancelled=true`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
-      customer: stripeCustomerId ?? undefined,
-      customer_email: stripeCustomerId ? undefined : email,
+      customer: stripeCustomerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url:
-        typeof payload.successUrl === 'string' && payload.successUrl.length > 0
-          ? payload.successUrl
-          : `${origin}/results?checkout=success`,
-      cancel_url:
-        typeof payload.cancelUrl === 'string' && payload.cancelUrl.length > 0
-          ? payload.cancelUrl
-          : `${origin}/results?checkout=cancel`,
-      allow_promotion_codes: true,
-      metadata: Object.keys(metadata).length > 0 ? metadata : undefined
+      success_url: successUrlPayload,
+      cancel_url: cancelUrlPayload,
+      metadata: {
+        profile_id: profileId,
+        assessment_id: assessmentId,
+        email: normalizedEmail,
+      },
     });
 
-    return json(200, { url: session.url });
-  } catch (error: any) {
+    if (!session?.url || !session.id) {
+      console.error('[create-checkout-session] missing session URL', { sessionId: session?.id });
+      return json(500, { error: 'SESSION_CREATION_FAILED' });
+    }
+
+    return json(200, { id: session.id, url: session.url });
+  } catch (error) {
     console.error('[create-checkout-session] error', error);
-    return json(500, { error: 'CHECKOUT_SESSION_FAILED', message: error?.message ?? 'Unknown error' });
+    return json(500, { error: 'CHECKOUT_SESSION_FAILED' });
   }
 };

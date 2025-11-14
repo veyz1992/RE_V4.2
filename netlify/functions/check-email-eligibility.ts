@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../lib/supabaseServer';
+import { supabase } from '../lib/supabaseServer';
 
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
@@ -27,7 +27,7 @@ type HandlerResult = Promise<{
 
 export const handler = async (event: Event, _context: Context) => {
   try {
-    const serviceRoleClient = supabaseAdmin;
+    const serviceRoleClient = supabase;
 
     // Handle CORS preflight
     if (event.httpMethod === 'OPTIONS') {
