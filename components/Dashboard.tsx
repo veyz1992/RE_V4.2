@@ -1357,467 +1357,332 @@ const MyRequests: React.FC<{
 };
 
 
+
 const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
-    const { currentUser, updateUser } = useAuth();
-    const logoInputRef = useRef<HTMLInputElement>(null);
+    const { session } = useAuth();
+    const userId = session?.user?.id ?? null;
+    const userEmail = session?.user?.email ?? '';
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [formData, setFormData] = useState({
+        email: userEmail,
+        fullName: '',
+        companyName: '',
+        phone: '',
+        addressLine1: '',
+        city: '',
+        state: '',
+        postalCode: '',
+        country: '',
+        yearsInBusiness: '',
+        hasLicense: false,
+        hasInsurance: false,
+    });
+    const latestShowToast = useRef(showToast);
 
-    if (!currentUser) return null;
-    
-    const handleSave = (updatedProfile: Partial<typeof currentUser.profile>, updatedName?: string) => {
-        const userToUpdate = { ...currentUser };
-        if(updatedName) userToUpdate.name = updatedName;
-        userToUpdate.profile = { ...currentUser.profile, ...updatedProfile };
-        
-        updateUser(userToUpdate);
-        showToast('Changes saved successfully.', 'success');
-    };
+    useEffect(() => {
+        latestShowToast.current = showToast;
+    }, [showToast]);
 
-    const completeness = useMemo(() => {
-        const requiredFields = [
-            currentUser.name,
-            currentUser.profile.contactNumber,
-            currentUser.profile.address,
-            currentUser.profile.logoUrl,
-            currentUser.profile.description,
-            currentUser.profile.yearsInBusiness,
-            currentUser.profile.serviceAreas,
-            currentUser.profile.specialties,
-        ];
-        const filledCount = requiredFields.filter(field => {
-            if (Array.isArray(field)) return field.length > 0;
-            return !!field;
-        }).length;
-        return Math.round((filledCount / requiredFields.length) * 100);
-    }, [currentUser]);
+    useEffect(() => {
+        if (!userId) {
+            setIsLoading(false);
+            setFormData((previous) => ({ ...previous, email: userEmail }));
+            return;
+        }
 
-    const ALL_SPECIALTIES = ['Water Damage', 'Fire Restoration', 'Mold Remediation', 'Storm Damage', 'Reconstruction', 'Biohazard Cleanup'];
+        let isMounted = true;
 
-    // --- Sub-components for each card ---
+        const loadProfile = async () => {
+            setIsLoading(true);
 
-    const ProfileCompleteness: React.FC<{ value: number }> = ({ value }) => (
-        <Card className="mb-8">
-            <h2 className="font-playfair text-xl font-bold text-[var(--text-main)] mb-2">Profile Completeness: {value}%</h2>
-            <div className="w-full bg-[var(--bg-subtle)] rounded-full h-2.5">
-                <div className="bg-[var(--accent)] h-2.5 rounded-full" style={{ width: `${value}%` }}></div>
-            </div>
-            <p className="text-sm text-[var(--text-muted)] mt-2">Complete your profile to increase your visibility in our network.</p>
-        </Card>
-    );
+            const { data, error } = await supabase
+                .from('profiles')
+                .select(
+                    'email, full_name, company_name, phone, address_line1, city, state, postal_code, country, years_in_business, has_license, has_insurance'
+                )
+                .eq('id', userId)
+                .maybeSingle();
 
-    const BusinessInfoCard: React.FC = () => {
-        const [isEditing, setIsEditing] = useState(false);
-        const [formData, setFormData] = useState({
-            name: currentUser.name,
-            dbaName: currentUser.profile.dbaName || '',
-            yearsInBusiness: currentUser.profile.yearsInBusiness || 1,
-            description: currentUser.profile.description || ''
-        });
+            if (!isMounted) {
+                return;
+            }
 
-        const handleSaveClick = () => {
-            const { name, ...profileData } = formData;
-            handleSave(profileData, name);
-            setIsEditing(false);
-        };
+            if (error) {
+                console.error('Failed to load profile', error);
+                latestShowToast.current?.('Unable to load your profile. Please try again.', 'error');
+                setIsLoading(false);
+                setFormData({
+                    email: userEmail,
+                    fullName: '',
+                    companyName: '',
+                    phone: '',
+                    addressLine1: '',
+                    city: '',
+                    state: '',
+                    postalCode: '',
+                    country: '',
+                    yearsInBusiness: '',
+                    hasLicense: false,
+                    hasInsurance: false,
+                });
+                return;
+            }
 
-        const handleCancelClick = () => {
             setFormData({
-                name: currentUser.name,
-                dbaName: currentUser.profile.dbaName || '',
-                yearsInBusiness: currentUser.profile.yearsInBusiness || 1,
-                description: currentUser.profile.description || ''
+                email: data?.email ?? userEmail,
+                fullName: data?.full_name ?? '',
+                companyName: data?.company_name ?? '',
+                phone: data?.phone ?? '',
+                addressLine1: data?.address_line1 ?? '',
+                city: data?.city ?? '',
+                state: data?.state ?? '',
+                postalCode: data?.postal_code ?? '',
+                country: data?.country ?? '',
+                yearsInBusiness:
+                    data?.years_in_business !== null && data?.years_in_business !== undefined
+                        ? data.years_in_business.toString()
+                        : '',
+                hasLicense: data?.has_license ?? false,
+                hasInsurance: data?.has_insurance ?? false,
             });
-            setIsEditing(false);
+            setIsLoading(false);
         };
 
-        return (
-            <Card>
-                <div className="flex justify-between items-start mb-4">
-                    <div>
-                        <h3 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Business Information</h3>
-                        <p className="text-sm text-[var(--text-muted)]">This information appears on your public profile and badge.</p>
-                    </div>
-                    {!isEditing && <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 py-2 px-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg shadow-sm font-semibold text-[var(--text-main)] hover:bg-[var(--bg-subtle)] text-sm"><PencilSquareIcon className="w-4 h-4" /> Edit</button>}
-                </div>
-                {isEditing ? (
-                    <div className="space-y-4 animate-fade-in">
-                        <div><label className="text-sm font-medium text-[var(--text-muted)]">Business Name</label><input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="mt-1 block w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)]" /></div>
-                        <div><label className="text-sm font-medium text-[var(--text-muted)]">DBA / Brand Name (optional)</label><input type="text" value={formData.dbaName} onChange={e => setFormData({...formData, dbaName: e.target.value})} className="mt-1 block w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)]" /></div>
-                        <div><label className="text-sm font-medium text-[var(--text-muted)]">Years in Business</label><input type="number" value={formData.yearsInBusiness} onChange={e => setFormData({...formData, yearsInBusiness: parseInt(e.target.value) || 0})} className="mt-1 block w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)]" /></div>
-                        <div><label className="text-sm font-medium text-[var(--text-muted)]">Description</label><textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} rows={4} className="mt-1 block w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)]" /></div>
-                        <div className="flex justify-end gap-4 pt-2">
-                            <button onClick={handleCancelClick} className="py-2 px-5 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-lg font-semibold">Cancel</button>
-                            <button onClick={handleSaveClick} className="py-2 px-5 bg-[var(--accent)] text-[var(--accent-text)] rounded-lg font-bold">Save Changes</button>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        <div><p className="text-sm text-[var(--text-muted)]">Business Name</p><p className="font-semibold text-[var(--text-main)]">{currentUser.name}</p></div>
-                        <div><p className="text-sm text-[var(--text-muted)]">DBA / Brand Name</p><p className="font-semibold text-[var(--text-main)]">{currentUser.profile.dbaName || 'N/A'}</p></div>
-                        <div><p className="text-sm text-[var(--text-muted)]">Years in Business</p><p className="font-semibold text-[var(--text-main)]">{currentUser.profile.yearsInBusiness || 'N/A'}</p></div>
-                        <div><p className="text-sm text-[var(--text-muted)]">Description</p><p className="text-[var(--text-main)] whitespace-pre-wrap">{currentUser.profile.description || 'N/A'}</p></div>
-                    </div>
-                )}
-            </Card>
-        );
-    };
-    
-    const ContactDetailsCard: React.FC = () => {
-        const [isEditing, setIsEditing] = useState(false);
-        const [formData, setFormData] = useState({
-            contactNumber: currentUser.profile.contactNumber || '',
-            address: currentUser.profile.address || '',
-            websiteUrl: currentUser.profile.websiteUrl || ''
+        loadProfile().catch((error) => {
+            console.error('Unexpected profile load error', error);
+            latestShowToast.current?.('Unable to load your profile. Please try again.', 'error');
+            setIsLoading(false);
         });
-        const [errors, setErrors] = useState<any>({});
 
-        const validate = () => {
-            const newErrors: any = {};
-            if (!formData.contactNumber) newErrors.contactNumber = 'Phone number is required.';
-            if (!formData.address) newErrors.address = 'Address is required.';
-            if (formData.websiteUrl && !/^https?:\/\//.test(formData.websiteUrl)) newErrors.websiteUrl = 'Please enter a valid URL (e.g., https://...).';
-            setErrors(newErrors);
-            return Object.keys(newErrors).length === 0;
+        return () => {
+            isMounted = false;
         };
+    }, [userId, userEmail]);
 
-        const handleSaveClick = () => {
-            if (validate()) {
-                handleSave(formData);
-                setIsEditing(false);
-            } else {
-                showToast('Please complete required fields.', 'error');
-            }
-        };
-
-        return (
-            <Card>
-                <div className="flex justify-between items-start mb-4">
-                     <div><h3 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Contact Details</h3></div>
-                     {!isEditing && <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 py-2 px-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg shadow-sm font-semibold text-[var(--text-main)] hover:bg-[var(--bg-subtle)] text-sm"><PencilSquareIcon className="w-4 h-4" /> Edit</button>}
-                </div>
-                 {isEditing ? (
-                    <div className="space-y-4 animate-fade-in">
-                        <div><label className="text-sm font-medium text-[var(--text-muted)]">Email (read-only)</label><p className="mt-1 block w-full p-2 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-muted)]">{currentUser.email}</p></div>
-                        <div><label className="text-sm font-medium text-[var(--text-muted)]">Phone</label><input type="tel" value={formData.contactNumber} onChange={e => setFormData({...formData, contactNumber: e.target.value})} className={`mt-1 block w-full p-2 border rounded-lg bg-[var(--bg-input)] ${errors.contactNumber ? 'border-error' : 'border-[var(--border-subtle)]'}`} />{errors.contactNumber && <p className="text-xs text-error mt-1">{errors.contactNumber}</p>}</div>
-                        <div><label className="text-sm font-medium text-[var(--text-muted)]">Address</label><input type="text" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className={`mt-1 block w-full p-2 border rounded-lg bg-[var(--bg-input)] ${errors.address ? 'border-error' : 'border-[var(--border-subtle)]'}`} />{errors.address && <p className="text-xs text-error mt-1">{errors.address}</p>}</div>
-                        <div><label className="text-sm font-medium text-[var(--text-muted)]">Website URL</label><input type="url" value={formData.websiteUrl} onChange={e => setFormData({...formData, websiteUrl: e.target.value})} className={`mt-1 block w-full p-2 border rounded-lg bg-[var(--bg-input)] ${errors.websiteUrl ? 'border-error' : 'border-[var(--border-subtle)]'}`} />{errors.websiteUrl && <p className="text-xs text-error mt-1">{errors.websiteUrl}</p>}</div>
-                        <div className="flex justify-end gap-4 pt-2"><button onClick={() => setIsEditing(false)} className="py-2 px-5 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-lg font-semibold">Cancel</button><button onClick={handleSaveClick} className="py-2 px-5 bg-[var(--accent)] text-[var(--accent-text)] rounded-lg font-bold">Save Changes</button></div>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        <div><p className="text-sm text-[var(--text-muted)]">Email</p><p className="font-semibold text-[var(--text-main)]">{currentUser.email}</p></div>
-                        <div><p className="text-sm text-[var(--text-muted)]">Phone</p><p className="font-semibold text-[var(--text-main)]">{currentUser.profile.contactNumber || 'N/A'}</p></div>
-                        <div><p className="text-sm text-[var(--text-muted)]">Address</p><p className="font-semibold text-[var(--text-main)]">{currentUser.profile.address || 'N/A'}</p></div>
-                        <div><p className="text-sm text-[var(--text-muted)]">Website URL</p><p className="font-semibold text-[var(--accent-dark)] hover:underline cursor-pointer">{currentUser.profile.websiteUrl || 'N/A'}</p></div>
-                    </div>
-                 )}
-            </Card>
-        );
+    const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = event.target;
+        setFormData((previous) => ({ ...previous, [name]: value }));
     };
 
-    const ServicesCard: React.FC = () => {
-        const [isEditing, setIsEditing] = useState(false);
-        const [formData, setFormData] = useState({
-            serviceAreas: currentUser.profile.serviceAreas || [],
-            specialties: currentUser.profile.specialties || []
-        });
-        const [areaInput, setAreaInput] = useState('');
-
-        const handleAddArea = () => {
-            if (areaInput && !formData.serviceAreas.includes(areaInput)) {
-                setFormData(prev => ({ ...prev, serviceAreas: [...prev.serviceAreas, areaInput] }));
-                setAreaInput('');
-            }
-        };
-
-        const handleRemoveArea = (area: string) => {
-             setFormData(prev => ({ ...prev, serviceAreas: prev.serviceAreas.filter(a => a !== area) }));
-        };
-
-        const handleToggleSpecialty = (specialty: string) => {
-            setFormData(prev => ({
-                ...prev,
-                specialties: prev.specialties.includes(specialty)
-                    ? prev.specialties.filter(s => s !== specialty)
-                    : [...prev.specialties, specialty]
-            }));
-        };
-        
-        return (
-            <Card>
-                 <div className="flex justify-between items-start mb-4">
-                     <div><h3 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Service Areas & Specialties</h3></div>
-                     {!isEditing && <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 py-2 px-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg shadow-sm font-semibold text-[var(--text-main)] hover:bg-[var(--bg-subtle)] text-sm"><PencilSquareIcon className="w-4 h-4" /> Edit</button>}
-                </div>
-                {isEditing ? (
-                    <div className="space-y-6 animate-fade-in">
-                        <div>
-                            <label className="text-sm font-medium text-[var(--text-muted)]">Service Areas</label>
-                            <div className="flex gap-2 mt-1">
-                                <input type="text" value={areaInput} onChange={e => setAreaInput(e.target.value)} placeholder="e.g., Dallas" className="flex-grow p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)]" />
-                                <button onClick={handleAddArea} className="py-2 px-4 bg-[var(--accent)] text-[var(--accent-text)] rounded-lg font-bold">Add</button>
-                            </div>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                                {formData.serviceAreas.map(area => (
-                                    <div key={area} className="bg-gray-200 text-charcoal px-3 py-1 rounded-full flex items-center gap-2 text-sm">
-                                        {area}
-                                        <button onClick={() => handleRemoveArea(area)}><XMarkIcon className="w-4 h-4" /></button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        <div>
-                             <label className="text-sm font-medium text-[var(--text-muted)]">Specialties</label>
-                             <div className="flex flex-wrap gap-2 mt-2">
-                                {ALL_SPECIALTIES.map(spec => (
-                                    <button key={spec} onClick={() => handleToggleSpecialty(spec)} className={`px-4 py-2 rounded-full font-semibold transition-colors text-sm ${formData.specialties.includes(spec) ? 'bg-[var(--accent)] text-[var(--accent-text)]' : 'bg-gray-200 text-gray-dark'}`}>{spec}</button>
-                                ))}
-                             </div>
-                        </div>
-                         <div className="flex justify-end gap-4 pt-2"><button onClick={() => setIsEditing(false)} className="py-2 px-5 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-lg font-semibold">Cancel</button><button onClick={() => { handleSave(formData); setIsEditing(false); }} className="py-2 px-5 bg-[var(--accent)] text-[var(--accent-text)] rounded-lg font-bold">Save Changes</button></div>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        <div><p className="text-sm text-[var(--text-muted)]">Service Areas</p><div className="flex flex-wrap gap-2 mt-1">{currentUser.profile.serviceAreas?.map(a => <span key={a} className="bg-[var(--bg-subtle)] px-3 py-1 rounded-full text-sm font-medium">{a}</span>) || <p className="text-[var(--text-main)]">N/A</p>}</div></div>
-                        <div><p className="text-sm text-[var(--text-muted)]">Specialties</p><div className="flex flex-wrap gap-2 mt-1">{currentUser.profile.specialties?.map(s => <span key={s} className="bg-gold/20 text-gold-dark px-3 py-1 rounded-full text-sm font-bold">{s}</span>) || <p className="text-[var(--text-main)]">N/A</p>}</div></div>
-                    </div>
-                )}
-                 <p className="text-xs text-[var(--text-muted)] mt-4">These will appear on your public profile and affect homeowner search results.</p>
-            </Card>
-        )
-    };
-    
-    const BrandingCard: React.FC = () => {
-         const [isEditing, setIsEditing] = useState(false);
-         const [formData, setFormData] = useState({
-            logoUrl: currentUser.profile.logoUrl || '',
-            socialLinks: currentUser.profile.socialLinks || {}
-         });
-
-        const handleSocialChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-            const { name, value } = e.target;
-            setFormData(prev => ({...prev, socialLinks: {...prev.socialLinks, [name]: value }}));
-        };
-
-        const SocialLinkInput:React.FC<{icon: string, name: keyof typeof formData.socialLinks, value: string}> = ({ icon, name, value }) => (
-             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-dark text-sm shrink-0">{icon}</div>
-                <input type="url" placeholder={`https://...`} name={name} value={value} onChange={handleSocialChange} className="mt-1 block w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)]"/>
-            </div>
-        );
-        
-        return (
-            <Card>
-                <div className="flex justify-between items-start mb-4">
-                    <div><h3 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Branding & Social Links</h3></div>
-                    {!isEditing && <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 py-2 px-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg shadow-sm font-semibold text-[var(--text-main)] hover:bg-[var(--bg-subtle)] text-sm"><PencilSquareIcon className="w-4 h-4" /> Edit</button>}
-                </div>
-                 {isEditing ? (
-                    <div className="space-y-6 animate-fade-in">
-                        <div className="flex flex-col items-center text-center">
-                            <img src={currentUser.profile.logoUrl || 'https://via.placeholder.com/150'} alt="Business Logo" className="w-32 h-32 rounded-full object-cover mb-4 border-4 border-white shadow-md"/>
-                            <input type="file" ref={logoInputRef} className="hidden" accept="image/png, image/jpeg" />
-                            <button onClick={() => logoInputRef.current?.click()} className="py-2 px-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm">Upload new logo</button>
-                            <p className="text-xs text-[var(--text-muted)] mt-2">Recommended: 400x400 PNG with transparent background.</p>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <SocialLinkInput icon="G" name="google" value={formData.socialLinks?.google || ''} />
-                            <SocialLinkInput icon="f" name="facebook" value={formData.socialLinks?.facebook || ''} />
-                            <SocialLinkInput icon="ig" name="instagram" value={formData.socialLinks?.instagram || ''} />
-                            <SocialLinkInput icon="in" name="linkedin" value={formData.socialLinks?.linkedin || ''} />
-                            <SocialLinkInput icon="Y" name="yelp" value={formData.socialLinks?.yelp || ''} />
-                        </div>
-                        <div className="flex justify-end gap-4 pt-2"><button onClick={() => setIsEditing(false)} className="py-2 px-5 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-lg font-semibold">Cancel</button><button onClick={() => { handleSave(formData); setIsEditing(false); }} className="py-2 px-5 bg-[var(--accent)] text-[var(--accent-text)] rounded-lg font-bold">Save Changes</button></div>
-                    </div>
-                ) : (
-                    <div className="flex flex-col sm:flex-row items-center gap-8">
-                        <img src={currentUser.profile.logoUrl || 'https://via.placeholder.com/150'} alt="Business Logo" className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg shrink-0"/>
-                        <div className="w-full">
-                            <h4 className="font-bold mb-2">Social Links</h4>
-                            {Object.entries(currentUser.profile.socialLinks || {}).map(([key, value]) => value ? <p key={key} className="text-sm truncate"><span className="font-semibold capitalize">{key}:</span> <a href={value as string} className="text-[var(--accent-dark)] hover:underline">{value as string}</a></p> : null)}
-                        </div>
-                    </div>
-                )}
-            </Card>
-        );
+    const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, checked } = event.target;
+        setFormData((previous) => ({ ...previous, [name]: checked }));
     };
 
-    const PublicProfilePreview: React.FC = () => (
-        <Card>
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Public Profile Preview</h2>
-                <a href="#" className="font-semibold text-[var(--accent-dark)] hover:underline text-sm">View live profile →</a>
-            </div>
-            <div className="bg-[var(--bg-subtle)] p-6 rounded-xl border border-[var(--border-subtle)]">
-                <div className="flex flex-col sm:flex-row items-start gap-6">
-                    <img src={currentUser.profile.logoUrl || 'https://via.placeholder.com/150'} alt="Logo" className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-md shrink-0"/>
-                    <div>
-                        <div className="flex items-center gap-3">
-                            <h3 className="text-2xl font-bold text-[var(--text-main)]">{currentUser.name}</h3>
-                            <span className="bg-success text-white px-3 py-1 text-xs font-bold rounded-full">{currentUser.plan?.rating ?? 'A+'}</span>
-                        </div>
-                        <p className="text-[var(--text-muted)] font-medium">{currentUser.profile.address} • {currentUser.profile.yearsInBusiness} years in business</p>
-                    </div>
-                </div>
-                <div className="mt-4 pt-4 border-t border-[var(--border-subtle)]">
-                    <p className="font-semibold text-[var(--text-main)]">Serving: <span className="font-normal text-[var(--text-muted)]">{currentUser.profile.serviceAreas?.join(' • ')}</span></p>
-                     <div className="flex flex-wrap gap-2 mt-2">
-                        {currentUser.profile.specialties?.map(s => <span key={s} className="bg-gold/20 text-gold-dark px-3 py-1 rounded-full text-xs font-bold">{s}</span>)}
-                    </div>
-                </div>
-                <p className="mt-4 text-[var(--text-main)]">{currentUser.profile.description}</p>
-                <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)]">
-                    <ShieldCheckIcon className="w-5 h-5 text-success" />
-                    Verified by Restoration Expertise
-                </div>
-            </div>
-        </Card>
-    );
+    const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
 
-    const PublicProfileCardGenerator: React.FC = () => {
-        const [cardTheme, setCardTheme] = useState<'light' | 'dark'>('light');
-        const [cardSize, setCardSize] = useState<'small' | 'medium' | 'large'>('medium');
-        const [showQrCode, setShowQrCode] = useState(true);
+        if (!userId) {
+            latestShowToast.current?.('You must be logged in to update your profile.', 'error');
+            return;
+        }
 
-        const isDataComplete = !!currentUser.profile.logoUrl && !!currentUser.profile.address;
+        setIsSaving(true);
 
-        const handleDownloadClick = () => {
-            showToast('Download will be available in the full version.', 'success');
+        const yearsInBusiness = formData.yearsInBusiness.trim();
+        const parsedYears = yearsInBusiness === '' ? null : Number.parseInt(yearsInBusiness, 10);
+
+        const payload = {
+            id: userId,
+            email: formData.email || userEmail || null,
+            full_name: formData.fullName || null,
+            company_name: formData.companyName || null,
+            phone: formData.phone || null,
+            address_line1: formData.addressLine1 || null,
+            city: formData.city || null,
+            state: formData.state || null,
+            postal_code: formData.postalCode || null,
+            country: formData.country || null,
+            years_in_business: parsedYears,
+            has_license: formData.hasLicense,
+            has_insurance: formData.hasInsurance,
+            updated_at: new Date().toISOString(),
         };
 
-        const handleCopyEmbedCode = () => {
-            const businessSlug = currentUser.name.toLowerCase().replace(/\s+/g, '-');
-            const embedCode = `<a href="https://restorationexpertise.com/profile/${businessSlug}" target="_blank" rel="noopener noreferrer">\n  <img src="https://restorationexpertise.com/cards/${businessSlug}.png" alt="Restoration Expertise Verified Member - ${currentUser.name}" />\n</a>`;
-            navigator.clipboard.writeText(embedCode);
-            showToast('Embed code copied!', 'success');
-        };
+        const { error } = await supabase
+            .from('profiles')
+            .upsert(payload, { onConflict: 'id' });
 
-        const cityState = currentUser.profile.address?.split(',').slice(1).join(',').trim() || '';
-        const tagline = currentUser.profile.description?.substring(0, 80) + (currentUser.profile.description && currentUser.profile.description.length > 80 ? '...' : '');
+        setIsSaving(false);
 
-        const sizeClasses = {
-            small: 'scale-90',
-            medium: 'scale-100',
-            large: 'scale-110'
-        };
+        if (error) {
+            console.error('Failed to save profile', error);
+            latestShowToast.current?.('Failed to save changes. Please try again.', 'error');
+            return;
+        }
 
-        const QRPlaceholder = () => (
-            <div className={`w-12 h-12 p-0.5 rounded-md grid grid-cols-5 grid-rows-5 gap-px ${cardTheme === 'light' ? 'bg-gray-200' : 'bg-gray-dark'}`}>
-                {Array.from({ length: 25 }).map((_, i) => (
-                    <div key={i} className={`${Math.random() > 0.5 ? (cardTheme === 'light' ? 'bg-charcoal' : 'bg-white') : ''}`}></div>
-                ))}
-            </div>
-        );
-
-        return (
-            <Card className="mt-8">
-                <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Public Profile Card</h2>
-                <p className="mt-1 text-[var(--text-muted)]">Generate a shareable card for your website, proposals or social media.</p>
-
-                {!isDataComplete ? (
-                    <div className="mt-6 p-4 bg-warning/10 border border-warning/20 rounded-lg flex items-center gap-3">
-                        <ExclamationTriangleIcon className="w-6 h-6 text-warning" />
-                        <p className="font-semibold text-yellow-800">To generate a complete profile card, please fill out your logo and address in the sections above.</p>
-                    </div>
-                ) : (
-                    <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-                        {/* Left: Preview */}
-                        <div className="flex justify-center items-center min-h-[280px]">
-                            <div className={`origin-center transition-transform duration-300 ${sizeClasses[cardSize]}`}>
-                                <div className={`w-[350px] h-[200px] rounded-xl shadow-2xl p-4 flex flex-col justify-between transition-colors ${cardTheme === 'light' ? 'bg-white' : 'bg-charcoal-dark'}`}>
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex items-center gap-3">
-                                            <img src={currentUser.profile.logoUrl} alt="Logo" className="w-12 h-12 rounded-full object-cover border-2 border-white/50" />
-                                            <div>
-                                                <p className={`font-bold text-lg leading-tight ${cardTheme === 'light' ? 'text-charcoal' : 'text-white'}`}>{currentUser.name}</p>
-                                                <p className={`text-xs font-semibold ${cardTheme === 'light' ? 'text-gold-dark' : 'text-gold-light'}`}>
-                                                    Verified • {currentUser.plan?.name ?? 'Member'} • {currentUser.plan?.rating ?? 'A+'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        {showQrCode && (
-                                            <div className="text-center">
-                                                <QRPlaceholder />
-                                                <p className={`text-[8px] mt-1 ${cardTheme === 'light' ? 'text-gray-dark' : 'text-gray'}`}>Scans to your public profile</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="pr-16">
-                                        <p className={`text-sm truncate ${cardTheme === 'light' ? 'text-gray-dark' : 'text-gray'}`}>{tagline}</p>
-                                        <p className={`text-xs font-semibold mt-1 ${cardTheme === 'light' ? 'text-charcoal' : 'text-white'}`}>{cityState}</p>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 text-xs">
-                                        <ShieldCheckIcon className={`w-4 h-4 ${cardTheme === 'light' ? 'text-success' : 'text-gold'}`} />
-                                        <p className={`font-semibold ${cardTheme === 'light' ? 'text-gray-dark' : 'text-gray'}`}>Verified by <span className="font-bold">Restoration Expertise</span></p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Right: Options & Controls */}
-                        <div>
-                            <div className="space-y-4 p-4 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-card)]">
-                                <h4 className="font-bold text-[var(--text-main)]">Options</h4>
-                                <div>
-                                    <p className="text-sm font-medium text-[var(--text-muted)] mb-1">Theme</p>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => setCardTheme('light')} className={`px-3 py-1.5 rounded-md text-sm font-semibold flex-1 ${cardTheme === 'light' ? 'bg-[var(--accent)] text-[var(--accent-text)]' : 'bg-[var(--bg-card)] border hover:bg-[var(--bg-subtle)]'}`}>Light</button>
-                                        <button onClick={() => setCardTheme('dark')} className={`px-3 py-1.5 rounded-md text-sm font-semibold flex-1 ${cardTheme === 'dark' ? 'bg-[var(--accent)] text-[var(--accent-text)]' : 'bg-charcoal text-white border border-charcoal-light hover:bg-charcoal'}`}>Dark</button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="card-size">Preview Size</label>
-                                    <select id="card-size" value={cardSize} onChange={e => setCardSize(e.target.value as any)} className="w-full mt-1 p-2 border border-[var(--border-subtle)] rounded-lg text-sm bg-[var(--bg-card)] focus:ring-[var(--accent)] focus:border-[var(--accent)]">
-                                        <option value="small">Small</option>
-                                        <option value="medium">Medium</option>
-                                        <option value="large">Large</option>
-                                    </select>
-                                </div>
-                                <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-muted)] cursor-pointer">
-                                    <input type="checkbox" checked={showQrCode} onChange={e => setShowQrCode(e.target.checked)} className="h-4 w-4 rounded border-[var(--border-subtle)] text-[var(--accent)] focus:ring-[var(--accent)]" />
-                                    Show QR code
-                                </label>
-                            </div>
-                            
-                            <div className="mt-6 space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <button onClick={handleDownloadClick} className="py-2 px-4 bg-[var(--bg-card)] text-[var(--text-main)] font-bold rounded-lg shadow-md border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] flex items-center justify-center gap-2"><ArrowDownTrayIcon className="w-5 h-5"/> PNG</button>
-                                    <button onClick={handleDownloadClick} className="py-2 px-4 bg-[var(--bg-card)] text-[var(--text-main)] font-bold rounded-lg shadow-md border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] flex items-center justify-center gap-2"><ArrowDownTrayIcon className="w-5 h-5"/> PDF</button>
-                                </div>
-                                <div>
-                                    <label className="text-sm font-medium text-[var(--text-muted)]">Embed snippet</label>
-                                    <div className="relative mt-1">
-                                        <pre className="bg-charcoal-dark p-4 rounded-lg text-gray-light text-xs whitespace-pre-wrap overflow-x-auto">
-                                            <code>{`<a href="https://restorationexpertise.com/profile/${currentUser.name.toLowerCase().replace(/\s+/g, '-')}"...`}</code>
-                                        </pre>
-                                        <button onClick={handleCopyEmbedCode} className="absolute top-2 right-2 p-1.5 bg-gray-dark rounded-md text-gray-light hover:bg-gray-dark/50" title="Copy code">
-                                            <ClipboardIcon className="w-5 h-5"/>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </Card>
-        );
+        latestShowToast.current?.('Profile updated successfully.', 'success');
     };
 
+    if (!session || !userId) {
+        return (
+            <div className="animate-fade-in">
+                <Card>
+                    <p className="text-[var(--text-muted)]">Sign in to view and edit your profile information.</p>
+                </Card>
+            </div>
+        );
+    }
 
     return (
-        <div className="animate-fade-in max-w-4xl mx-auto">
+        <div className="animate-fade-in space-y-6">
             <div>
-                <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Business Profile</h1>
-                <p className="mt-2 text-lg text-[var(--text-muted)]">Keep your business details accurate to build trust and speed up verification.</p>
+                <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Your Profile</h1>
+                <p className="text-[var(--text-muted)]">Manage the business details homeowners will see in the network.</p>
             </div>
-            <div className="mt-8 space-y-8">
-                <ProfileCompleteness value={completeness} />
-                <BusinessInfoCard />
-                <ContactDetailsCard />
-                <ServicesCard />
-                <BrandingCard />
-                <PublicProfilePreview />
-                <PublicProfileCardGenerator />
-            </div>
+            <Card>
+                {isLoading ? (
+                    <div className="py-8 text-center text-[var(--text-muted)]">Loading your profile...</div>
+                ) : (
+                    <form className="space-y-6" onSubmit={handleSubmit}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="email">Email</label>
+                                <input
+                                    id="email"
+                                    name="email"
+                                    type="email"
+                                    value={formData.email}
+                                    readOnly
+                                    className="w-full cursor-not-allowed rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3 text-[var(--text-muted)]"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="fullName">Full name</label>
+                                <input
+                                    id="fullName"
+                                    name="fullName"
+                                    type="text"
+                                    value={formData.fullName}
+                                    onChange={handleInputChange}
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="companyName">Company name</label>
+                                <input
+                                    id="companyName"
+                                    name="companyName"
+                                    type="text"
+                                    value={formData.companyName}
+                                    onChange={handleInputChange}
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="phone">Phone</label>
+                                <input
+                                    id="phone"
+                                    name="phone"
+                                    type="tel"
+                                    value={formData.phone}
+                                    onChange={handleInputChange}
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                />
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="addressLine1">Address line 1</label>
+                                <input
+                                    id="addressLine1"
+                                    name="addressLine1"
+                                    type="text"
+                                    value={formData.addressLine1}
+                                    onChange={handleInputChange}
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="city">City</label>
+                                <input
+                                    id="city"
+                                    name="city"
+                                    type="text"
+                                    value={formData.city}
+                                    onChange={handleInputChange}
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="state">State</label>
+                                <input
+                                    id="state"
+                                    name="state"
+                                    type="text"
+                                    value={formData.state}
+                                    onChange={handleInputChange}
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="postalCode">Postal code</label>
+                                <input
+                                    id="postalCode"
+                                    name="postalCode"
+                                    type="text"
+                                    value={formData.postalCode}
+                                    onChange={handleInputChange}
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="country">Country</label>
+                                <input
+                                    id="country"
+                                    name="country"
+                                    type="text"
+                                    value={formData.country}
+                                    onChange={handleInputChange}
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="yearsInBusiness">Years in business</label>
+                                <input
+                                    id="yearsInBusiness"
+                                    name="yearsInBusiness"
+                                    type="number"
+                                    min="0"
+                                    value={formData.yearsInBusiness}
+                                    onChange={handleInputChange}
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-main)]">
+                                <input
+                                    type="checkbox"
+                                    name="hasLicense"
+                                    checked={formData.hasLicense}
+                                    onChange={handleCheckboxChange}
+                                    className="rounded border-[var(--border-subtle)]"
+                                />
+                                Has active license
+                            </label>
+                            <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-main)]">
+                                <input
+                                    type="checkbox"
+                                    name="hasInsurance"
+                                    checked={formData.hasInsurance}
+                                    onChange={handleCheckboxChange}
+                                    className="rounded border-[var(--border-subtle)]"
+                                />
+                                Carries current insurance
+                            </label>
+                        </div>
+                        <div className="flex justify-end">
+                            <button
+                                type="submit"
+                                disabled={isSaving}
+                                className="rounded-lg bg-[var(--accent)] px-6 py-3 font-semibold text-[var(--accent-text)] shadow-md transition disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {isSaving ? 'Saving…' : 'Save Changes'}
+                            </button>
+                        </div>
+                    </form>
+                )}
+            </Card>
         </div>
     );
 };
