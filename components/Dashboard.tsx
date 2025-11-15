@@ -983,9 +983,18 @@ const MyRequests: React.FC<{
             const { data, error: requestError } = await supabase
                 .from('service_requests')
                 // Request only real columns; request_type/priority map to MemberServiceRequest.requestType/priority
-                .select(
-                    'id, profile_id, request_type, title, description, status, priority, admin_notes, assigned_admin_id, consumes_blog_post_quota, consumes_spotlight_quota, source, created_at, updated_at, due_date',
-                )
+                .select(`
+                    id,
+                    profile_id,
+                    request_type,
+                    title,
+                    description,
+                    priority,
+                    status,
+                    assigned_admin_id,
+                    created_at,
+                    updated_at
+                `)
                 .eq('profile_id', session.user.id)
                 .order('created_at', { ascending: false });
 
