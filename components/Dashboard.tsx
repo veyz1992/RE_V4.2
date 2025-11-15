@@ -1361,6 +1361,30 @@ const MyRequests: React.FC<{
 
 const profileInputClasses = "w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3";
 
+const SPECIALTY_OPTIONS = [
+    'Water Damage',
+    'Fire & Smoke Damage',
+    'Mold Remediation',
+    'Biohazard Cleanup',
+    'Sewage & Black Water',
+    'Contents Cleaning & Packout',
+    'Reconstruction & Rebuild',
+    'Odor Removal',
+];
+
+interface ServicesFormState {
+    serviceAreasText: string;
+    selectedSpecialties: string[];
+    otherSpecialtiesText: string;
+    showSpecialtyWarning: boolean;
+}
+
+const parseCommaSeparated = (value: string): string[] =>
+    value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+
 interface BrandingFormState {
     logoUrl: string;
     facebookUrl: string;
@@ -1454,7 +1478,12 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         country: '',
         websiteUrl: '',
     });
-    const [servicesForm, setServicesForm] = useState({ serviceAreasText: '', servicesText: '' });
+    const [servicesForm, setServicesForm] = useState<ServicesFormState>({
+        serviceAreasText: '',
+        selectedSpecialties: [],
+        otherSpecialtiesText: '',
+        showSpecialtyWarning: false,
+    });
     const [brandingForm, setBrandingForm] = useState<BrandingFormState>({
         logoUrl: '',
         facebookUrl: '',
@@ -1541,9 +1570,16 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                 websiteUrl: profile?.website_url ?? '',
             });
         } else if (section === 'services') {
+            const serviceAreas = profile?.service_areas ?? [];
+            const services = profile?.services ?? [];
+            const selectedSpecialties = SPECIALTY_OPTIONS.filter((option) => services.includes(option));
+            const otherSpecialties = services.filter((service) => !SPECIALTY_OPTIONS.includes(service));
+
             setServicesForm({
-                serviceAreasText: (profile?.service_areas ?? []).join(', '),
-                servicesText: (profile?.services ?? []).join(', '),
+                serviceAreasText: serviceAreas.join(', '),
+                selectedSpecialties,
+                otherSpecialtiesText: otherSpecialties.join(', '),
+                showSpecialtyWarning: false,
             });
         } else if (section === 'branding') {
             setBrandingForm({
@@ -1634,19 +1670,61 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         }
     };
 
+    const handleSpecialtyToggle = (specialty: string, checked: boolean) => {
+        setServicesForm((previous) => {
+            const nextSelectedSet = new Set(previous.selectedSpecialties);
+
+            if (checked) {
+                nextSelectedSet.add(specialty);
+            } else {
+                nextSelectedSet.delete(specialty);
+            }
+
+            const orderedSelections = SPECIALTY_OPTIONS.filter((option) => nextSelectedSet.has(option));
+            const hasOtherSpecialties = parseCommaSeparated(previous.otherSpecialtiesText).length > 0;
+            const hasAnySpecialty = orderedSelections.length > 0 || hasOtherSpecialties;
+
+            return {
+                ...previous,
+                selectedSpecialties: orderedSelections,
+                showSpecialtyWarning: hasAnySpecialty ? false : previous.showSpecialtyWarning,
+            };
+        });
+    };
+
     const handleServicesSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         setSavingSection('services');
 
-        const toArray = (value: string) =>
-            value
-                .split(',')
-                .map((entry) => entry.trim())
-                .filter((entry) => entry.length > 0);
+        const parsedServiceAreas = parseCommaSeparated(servicesForm.serviceAreasText);
+        const otherSpecialties = parseCommaSeparated(servicesForm.otherSpecialtiesText);
+
+        const selectedSpecialtiesSet = new Set(servicesForm.selectedSpecialties);
+        const combinedServices: string[] = [];
+        const seen = new Set<string>();
+
+        for (const option of SPECIALTY_OPTIONS) {
+            if (selectedSpecialtiesSet.has(option) && !seen.has(option)) {
+                combinedServices.push(option);
+                seen.add(option);
+            }
+        }
+
+        for (const specialty of otherSpecialties) {
+            if (!seen.has(specialty)) {
+                combinedServices.push(specialty);
+                seen.add(specialty);
+            }
+        }
+
+        setServicesForm((previous) => ({
+            ...previous,
+            showSpecialtyWarning: combinedServices.length === 0,
+        }));
 
         const updates: Partial<PublicProfileRow> = {
-            service_areas: toArray(servicesForm.serviceAreasText),
-            services: toArray(servicesForm.servicesText),
+            service_areas: parsedServiceAreas,
+            services: combinedServices,
         };
 
         const success = await persistProfileUpdate(updates, 'Service coverage updated.');
@@ -2270,30 +2348,67 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                     rows={2}
                                     value={servicesForm.serviceAreasText}
                                     onChange={(event) =>
-                                        setServicesForm((previous) => ({ ...previous, serviceAreasText: event.target.value }))
+                                        setServicesForm((previous) => ({
+                                            ...previous,
+                                            serviceAreasText: event.target.value,
+                                        }))
                                     }
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                    className={profileInputClasses}
                                 ></textarea>
                                 <p className="text-xs text-[var(--text-muted)]">
                                     Example: Austin, Round Rock, Georgetown, San Marcos
                                 </p>
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="services-input">
-                                    Specialties (comma separated)
-                                </label>
-                                <textarea
-                                    id="services-input"
-                                    rows={3}
-                                    value={servicesForm.servicesText}
-                                    onChange={(event) =>
-                                        setServicesForm((previous) => ({ ...previous, servicesText: event.target.value }))
-                                    }
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
-                                ></textarea>
-                                <p className="text-xs text-[var(--text-muted)]">
-                                    Example: Water damage restoration, Fire damage cleanup, Mold remediation
-                                </p>
+                            <div className="space-y-3">
+                                <span className="text-sm font-medium text-[var(--text-muted)]">Specialties</span>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {SPECIALTY_OPTIONS.map((option) => (
+                                        <label key={option} className="flex items-start gap-2 text-sm text-[var(--text-main)]">
+                                            <input
+                                                type="checkbox"
+                                                checked={servicesForm.selectedSpecialties.includes(option)}
+                                                onChange={(event) => handleSpecialtyToggle(option, event.target.checked)}
+                                                className="mt-1 h-4 w-4 rounded border-[var(--border-subtle)] text-[var(--accent)] focus:ring-[var(--accent)]"
+                                            />
+                                            <span>{option}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                                {servicesForm.showSpecialtyWarning && (
+                                    <p className="text-xs text-error">We recommend selecting at least one specialty.</p>
+                                )}
+                                <div className="space-y-2">
+                                    <label
+                                        className="text-sm font-medium text-[var(--text-muted)]"
+                                        htmlFor="other-specialties-input"
+                                    >
+                                        Other specialties
+                                    </label>
+                                    <input
+                                        id="other-specialties-input"
+                                        type="text"
+                                        value={servicesForm.otherSpecialtiesText}
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            setServicesForm((previous) => {
+                                                const hasOther = parseCommaSeparated(value).length > 0;
+                                                const hasSelected = previous.selectedSpecialties.length > 0;
+
+                                                return {
+                                                    ...previous,
+                                                    otherSpecialtiesText: value,
+                                                    showSpecialtyWarning:
+                                                        hasSelected || hasOther ? false : previous.showSpecialtyWarning,
+                                                };
+                                            });
+                                        }}
+                                        className={profileInputClasses}
+                                        placeholder="Comma separated specialties"
+                                    />
+                                    <p className="text-xs text-[var(--text-muted)]">
+                                        Add additional specialties separated by commas.
+                                    </p>
+                                </div>
                             </div>
                             <div className="flex justify-end gap-3">
                                 <button
@@ -2328,9 +2443,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="mt-2 rounded-lg bg-[var(--bg-subtle)] p-4 text-sm text-[var(--text-muted)]">
-                                        Not set yet. Add the regions you serve so we can match local homeowners.
-                                    </div>
+                                    <p className="mt-2 text-sm text-[var(--text-muted)]">Not set yet.</p>
                                 )}
                             </div>
                             <div>
@@ -2347,9 +2460,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="mt-2 rounded-lg bg-[var(--bg-subtle)] p-4 text-sm text-[var(--text-muted)]">
-                                        Not set yet. List your core restoration services so homeowners know what you offer.
-                                    </div>
+                                    <p className="mt-2 text-sm text-[var(--text-muted)]">Not set yet.</p>
                                 )}
                             </div>
                         </div>
