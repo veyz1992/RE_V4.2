@@ -1358,13 +1358,58 @@ const MyRequests: React.FC<{
 
 
 
+
+const profileInputClasses = "w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3";
+
+type ProfileSectionKey = 'business' | 'contact' | 'services' | 'branding';
+
+type ProfileData = {
+    email: string;
+    fullName: string;
+    companyName: string;
+    phone: string;
+    addressLine1: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+    yearsInBusiness: number | null;
+    hasLicense: boolean;
+    hasInsurance: boolean;
+    services: string[];
+};
+
 const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
     const { session } = useAuth();
     const userId = session?.user?.id ?? null;
     const userEmail = session?.user?.email ?? '';
+    const latestShowToast = useRef(showToast);
     const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
-    const [formData, setFormData] = useState({
+    const [profile, setProfile] = useState<ProfileData | null>(null);
+    const [editingSection, setEditingSection] = useState<ProfileSectionKey | null>(null);
+    const [savingSection, setSavingSection] = useState<ProfileSectionKey | null>(null);
+    const [businessForm, setBusinessForm] = useState({
+        fullName: '',
+        companyName: '',
+        yearsInBusiness: '',
+        hasLicense: false,
+        hasInsurance: false,
+    });
+    const [contactForm, setContactForm] = useState({
+        phone: '',
+        addressLine1: '',
+        city: '',
+        state: '',
+        postalCode: '',
+        country: '',
+    });
+    const [servicesForm, setServicesForm] = useState({ servicesText: '' });
+
+    useEffect(() => {
+        latestShowToast.current = showToast;
+    }, [showToast]);
+
+    const buildEmptyProfile = useCallback((): ProfileData => ({
         email: userEmail,
         fullName: '',
         companyName: '',
@@ -1374,20 +1419,16 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         state: '',
         postalCode: '',
         country: '',
-        yearsInBusiness: '',
+        yearsInBusiness: null,
         hasLicense: false,
         hasInsurance: false,
-    });
-    const latestShowToast = useRef(showToast);
-
-    useEffect(() => {
-        latestShowToast.current = showToast;
-    }, [showToast]);
+        services: [],
+    }), [userEmail]);
 
     useEffect(() => {
         if (!userId) {
+            setProfile(buildEmptyProfile());
             setIsLoading(false);
-            setFormData((previous) => ({ ...previous, email: userEmail }));
             return;
         }
 
@@ -1398,9 +1439,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
 
             const { data, error } = await supabase
                 .from('profiles')
-                .select(
-                    'email, full_name, company_name, phone, address_line1, city, state, postal_code, country, years_in_business, has_license, has_insurance'
-                )
+                .select('email, full_name, company_name, phone, address_line1, city, state, postal_code, country, years_in_business, has_license, has_insurance, services')
                 .eq('id', userId)
                 .maybeSingle();
 
@@ -1411,25 +1450,16 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
             if (error) {
                 console.error('Failed to load profile', error);
                 latestShowToast.current?.('Unable to load your profile. Please try again.', 'error');
+                setProfile(buildEmptyProfile());
                 setIsLoading(false);
-                setFormData({
-                    email: userEmail,
-                    fullName: '',
-                    companyName: '',
-                    phone: '',
-                    addressLine1: '',
-                    city: '',
-                    state: '',
-                    postalCode: '',
-                    country: '',
-                    yearsInBusiness: '',
-                    hasLicense: false,
-                    hasInsurance: false,
-                });
                 return;
             }
 
-            setFormData({
+            const normalizedServices = Array.isArray(data?.services)
+                ? (data?.services as string[])
+                : [];
+
+            setProfile({
                 email: data?.email ?? userEmail,
                 fullName: data?.full_name ?? '',
                 companyName: data?.company_name ?? '',
@@ -1439,12 +1469,10 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                 state: data?.state ?? '',
                 postalCode: data?.postal_code ?? '',
                 country: data?.country ?? '',
-                yearsInBusiness:
-                    data?.years_in_business !== null && data?.years_in_business !== undefined
-                        ? data.years_in_business.toString()
-                        : '',
+                yearsInBusiness: data?.years_in_business !== null && data?.years_in_business !== undefined ? Number(data.years_in_business) : null,
                 hasLicense: data?.has_license ?? false,
                 hasInsurance: data?.has_insurance ?? false,
+                services: normalizedServices,
             });
             setIsLoading(false);
         };
@@ -1452,68 +1480,208 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         loadProfile().catch((error) => {
             console.error('Unexpected profile load error', error);
             latestShowToast.current?.('Unable to load your profile. Please try again.', 'error');
+            setProfile(buildEmptyProfile());
             setIsLoading(false);
         });
 
         return () => {
             isMounted = false;
         };
-    }, [userId, userEmail]);
+    }, [buildEmptyProfile, userId, userEmail]);
 
-    const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = event.target;
-        setFormData((previous) => ({ ...previous, [name]: value }));
-    };
-
-    const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, checked } = event.target;
-        setFormData((previous) => ({ ...previous, [name]: checked }));
-    };
-
-    const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-
-        if (!userId) {
-            latestShowToast.current?.('You must be logged in to update your profile.', 'error');
+    const startEditing = (section: ProfileSectionKey) => {
+        if (!profile) {
             return;
         }
 
-        setIsSaving(true);
+        if (section === 'business') {
+            setBusinessForm({
+                fullName: profile.fullName ?? '',
+                companyName: profile.companyName ?? '',
+                yearsInBusiness: profile.yearsInBusiness !== null && profile.yearsInBusiness !== undefined ? String(profile.yearsInBusiness) : '',
+                hasLicense: profile.hasLicense,
+                hasInsurance: profile.hasInsurance,
+            });
+        } else if (section === 'contact') {
+            setContactForm({
+                phone: profile.phone ?? '',
+                addressLine1: profile.addressLine1 ?? '',
+                city: profile.city ?? '',
+                state: profile.state ?? '',
+                postalCode: profile.postalCode ?? '',
+                country: profile.country ?? '',
+            });
+        } else if (section === 'services') {
+            setServicesForm({
+                servicesText: profile.services.length > 0 ? profile.services.join(', ') : '',
+            });
+        }
 
-        const yearsInBusiness = formData.yearsInBusiness.trim();
-        const parsedYears = yearsInBusiness === '' ? null : Number.parseInt(yearsInBusiness, 10);
+        setEditingSection(section);
+    };
+
+    const cancelEditing = () => {
+        setEditingSection(null);
+    };
+
+    const upsertProfile = async (updates: Partial<ProfileData>) => {
+        if (!userId) {
+            latestShowToast.current?.('You must be logged in to update your profile.', 'error');
+            return false;
+        }
 
         const payload = {
             id: userId,
-            email: formData.email || userEmail || null,
-            full_name: formData.fullName || null,
-            company_name: formData.companyName || null,
-            phone: formData.phone || null,
-            address_line1: formData.addressLine1 || null,
-            city: formData.city || null,
-            state: formData.state || null,
-            postal_code: formData.postalCode || null,
-            country: formData.country || null,
-            years_in_business: parsedYears,
-            has_license: formData.hasLicense,
-            has_insurance: formData.hasInsurance,
+            email: updates.email ?? profile?.email ?? userEmail,
+            full_name: updates.fullName ?? profile?.fullName ?? null,
+            company_name: updates.companyName ?? profile?.companyName ?? null,
+            phone: updates.phone ?? profile?.phone ?? null,
+            address_line1: updates.addressLine1 ?? profile?.addressLine1 ?? null,
+            city: updates.city ?? profile?.city ?? null,
+            state: updates.state ?? profile?.state ?? null,
+            postal_code: updates.postalCode ?? profile?.postalCode ?? null,
+            country: updates.country ?? profile?.country ?? null,
+            years_in_business: updates.yearsInBusiness !== undefined ? updates.yearsInBusiness : profile?.yearsInBusiness ?? null,
+            has_license: updates.hasLicense ?? profile?.hasLicense ?? false,
+            has_insurance: updates.hasInsurance ?? profile?.hasInsurance ?? false,
+            services: updates.services ?? profile?.services ?? [],
             updated_at: new Date().toISOString(),
         };
 
-        const { error } = await supabase
-            .from('profiles')
-            .upsert(payload, { onConflict: 'id' });
-
-        setIsSaving(false);
+        const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
 
         if (error) {
             console.error('Failed to save profile', error);
             latestShowToast.current?.('Failed to save changes. Please try again.', 'error');
-            return;
+            return false;
         }
 
+        setProfile((previous) => {
+            const base = previous ?? buildEmptyProfile();
+            return {
+                ...base,
+                ...updates,
+                email: payload.email ?? base.email,
+                yearsInBusiness: updates.yearsInBusiness !== undefined ? updates.yearsInBusiness : base.yearsInBusiness,
+                services: updates.services !== undefined ? updates.services : base.services,
+                hasLicense: updates.hasLicense !== undefined ? updates.hasLicense : base.hasLicense,
+                hasInsurance: updates.hasInsurance !== undefined ? updates.hasInsurance : base.hasInsurance,
+            };
+        });
+
         latestShowToast.current?.('Profile updated successfully.', 'success');
+        return true;
     };
+
+    const handleBusinessSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setSavingSection('business');
+
+        const updates: Partial<ProfileData> = {
+            fullName: businessForm.fullName.trim(),
+            companyName: businessForm.companyName.trim(),
+            yearsInBusiness: businessForm.yearsInBusiness ? Number(businessForm.yearsInBusiness) : null,
+            hasLicense: businessForm.hasLicense,
+            hasInsurance: businessForm.hasInsurance,
+        };
+
+        const success = await upsertProfile(updates);
+        setSavingSection(null);
+
+        if (success) {
+            setEditingSection(null);
+        }
+    };
+
+    const handleContactSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setSavingSection('contact');
+
+        const updates: Partial<ProfileData> = {
+            phone: contactForm.phone.trim(),
+            addressLine1: contactForm.addressLine1.trim(),
+            city: contactForm.city.trim(),
+            state: contactForm.state.trim(),
+            postalCode: contactForm.postalCode.trim(),
+            country: contactForm.country.trim(),
+        };
+
+        const success = await upsertProfile(updates);
+        setSavingSection(null);
+
+        if (success) {
+            setEditingSection(null);
+        }
+    };
+
+    const handleServicesSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setSavingSection('services');
+
+        const services = servicesForm.servicesText
+            .split(',')
+            .map((service) => service.trim())
+            .filter((service) => service.length > 0);
+
+        const success = await upsertProfile({ services });
+        setSavingSection(null);
+
+        if (success) {
+            setEditingSection(null);
+        }
+    };
+
+    const formatAddress = (data: ProfileData | null) => {
+        if (!data) {
+            return 'N/A';
+        }
+
+        const segments = [
+            data.addressLine1,
+            [data.city, data.state].filter(Boolean).join(', '),
+            data.postalCode,
+            data.country,
+        ]
+            .map((segment) => segment?.trim())
+            .filter((segment) => segment);
+
+        return segments.length > 0 ? segments.join(' • ') : 'N/A';
+    };
+
+    const completenessPercent = useMemo(() => {
+        if (!profile) {
+            return 0;
+        }
+
+        const requiredValues = [
+            profile.companyName,
+            profile.addressLine1,
+            profile.city,
+            profile.state,
+            profile.phone,
+            profile.yearsInBusiness,
+            profile.hasLicense,
+            profile.hasInsurance,
+        ];
+
+        const completed = requiredValues.reduce((count, value) => {
+            if (typeof value === 'string') {
+                return value.trim() ? count + 1 : count;
+            }
+
+            if (typeof value === 'number') {
+                return Number.isFinite(value) ? count + 1 : count;
+            }
+
+            if (typeof value === 'boolean') {
+                return value ? count + 1 : count;
+            }
+
+            return count;
+        }, 0);
+
+        return Math.round((completed / requiredValues.length) * 100);
+    }, [profile]);
 
     if (!session || !userId) {
         return (
@@ -1526,167 +1694,510 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
     }
 
     return (
-        <div className="animate-fade-in space-y-6">
-            <div>
-                <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Your Profile</h1>
-                <p className="text-[var(--text-muted)]">Manage the business details homeowners will see in the network.</p>
+        <div className="animate-fade-in space-y-8">
+            <div className="space-y-2">
+                <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Business Profile</h1>
+                <p className="text-[var(--text-muted)]">
+                    Keep your business details accurate to build trust and speed up verification.
+                </p>
             </div>
+
             <Card>
-                {isLoading ? (
-                    <div className="py-8 text-center text-[var(--text-muted)]">Loading your profile...</div>
-                ) : (
-                    <form className="space-y-6" onSubmit={handleSubmit}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="email">Email</label>
-                                <input
-                                    id="email"
-                                    name="email"
-                                    type="email"
-                                    value={formData.email}
-                                    readOnly
-                                    className="w-full cursor-not-allowed rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3 text-[var(--text-muted)]"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="fullName">Full name</label>
-                                <input
-                                    id="fullName"
-                                    name="fullName"
-                                    type="text"
-                                    value={formData.fullName}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="companyName">Company name</label>
-                                <input
-                                    id="companyName"
-                                    name="companyName"
-                                    type="text"
-                                    value={formData.companyName}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="phone">Phone</label>
-                                <input
-                                    id="phone"
-                                    name="phone"
-                                    type="tel"
-                                    value={formData.phone}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
-                                />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="addressLine1">Address line 1</label>
-                                <input
-                                    id="addressLine1"
-                                    name="addressLine1"
-                                    type="text"
-                                    value={formData.addressLine1}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="city">City</label>
-                                <input
-                                    id="city"
-                                    name="city"
-                                    type="text"
-                                    value={formData.city}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="state">State</label>
-                                <input
-                                    id="state"
-                                    name="state"
-                                    type="text"
-                                    value={formData.state}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="postalCode">Postal code</label>
-                                <input
-                                    id="postalCode"
-                                    name="postalCode"
-                                    type="text"
-                                    value={formData.postalCode}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="country">Country</label>
-                                <input
-                                    id="country"
-                                    name="country"
-                                    type="text"
-                                    value={formData.country}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="yearsInBusiness">Years in business</label>
-                                <input
-                                    id="yearsInBusiness"
-                                    name="yearsInBusiness"
-                                    type="number"
-                                    min="0"
-                                    value={formData.yearsInBusiness}
-                                    onChange={handleInputChange}
-                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                            <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-main)]">
-                                <input
-                                    type="checkbox"
-                                    name="hasLicense"
-                                    checked={formData.hasLicense}
-                                    onChange={handleCheckboxChange}
-                                    className="rounded border-[var(--border-subtle)]"
-                                />
-                                Has active license
-                            </label>
-                            <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-main)]">
-                                <input
-                                    type="checkbox"
-                                    name="hasInsurance"
-                                    checked={formData.hasInsurance}
-                                    onChange={handleCheckboxChange}
-                                    className="rounded border-[var(--border-subtle)]"
-                                />
-                                Carries current insurance
-                            </label>
-                        </div>
-                        <div className="flex justify-end">
-                            <button
-                                type="submit"
-                                disabled={isSaving}
-                                className="rounded-lg bg-[var(--accent)] px-6 py-3 font-semibold text-[var(--accent-text)] shadow-md transition disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {isSaving ? 'Saving…' : 'Save Changes'}
-                            </button>
-                        </div>
-                    </form>
-                )}
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Profile Completeness</h2>
+                        <p className="text-sm text-[var(--text-muted)]">
+                            Complete your profile to unlock faster approvals and more homeowner matches.
+                        </p>
+                    </div>
+                    <span className="text-3xl font-bold text-[var(--accent-dark)]">{completenessPercent}%</span>
+                </div>
+                <div className="mt-4 h-3 w-full rounded-full bg-[var(--bg-subtle)]">
+                    <div
+                        className="h-3 rounded-full bg-[var(--accent)] transition-all duration-500"
+                        style={{ width: `${completenessPercent}%` }}
+                    ></div>
+                </div>
+                <p className="mt-3 text-sm text-[var(--text-muted)]">
+                    We look for a licensed, insured business with a complete address and service overview.
+                </p>
             </Card>
+
+            <div className="space-y-6">
+                <Card>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Business Information</h2>
+                            <p className="text-sm text-[var(--text-muted)]">What homeowners see first about your business.</p>
+                        </div>
+                        {editingSection !== 'business' && (
+                            <button
+                                onClick={() => startEditing('business')}
+                                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] transition hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
+                            >
+                                <PencilSquareIcon className="h-5 w-5" /> Edit
+                            </button>
+                        )}
+                    </div>
+
+                    {isLoading ? (
+                        <div className="mt-6 text-[var(--text-muted)]">Loading business information…</div>
+                    ) : editingSection === 'business' ? (
+                        <form className="mt-6 space-y-6" onSubmit={handleBusinessSubmit}>
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="business-company-name">
+                                        Business name
+                                    </label>
+                                    <input
+                                        id="business-company-name"
+                                        type="text"
+                                        value={businessForm.companyName}
+                                        onChange={(event) =>
+                                            setBusinessForm((previous) => ({ ...previous, companyName: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="business-dba-name">
+                                        DBA / Brand name
+                                    </label>
+                                    <input
+                                        id="business-dba-name"
+                                        type="text"
+                                        value={businessForm.fullName}
+                                        onChange={(event) =>
+                                            setBusinessForm((previous) => ({ ...previous, fullName: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="business-years">
+                                        Years in business
+                                    </label>
+                                    <input
+                                        id="business-years"
+                                        type="number"
+                                        min={0}
+                                        value={businessForm.yearsInBusiness}
+                                        onChange={(event) =>
+                                            setBusinessForm((previous) => ({ ...previous, yearsInBusiness: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-4 sm:flex-row">
+                                <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-main)]">
+                                    <input
+                                        type="checkbox"
+                                        checked={businessForm.hasLicense}
+                                        onChange={(event) =>
+                                            setBusinessForm((previous) => ({ ...previous, hasLicense: event.target.checked }))
+                                        }
+                                        className="rounded border-[var(--border-subtle)]"
+                                    />
+                                    Holds an active business license
+                                </label>
+                                <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-main)]">
+                                    <input
+                                        type="checkbox"
+                                        checked={businessForm.hasInsurance}
+                                        onChange={(event) =>
+                                            setBusinessForm((previous) => ({ ...previous, hasInsurance: event.target.checked }))
+                                        }
+                                        className="rounded border-[var(--border-subtle)]"
+                                    />
+                                    Carries current insurance
+                                </label>
+                            </div>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={cancelEditing}
+                                    className="rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={savingSection === 'business'}
+                                    className="rounded-lg bg-[var(--accent)] px-6 py-2 text-sm font-semibold text-[var(--accent-text)] shadow-md transition disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {savingSection === 'business' ? 'Saving…' : 'Save changes'}
+                                </button>
+                            </div>
+                        </form>
+                    ) : (
+                        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Business name</p>
+                                <p className="mt-1 text-lg font-semibold text-[var(--text-main)]">
+                                    {profile?.companyName || profile?.fullName || 'N/A'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">DBA / Brand name</p>
+                                <p className="mt-1 text-lg text-[var(--text-main)]">
+                                    {profile?.fullName || 'N/A'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Years in business</p>
+                                <p className="mt-1 text-lg text-[var(--text-main)]">
+                                    {profile?.yearsInBusiness !== null && profile?.yearsInBusiness !== undefined && profile?.yearsInBusiness !== 0
+                                        ? `${profile.yearsInBusiness} ${profile.yearsInBusiness === 1 ? 'year' : 'years'}`
+                                        : 'N/A'}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </Card>
+
+                <Card>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Contact Details</h2>
+                            <p className="text-sm text-[var(--text-muted)]">Make it easy for homeowners to reach you.</p>
+                        </div>
+                        {editingSection !== 'contact' && (
+                            <button
+                                onClick={() => startEditing('contact')}
+                                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] transition hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
+                            >
+                                <PencilSquareIcon className="h-5 w-5" /> Edit
+                            </button>
+                        )}
+                    </div>
+
+                    {isLoading ? (
+                        <div className="mt-6 text-[var(--text-muted)]">Loading contact details…</div>
+                    ) : editingSection === 'contact' ? (
+                        <form className="mt-6 space-y-6" onSubmit={handleContactSubmit}>
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="contact-email">
+                                        Email
+                                    </label>
+                                    <input
+                                        id="contact-email"
+                                        type="email"
+                                        value={profile?.email ?? userEmail}
+                                        readOnly
+                                        className="w-full cursor-not-allowed rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3 text-[var(--text-muted)]"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="contact-phone">
+                                        Phone
+                                    </label>
+                                    <input
+                                        id="contact-phone"
+                                        type="tel"
+                                        value={contactForm.phone}
+                                        onChange={(event) =>
+                                            setContactForm((previous) => ({ ...previous, phone: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="contact-address">
+                                        Address line 1
+                                    </label>
+                                    <input
+                                        id="contact-address"
+                                        type="text"
+                                        value={contactForm.addressLine1}
+                                        onChange={(event) =>
+                                            setContactForm((previous) => ({ ...previous, addressLine1: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="contact-city">
+                                        City
+                                    </label>
+                                    <input
+                                        id="contact-city"
+                                        type="text"
+                                        value={contactForm.city}
+                                        onChange={(event) =>
+                                            setContactForm((previous) => ({ ...previous, city: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="contact-state">
+                                        State
+                                    </label>
+                                    <input
+                                        id="contact-state"
+                                        type="text"
+                                        value={contactForm.state}
+                                        onChange={(event) =>
+                                            setContactForm((previous) => ({ ...previous, state: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="contact-postal">
+                                        Postal code
+                                    </label>
+                                    <input
+                                        id="contact-postal"
+                                        type="text"
+                                        value={contactForm.postalCode}
+                                        onChange={(event) =>
+                                            setContactForm((previous) => ({ ...previous, postalCode: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="contact-country">
+                                        Country
+                                    </label>
+                                    <input
+                                        id="contact-country"
+                                        type="text"
+                                        value={contactForm.country}
+                                        onChange={(event) =>
+                                            setContactForm((previous) => ({ ...previous, country: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={cancelEditing}
+                                    className="rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={savingSection === 'contact'}
+                                    className="rounded-lg bg-[var(--accent)] px-6 py-2 text-sm font-semibold text-[var(--accent-text)] shadow-md transition disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {savingSection === 'contact' ? 'Saving…' : 'Save changes'}
+                                </button>
+                            </div>
+                        </form>
+                    ) : (
+                        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Email</p>
+                                <p className="mt-1 text-lg text-[var(--text-main)]">{profile?.email || userEmail}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Phone</p>
+                                <p className="mt-1 text-lg text-[var(--text-main)]">{profile?.phone || 'N/A'}</p>
+                            </div>
+                            <div className="md:col-span-2">
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Address</p>
+                                <p className="mt-1 text-lg text-[var(--text-main)]">{formatAddress(profile)}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Website URL</p>
+                                <p className="mt-1 text-lg text-[var(--text-main)]">N/A</p>
+                            </div>
+                        </div>
+                    )}
+                </Card>
+
+                <Card>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Service Areas & Specialties</h2>
+                            <p className="text-sm text-[var(--text-muted)]">Highlight the services and regions you cover.</p>
+                        </div>
+                        {editingSection !== 'services' && (
+                            <button
+                                onClick={() => startEditing('services')}
+                                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] transition hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
+                            >
+                                <PencilSquareIcon className="h-5 w-5" /> Edit
+                            </button>
+                        )}
+                    </div>
+
+                    {isLoading ? (
+                        <div className="mt-6 text-[var(--text-muted)]">Loading service areas…</div>
+                    ) : editingSection === 'services' ? (
+                        <form className="mt-6 space-y-6" onSubmit={handleServicesSubmit}>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="services-input">
+                                    Services (comma separated)
+                                </label>
+                                <textarea
+                                    id="services-input"
+                                    rows={3}
+                                    value={servicesForm.servicesText}
+                                    onChange={(event) => setServicesForm({ servicesText: event.target.value })}
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                ></textarea>
+                                <p className="text-xs text-[var(--text-muted)]">
+                                    Example: Water damage restoration, Mold remediation, Emergency board-up
+                                </p>
+                            </div>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={cancelEditing}
+                                    className="rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={savingSection === 'services'}
+                                    className="rounded-lg bg-[var(--accent)] px-6 py-2 text-sm font-semibold text-[var(--accent-text)] shadow-md transition disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {savingSection === 'services' ? 'Saving…' : 'Save changes'}
+                                </button>
+                            </div>
+                        </form>
+                    ) : profile && profile.services.length > 0 ? (
+                        <div className="mt-6 flex flex-wrap gap-2">
+                            {profile.services.map((service) => (
+                                <span
+                                    key={service}
+                                    className="rounded-full bg-[var(--accent-bg-subtle)] px-3 py-1 text-sm font-medium text-[var(--accent-dark)]"
+                                >
+                                    {service}
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="mt-6 rounded-lg bg-[var(--bg-subtle)] p-4 text-sm text-[var(--text-muted)]">
+                            Not set yet. Add your core services so homeowners know what you offer.
+                        </div>
+                    )}
+                </Card>
+
+                <Card>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Branding & Social Links</h2>
+                            <p className="text-sm text-[var(--text-muted)]">Keep your brand visuals and social proof consistent.</p>
+                        </div>
+                        {editingSection !== 'branding' && (
+                            <button
+                                onClick={() => setEditingSection('branding')}
+                                className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] transition hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
+                            >
+                                <PencilSquareIcon className="h-5 w-5" /> Edit
+                            </button>
+                        )}
+                    </div>
+
+                    {editingSection === 'branding' ? (
+                        <div className="mt-6 space-y-4">
+                            <div className="rounded-lg bg-[var(--bg-subtle)] p-4 text-sm text-[var(--text-muted)]">
+                                Branding updates are handled by our team right now. Email us any logo or social changes and we’ll update your profile.
+                            </div>
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={cancelEditing}
+                                    className="rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-[200px,1fr]">
+                            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-6 text-center">
+                                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
+                                    Logo
+                                </div>
+                                <p className="text-sm text-[var(--text-muted)]">Upload your logo to personalize your profile.</p>
+                            </div>
+                            <div className="space-y-3">
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Social Links</p>
+                                <ul className="space-y-2 text-[var(--text-muted)]">
+                                    <li>Facebook: <span className="text-[var(--text-main)]">N/A</span></li>
+                                    <li>Instagram: <span className="text-[var(--text-main)]">N/A</span></li>
+                                    <li>LinkedIn: <span className="text-[var(--text-main)]">N/A</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    )}
+                </Card>
+
+                <Card>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Public Profile Preview</h2>
+                            <p className="text-sm text-[var(--text-muted)]">See how your profile appears to homeowners.</p>
+                        </div>
+                        <a
+                            href="#"
+                            className="text-sm font-semibold text-[var(--accent-dark)] hover:underline"
+                        >
+                            View live profile
+                        </a>
+                    </div>
+                    <div className="mt-6 grid gap-6 md:grid-cols-[220px,1fr]">
+                        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-6 text-center">
+                            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
+                                Logo
+                            </div>
+                            <p className="text-sm text-[var(--text-muted)]">Add your logo for instant recognition.</p>
+                        </div>
+                        <div className="space-y-3">
+                            <div>
+                                <h3 className="text-xl font-semibold text-[var(--text-main)]">{profile?.companyName || 'Your Business Name'}</h3>
+                                <p className="text-sm text-[var(--text-muted)]">
+                                    {profile?.yearsInBusiness ? `${profile.yearsInBusiness}+ years in business` : 'Years in business not set'}
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-sm">
+                                <span className="rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-[var(--text-muted)]">
+                                    {profile?.hasLicense ? 'Licensed' : 'License status pending'}
+                                </span>
+                                <span className="rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-[var(--text-muted)]">
+                                    {profile?.hasInsurance ? 'Insured' : 'Insurance not provided'}
+                                </span>
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Serving</p>
+                                <p className="text-sm text-[var(--text-main)]">
+                                    {profile?.city || profile?.state ? [profile?.city, profile?.state].filter(Boolean).join(', ') : 'Service area not set'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Featured services</p>
+                                <p className="text-sm text-[var(--text-main)]">
+                                    {profile && profile.services.length > 0 ? profile.services.slice(0, 3).join(', ') : 'Add services to showcase your expertise'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </Card>
+
+                <Card className="border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)]">
+                    <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Public Profile Card</h2>
+                    <p className="mt-2 text-sm text-[var(--text-muted)]">
+                        Upload a logo and complete your address to generate your Restoration Expertise profile card.
+                    </p>
+                    <p className="mt-2 text-sm text-[var(--text-muted)]">
+                        Once ready, you'll be able to download a shareable one-sheet to showcase on your proposals and website.
+                    </p>
+                </Card>
+            </div>
         </div>
     );
 };
-
 const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast: (message: string, type: 'success' | 'error') => void; }> = ({ onNavigate, showToast }) => {
     // For now, hardcode a member to get badge data. This would come from context/API.
     const { currentUser } = useAuth();
