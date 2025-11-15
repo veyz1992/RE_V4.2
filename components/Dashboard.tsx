@@ -1363,21 +1363,58 @@ const profileInputClasses = "w-full rounded-lg border border-[var(--border-subtl
 
 type ProfileSectionKey = 'business' | 'contact' | 'services' | 'branding';
 
-type ProfileData = {
-    email: string;
-    fullName: string;
-    companyName: string;
-    phone: string;
-    addressLine1: string;
-    city: string;
-    state: string;
-    postalCode: string;
-    country: string;
-    yearsInBusiness: number | null;
-    hasLicense: boolean;
-    hasInsurance: boolean;
-    services: string[];
+type PublicProfileRow = {
+    id: string;
+    email: string | null;
+    full_name: string | null;
+    company_name: string | null;
+    dba_name: string | null;
+    about: string | null;
+    phone: string | null;
+    address_line1: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    country: string | null;
+    website_url: string | null;
+    years_in_business: number | null;
+    services: string[] | null;
+    service_areas: string[] | null;
+    has_license: boolean | null;
+    has_insurance: boolean | null;
+    logo_url: string | null;
+    facebook_url: string | null;
+    instagram_url: string | null;
+    linkedin_url: string | null;
 };
+
+const PROFILE_SELECT_FIELDS =
+    'id, email, full_name, company_name, dba_name, about, phone, address_line1, city, state, postal_code, country, website_url, years_in_business, services, service_areas, has_license, has_insurance, logo_url, facebook_url, instagram_url, linkedin_url';
+
+const normalizeProfile = (raw: PublicProfileRow): PublicProfileRow => ({
+    ...raw,
+    email: raw.email ?? null,
+    full_name: raw.full_name ?? null,
+    company_name: raw.company_name ?? null,
+    dba_name: raw.dba_name ?? null,
+    about: raw.about ?? null,
+    phone: raw.phone ?? null,
+    address_line1: raw.address_line1 ?? null,
+    city: raw.city ?? null,
+    state: raw.state ?? null,
+    postal_code: raw.postal_code ?? null,
+    country: raw.country ?? null,
+    website_url: raw.website_url ?? null,
+    years_in_business: raw.years_in_business ?? null,
+    services: Array.isArray(raw.services) ? raw.services : [],
+    service_areas: Array.isArray(raw.service_areas) ? raw.service_areas : [],
+    has_license: raw.has_license ?? false,
+    has_insurance: raw.has_insurance ?? false,
+    logo_url: raw.logo_url ?? null,
+    facebook_url: raw.facebook_url ?? null,
+    instagram_url: raw.instagram_url ?? null,
+    linkedin_url: raw.linkedin_url ?? null,
+});
 
 const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
     const { session } = useAuth();
@@ -1385,15 +1422,14 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
     const userEmail = session?.user?.email ?? '';
     const latestShowToast = useRef(showToast);
     const [isLoading, setIsLoading] = useState(true);
-    const [profile, setProfile] = useState<ProfileData | null>(null);
+    const [profile, setProfile] = useState<PublicProfileRow | null>(null);
     const [editingSection, setEditingSection] = useState<ProfileSectionKey | null>(null);
     const [savingSection, setSavingSection] = useState<ProfileSectionKey | null>(null);
     const [businessForm, setBusinessForm] = useState({
-        fullName: '',
         companyName: '',
+        dbaName: '',
         yearsInBusiness: '',
-        hasLicense: false,
-        hasInsurance: false,
+        about: '',
     });
     const [contactForm, setContactForm] = useState({
         phone: '',
@@ -1402,32 +1438,23 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         state: '',
         postalCode: '',
         country: '',
+        websiteUrl: '',
     });
-    const [servicesForm, setServicesForm] = useState({ servicesText: '' });
+    const [servicesForm, setServicesForm] = useState({ serviceAreasText: '', servicesText: '' });
+    const [brandingForm, setBrandingForm] = useState({
+        logoUrl: '',
+        facebookUrl: '',
+        instagramUrl: '',
+        linkedinUrl: '',
+    });
 
     useEffect(() => {
         latestShowToast.current = showToast;
     }, [showToast]);
 
-    const buildEmptyProfile = useCallback((): ProfileData => ({
-        email: userEmail,
-        fullName: '',
-        companyName: '',
-        phone: '',
-        addressLine1: '',
-        city: '',
-        state: '',
-        postalCode: '',
-        country: '',
-        yearsInBusiness: null,
-        hasLicense: false,
-        hasInsurance: false,
-        services: [],
-    }), [userEmail]);
-
     useEffect(() => {
         if (!userId) {
-            setProfile(buildEmptyProfile());
+            setProfile(null);
             setIsLoading(false);
             return;
         }
@@ -1439,7 +1466,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
 
             const { data, error } = await supabase
                 .from('profiles')
-                .select('email, full_name, company_name, phone, address_line1, city, state, postal_code, country, years_in_business, has_license, has_insurance, services')
+                .select(PROFILE_SELECT_FIELDS)
                 .eq('id', userId)
                 .maybeSingle();
 
@@ -1450,70 +1477,64 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
             if (error) {
                 console.error('Failed to load profile', error);
                 latestShowToast.current?.('Unable to load your profile. Please try again.', 'error');
-                setProfile(buildEmptyProfile());
+                setProfile(null);
                 setIsLoading(false);
                 return;
             }
 
-            const normalizedServices = Array.isArray(data?.services)
-                ? (data?.services as string[])
-                : [];
+            if (data) {
+                setProfile(normalizeProfile(data as PublicProfileRow));
+            } else {
+                setProfile(null);
+            }
 
-            setProfile({
-                email: data?.email ?? userEmail,
-                fullName: data?.full_name ?? '',
-                companyName: data?.company_name ?? '',
-                phone: data?.phone ?? '',
-                addressLine1: data?.address_line1 ?? '',
-                city: data?.city ?? '',
-                state: data?.state ?? '',
-                postalCode: data?.postal_code ?? '',
-                country: data?.country ?? '',
-                yearsInBusiness: data?.years_in_business !== null && data?.years_in_business !== undefined ? Number(data.years_in_business) : null,
-                hasLicense: data?.has_license ?? false,
-                hasInsurance: data?.has_insurance ?? false,
-                services: normalizedServices,
-            });
             setIsLoading(false);
         };
 
         loadProfile().catch((error) => {
             console.error('Unexpected profile load error', error);
             latestShowToast.current?.('Unable to load your profile. Please try again.', 'error');
-            setProfile(buildEmptyProfile());
+            setProfile(null);
             setIsLoading(false);
         });
 
         return () => {
             isMounted = false;
         };
-    }, [buildEmptyProfile, userId, userEmail]);
+    }, [userId]);
 
     const startEditing = (section: ProfileSectionKey) => {
-        if (!profile) {
-            return;
-        }
-
         if (section === 'business') {
             setBusinessForm({
-                fullName: profile.fullName ?? '',
-                companyName: profile.companyName ?? '',
-                yearsInBusiness: profile.yearsInBusiness !== null && profile.yearsInBusiness !== undefined ? String(profile.yearsInBusiness) : '',
-                hasLicense: profile.hasLicense,
-                hasInsurance: profile.hasInsurance,
+                companyName: profile?.company_name ?? '',
+                dbaName: profile?.dba_name ?? '',
+                yearsInBusiness:
+                    profile?.years_in_business !== null && profile?.years_in_business !== undefined
+                        ? String(profile.years_in_business)
+                        : '',
+                about: profile?.about ?? '',
             });
         } else if (section === 'contact') {
             setContactForm({
-                phone: profile.phone ?? '',
-                addressLine1: profile.addressLine1 ?? '',
-                city: profile.city ?? '',
-                state: profile.state ?? '',
-                postalCode: profile.postalCode ?? '',
-                country: profile.country ?? '',
+                phone: profile?.phone ?? '',
+                addressLine1: profile?.address_line1 ?? '',
+                city: profile?.city ?? '',
+                state: profile?.state ?? '',
+                postalCode: profile?.postal_code ?? '',
+                country: profile?.country ?? '',
+                websiteUrl: profile?.website_url ?? '',
             });
         } else if (section === 'services') {
             setServicesForm({
-                servicesText: profile.services.length > 0 ? profile.services.join(', ') : '',
+                serviceAreasText: (profile?.service_areas ?? []).join(', '),
+                servicesText: (profile?.services ?? []).join(', '),
+            });
+        } else if (section === 'branding') {
+            setBrandingForm({
+                logoUrl: profile?.logo_url ?? '',
+                facebookUrl: profile?.facebook_url ?? '',
+                instagramUrl: profile?.instagram_url ?? '',
+                linkedinUrl: profile?.linkedin_url ?? '',
             });
         }
 
@@ -1522,54 +1543,30 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
 
     const cancelEditing = () => {
         setEditingSection(null);
+        setSavingSection(null);
     };
 
-    const upsertProfile = async (updates: Partial<ProfileData>) => {
+    const persistProfileUpdate = async (updates: Partial<PublicProfileRow>, successMessage: string) => {
         if (!userId) {
             latestShowToast.current?.('You must be logged in to update your profile.', 'error');
             return false;
         }
 
-        const payload = {
-            id: userId,
-            email: updates.email ?? profile?.email ?? userEmail,
-            full_name: updates.fullName ?? profile?.fullName ?? null,
-            company_name: updates.companyName ?? profile?.companyName ?? null,
-            phone: updates.phone ?? profile?.phone ?? null,
-            address_line1: updates.addressLine1 ?? profile?.addressLine1 ?? null,
-            city: updates.city ?? profile?.city ?? null,
-            state: updates.state ?? profile?.state ?? null,
-            postal_code: updates.postalCode ?? profile?.postalCode ?? null,
-            country: updates.country ?? profile?.country ?? null,
-            years_in_business: updates.yearsInBusiness !== undefined ? updates.yearsInBusiness : profile?.yearsInBusiness ?? null,
-            has_license: updates.hasLicense ?? profile?.hasLicense ?? false,
-            has_insurance: updates.hasInsurance ?? profile?.hasInsurance ?? false,
-            services: updates.services ?? profile?.services ?? [],
-            updated_at: new Date().toISOString(),
-        };
+        const { data, error } = await supabase
+            .from('profiles')
+            .update(updates)
+            .eq('id', userId)
+            .select(PROFILE_SELECT_FIELDS)
+            .maybeSingle();
 
-        const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
-
-        if (error) {
+        if (error || !data) {
             console.error('Failed to save profile', error);
             latestShowToast.current?.('Failed to save changes. Please try again.', 'error');
             return false;
         }
 
-        setProfile((previous) => {
-            const base = previous ?? buildEmptyProfile();
-            return {
-                ...base,
-                ...updates,
-                email: payload.email ?? base.email,
-                yearsInBusiness: updates.yearsInBusiness !== undefined ? updates.yearsInBusiness : base.yearsInBusiness,
-                services: updates.services !== undefined ? updates.services : base.services,
-                hasLicense: updates.hasLicense !== undefined ? updates.hasLicense : base.hasLicense,
-                hasInsurance: updates.hasInsurance !== undefined ? updates.hasInsurance : base.hasInsurance,
-            };
-        });
-
-        latestShowToast.current?.('Profile updated successfully.', 'success');
+        setProfile(normalizeProfile(data as PublicProfileRow));
+        latestShowToast.current?.(successMessage, 'success');
         return true;
     };
 
@@ -1577,15 +1574,18 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         event.preventDefault();
         setSavingSection('business');
 
-        const updates: Partial<ProfileData> = {
-            fullName: businessForm.fullName.trim(),
-            companyName: businessForm.companyName.trim(),
-            yearsInBusiness: businessForm.yearsInBusiness ? Number(businessForm.yearsInBusiness) : null,
-            hasLicense: businessForm.hasLicense,
-            hasInsurance: businessForm.hasInsurance,
+        const companyName = businessForm.companyName.trim();
+        const dbaName = businessForm.dbaName.trim();
+        const aboutValue = businessForm.about.trim();
+
+        const updates: Partial<PublicProfileRow> = {
+            company_name: companyName.length > 0 ? companyName : null,
+            dba_name: dbaName.length > 0 ? dbaName : null,
+            years_in_business: businessForm.yearsInBusiness ? Number(businessForm.yearsInBusiness) : null,
+            about: aboutValue.length > 0 ? businessForm.about : null,
         };
 
-        const success = await upsertProfile(updates);
+        const success = await persistProfileUpdate(updates, 'Business information updated.');
         setSavingSection(null);
 
         if (success) {
@@ -1597,16 +1597,19 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         event.preventDefault();
         setSavingSection('contact');
 
-        const updates: Partial<ProfileData> = {
-            phone: contactForm.phone.trim(),
-            addressLine1: contactForm.addressLine1.trim(),
-            city: contactForm.city.trim(),
-            state: contactForm.state.trim(),
-            postalCode: contactForm.postalCode.trim(),
-            country: contactForm.country.trim(),
+        const websiteUrl = contactForm.websiteUrl.trim();
+
+        const updates: Partial<PublicProfileRow> = {
+            phone: contactForm.phone.trim() || null,
+            address_line1: contactForm.addressLine1.trim() || null,
+            city: contactForm.city.trim() || null,
+            state: contactForm.state.trim() || null,
+            postal_code: contactForm.postalCode.trim() || null,
+            country: contactForm.country.trim() || null,
+            website_url: websiteUrl.length > 0 ? websiteUrl : null,
         };
 
-        const success = await upsertProfile(updates);
+        const success = await persistProfileUpdate(updates, 'Contact details updated.');
         setSavingSection(null);
 
         if (success) {
@@ -1618,12 +1621,18 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         event.preventDefault();
         setSavingSection('services');
 
-        const services = servicesForm.servicesText
-            .split(',')
-            .map((service) => service.trim())
-            .filter((service) => service.length > 0);
+        const toArray = (value: string) =>
+            value
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter((entry) => entry.length > 0);
 
-        const success = await upsertProfile({ services });
+        const updates: Partial<PublicProfileRow> = {
+            service_areas: toArray(servicesForm.serviceAreasText),
+            services: toArray(servicesForm.servicesText),
+        };
+
+        const success = await persistProfileUpdate(updates, 'Service coverage updated.');
         setSavingSection(null);
 
         if (success) {
@@ -1631,15 +1640,39 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         }
     };
 
-    const formatAddress = (data: ProfileData | null) => {
+    const handleBrandingSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setSavingSection('branding');
+
+        const trimOrNull = (value: string) => {
+            const trimmed = value.trim();
+            return trimmed.length > 0 ? trimmed : null;
+        };
+
+        const updates: Partial<PublicProfileRow> = {
+            logo_url: trimOrNull(brandingForm.logoUrl),
+            facebook_url: trimOrNull(brandingForm.facebookUrl),
+            instagram_url: trimOrNull(brandingForm.instagramUrl),
+            linkedin_url: trimOrNull(brandingForm.linkedinUrl),
+        };
+
+        const success = await persistProfileUpdate(updates, 'Branding details updated.');
+        setSavingSection(null);
+
+        if (success) {
+            setEditingSection(null);
+        }
+    };
+
+    const formatAddress = (data: PublicProfileRow | null) => {
         if (!data) {
             return 'N/A';
         }
 
         const segments = [
-            data.addressLine1,
+            data.address_line1,
             [data.city, data.state].filter(Boolean).join(', '),
-            data.postalCode,
+            data.postal_code,
             data.country,
         ]
             .map((segment) => segment?.trim())
@@ -1653,34 +1686,23 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
             return 0;
         }
 
-        const requiredValues = [
-            profile.companyName,
-            profile.addressLine1,
-            profile.city,
-            profile.state,
-            profile.phone,
-            profile.yearsInBusiness,
-            profile.hasLicense,
-            profile.hasInsurance,
+        const checks = [
+            Boolean(profile.company_name?.trim()),
+            Boolean(profile.address_line1?.trim()),
+            Boolean(profile.city?.trim()),
+            Boolean(profile.state?.trim()),
+            Boolean(profile.postal_code?.trim()),
+            Boolean(profile.phone?.trim()),
+            profile.years_in_business !== null && profile.years_in_business !== undefined,
+            Boolean(profile.has_license),
+            Boolean(profile.has_insurance),
+            (profile.service_areas ?? []).length > 0,
+            (profile.services ?? []).length > 0,
+            Boolean(profile.website_url?.trim()),
         ];
 
-        const completed = requiredValues.reduce((count, value) => {
-            if (typeof value === 'string') {
-                return value.trim() ? count + 1 : count;
-            }
-
-            if (typeof value === 'number') {
-                return Number.isFinite(value) ? count + 1 : count;
-            }
-
-            if (typeof value === 'boolean') {
-                return value ? count + 1 : count;
-            }
-
-            return count;
-        }, 0);
-
-        return Math.round((completed / requiredValues.length) * 100);
+        const completed = checks.filter(Boolean).length;
+        return Math.round((completed / checks.length) * 100);
     }, [profile]);
 
     if (!session || !userId) {
@@ -1692,6 +1714,34 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
             </div>
         );
     }
+
+    if (!isLoading && !profile) {
+        return (
+            <div className="animate-fade-in space-y-8">
+                <div className="space-y-2">
+                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Business Profile</h1>
+                    <p className="text-[var(--text-muted)]">
+                        Keep your business details accurate to build trust and speed up verification.
+                    </p>
+                </div>
+                <Card>
+                    <p className="text-[var(--text-muted)]">Profile not found. Please contact support for assistance.</p>
+                </Card>
+            </div>
+        );
+    }
+
+    const serviceAreas = profile?.service_areas ?? [];
+    const specialties = profile?.services ?? [];
+    const previewServiceAreas =
+        serviceAreas.length > 0
+            ? serviceAreas.join(', ')
+            : [profile?.city, profile?.state].filter(Boolean).join(', ') || 'Service area not set';
+
+    const yearsInBusinessLabel =
+        profile?.years_in_business && profile.years_in_business > 0
+            ? `${profile.years_in_business} ${profile.years_in_business === 1 ? 'year' : 'years'} in business`
+            : 'Years in business not set';
 
     return (
         <div className="animate-fade-in space-y-8">
@@ -1730,7 +1780,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Business Information</h2>
                             <p className="text-sm text-[var(--text-muted)]">What homeowners see first about your business.</p>
                         </div>
-                        {editingSection !== 'business' && (
+                        {editingSection !== 'business' && profile && (
                             <button
                                 onClick={() => startEditing('business')}
                                 className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] transition hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
@@ -1766,9 +1816,9 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                     <input
                                         id="business-dba-name"
                                         type="text"
-                                        value={businessForm.fullName}
+                                        value={businessForm.dbaName}
                                         onChange={(event) =>
-                                            setBusinessForm((previous) => ({ ...previous, fullName: event.target.value }))
+                                            setBusinessForm((previous) => ({ ...previous, dbaName: event.target.value }))
                                         }
                                         className={profileInputClasses}
                                     />
@@ -1788,30 +1838,20 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                         className={profileInputClasses}
                                     />
                                 </div>
-                            </div>
-                            <div className="flex flex-col gap-4 sm:flex-row">
-                                <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-main)]">
-                                    <input
-                                        type="checkbox"
-                                        checked={businessForm.hasLicense}
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="business-about">
+                                        Short description
+                                    </label>
+                                    <textarea
+                                        id="business-about"
+                                        rows={4}
+                                        value={businessForm.about}
                                         onChange={(event) =>
-                                            setBusinessForm((previous) => ({ ...previous, hasLicense: event.target.checked }))
+                                            setBusinessForm((previous) => ({ ...previous, about: event.target.value }))
                                         }
-                                        className="rounded border-[var(--border-subtle)]"
-                                    />
-                                    Holds an active business license
-                                </label>
-                                <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-main)]">
-                                    <input
-                                        type="checkbox"
-                                        checked={businessForm.hasInsurance}
-                                        onChange={(event) =>
-                                            setBusinessForm((previous) => ({ ...previous, hasInsurance: event.target.checked }))
-                                        }
-                                        className="rounded border-[var(--border-subtle)]"
-                                    />
-                                    Carries current insurance
-                                </label>
+                                        className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                    ></textarea>
+                                </div>
                             </div>
                             <div className="flex justify-end gap-3">
                                 <button
@@ -1835,22 +1875,26 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             <div>
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">Business name</p>
                                 <p className="mt-1 text-lg font-semibold text-[var(--text-main)]">
-                                    {profile?.companyName || profile?.fullName || 'N/A'}
+                                    {profile?.company_name || 'N/A'}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">DBA / Brand name</p>
                                 <p className="mt-1 text-lg text-[var(--text-main)]">
-                                    {profile?.fullName || 'N/A'}
+                                    {profile?.dba_name ? profile.dba_name : <span className="text-[var(--text-muted)]">N/A</span>}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">Years in business</p>
-                                <p className="mt-1 text-lg text-[var(--text-main)]">
-                                    {profile?.yearsInBusiness !== null && profile?.yearsInBusiness !== undefined && profile?.yearsInBusiness !== 0
-                                        ? `${profile.yearsInBusiness} ${profile.yearsInBusiness === 1 ? 'year' : 'years'}`
-                                        : 'N/A'}
-                                </p>
+                                <p className="mt-1 text-lg text-[var(--text-main)]">{yearsInBusinessLabel}</p>
+                            </div>
+                            <div className="md:col-span-2">
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Short description</p>
+                                {profile?.about ? (
+                                    <p className="mt-1 whitespace-pre-line text-[var(--text-main)]">{profile.about}</p>
+                                ) : (
+                                    <p className="mt-1 text-[var(--text-muted)]">Add a short overview of your restoration expertise.</p>
+                                )}
                             </div>
                         </div>
                     )}
@@ -1862,7 +1906,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Contact Details</h2>
                             <p className="text-sm text-[var(--text-muted)]">Make it easy for homeowners to reach you.</p>
                         </div>
-                        {editingSection !== 'contact' && (
+                        {editingSection !== 'contact' && profile && (
                             <button
                                 onClick={() => startEditing('contact')}
                                 className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] transition hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
@@ -1973,6 +2017,21 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                         className={profileInputClasses}
                                     />
                                 </div>
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="contact-website">
+                                        Website URL
+                                    </label>
+                                    <input
+                                        id="contact-website"
+                                        type="url"
+                                        value={contactForm.websiteUrl}
+                                        onChange={(event) =>
+                                            setContactForm((previous) => ({ ...previous, websiteUrl: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                        placeholder="https://example.com"
+                                    />
+                                </div>
                             </div>
                             <div className="flex justify-end gap-3">
                                 <button
@@ -2007,7 +2066,18 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">Website URL</p>
-                                <p className="mt-1 text-lg text-[var(--text-main)]">N/A</p>
+                                {profile?.website_url ? (
+                                    <a
+                                        href={profile.website_url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mt-1 block text-lg font-semibold text-[var(--accent-dark)] hover:underline"
+                                    >
+                                        {profile.website_url}
+                                    </a>
+                                ) : (
+                                    <p className="mt-1 text-lg text-[var(--text-main)]">N/A</p>
+                                )}
                             </div>
                         </div>
                     )}
@@ -2019,7 +2089,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Service Areas & Specialties</h2>
                             <p className="text-sm text-[var(--text-muted)]">Highlight the services and regions you cover.</p>
                         </div>
-                        {editingSection !== 'services' && (
+                        {editingSection !== 'services' && profile && (
                             <button
                                 onClick={() => startEditing('services')}
                                 className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] transition hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
@@ -2030,22 +2100,41 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                     </div>
 
                     {isLoading ? (
-                        <div className="mt-6 text-[var(--text-muted)]">Loading service areas…</div>
+                        <div className="mt-6 text-[var(--text-muted)]">Loading service coverage…</div>
                     ) : editingSection === 'services' ? (
                         <form className="mt-6 space-y-6" onSubmit={handleServicesSubmit}>
                             <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="service-areas-input">
+                                    Service areas (comma separated)
+                                </label>
+                                <textarea
+                                    id="service-areas-input"
+                                    rows={2}
+                                    value={servicesForm.serviceAreasText}
+                                    onChange={(event) =>
+                                        setServicesForm((previous) => ({ ...previous, serviceAreasText: event.target.value }))
+                                    }
+                                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
+                                ></textarea>
+                                <p className="text-xs text-[var(--text-muted)]">
+                                    Example: Austin, Round Rock, Georgetown, San Marcos
+                                </p>
+                            </div>
+                            <div className="space-y-2">
                                 <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="services-input">
-                                    Services (comma separated)
+                                    Specialties (comma separated)
                                 </label>
                                 <textarea
                                     id="services-input"
                                     rows={3}
                                     value={servicesForm.servicesText}
-                                    onChange={(event) => setServicesForm({ servicesText: event.target.value })}
+                                    onChange={(event) =>
+                                        setServicesForm((previous) => ({ ...previous, servicesText: event.target.value }))
+                                    }
                                     className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3"
                                 ></textarea>
                                 <p className="text-xs text-[var(--text-muted)]">
-                                    Example: Water damage restoration, Mold remediation, Emergency board-up
+                                    Example: Water damage restoration, Fire damage cleanup, Mold remediation
                                 </p>
                             </div>
                             <div className="flex justify-end gap-3">
@@ -2065,20 +2154,46 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                 </button>
                             </div>
                         </form>
-                    ) : profile && profile.services.length > 0 ? (
-                        <div className="mt-6 flex flex-wrap gap-2">
-                            {profile.services.map((service) => (
-                                <span
-                                    key={service}
-                                    className="rounded-full bg-[var(--accent-bg-subtle)] px-3 py-1 text-sm font-medium text-[var(--accent-dark)]"
-                                >
-                                    {service}
-                                </span>
-                            ))}
-                        </div>
                     ) : (
-                        <div className="mt-6 rounded-lg bg-[var(--bg-subtle)] p-4 text-sm text-[var(--text-muted)]">
-                            Not set yet. Add your core services so homeowners know what you offer.
+                        <div className="mt-6 space-y-6">
+                            <div>
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Service areas</p>
+                                {serviceAreas.length > 0 ? (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {serviceAreas.map((area) => (
+                                            <span
+                                                key={area}
+                                                className="rounded-full bg-[var(--accent-bg-subtle)] px-3 py-1 text-sm font-medium text-[var(--accent-dark)]"
+                                            >
+                                                {area}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="mt-2 rounded-lg bg-[var(--bg-subtle)] p-4 text-sm text-[var(--text-muted)]">
+                                        Not set yet. Add the regions you serve so we can match local homeowners.
+                                    </div>
+                                )}
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Specialties</p>
+                                {specialties.length > 0 ? (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {specialties.map((service) => (
+                                            <span
+                                                key={service}
+                                                className="rounded-full bg-[var(--accent-bg-subtle)] px-3 py-1 text-sm font-medium text-[var(--accent-dark)]"
+                                            >
+                                                {service}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="mt-2 rounded-lg bg-[var(--bg-subtle)] p-4 text-sm text-[var(--text-muted)]">
+                                        Not set yet. List your core restoration services so homeowners know what you offer.
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </Card>
@@ -2089,9 +2204,9 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Branding & Social Links</h2>
                             <p className="text-sm text-[var(--text-muted)]">Keep your brand visuals and social proof consistent.</p>
                         </div>
-                        {editingSection !== 'branding' && (
+                        {editingSection !== 'branding' && profile && (
                             <button
-                                onClick={() => setEditingSection('branding')}
+                                onClick={() => startEditing('branding')}
                                 className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] transition hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
                             >
                                 <PencilSquareIcon className="h-5 w-5" /> Edit
@@ -2100,34 +2215,149 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                     </div>
 
                     {editingSection === 'branding' ? (
-                        <div className="mt-6 space-y-4">
-                            <div className="rounded-lg bg-[var(--bg-subtle)] p-4 text-sm text-[var(--text-muted)]">
-                                Branding updates are handled by our team right now. Email us any logo or social changes and we’ll update your profile.
+                        <form className="mt-6 space-y-6" onSubmit={handleBrandingSubmit}>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="branding-logo">
+                                    Logo URL
+                                </label>
+                                <input
+                                    id="branding-logo"
+                                    type="url"
+                                    value={brandingForm.logoUrl}
+                                    onChange={(event) =>
+                                        setBrandingForm((previous) => ({ ...previous, logoUrl: event.target.value }))
+                                    }
+                                    className={profileInputClasses}
+                                    placeholder="https://yourcdn.com/logo.png"
+                                />
                             </div>
-                            <div className="flex justify-end">
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="branding-facebook">
+                                        Facebook URL
+                                    </label>
+                                    <input
+                                        id="branding-facebook"
+                                        type="url"
+                                        value={brandingForm.facebookUrl}
+                                        onChange={(event) =>
+                                            setBrandingForm((previous) => ({ ...previous, facebookUrl: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="branding-instagram">
+                                        Instagram URL
+                                    </label>
+                                    <input
+                                        id="branding-instagram"
+                                        type="url"
+                                        value={brandingForm.instagramUrl}
+                                        onChange={(event) =>
+                                            setBrandingForm((previous) => ({ ...previous, instagramUrl: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="branding-linkedin">
+                                        LinkedIn URL
+                                    </label>
+                                    <input
+                                        id="branding-linkedin"
+                                        type="url"
+                                        value={brandingForm.linkedinUrl}
+                                        onChange={(event) =>
+                                            setBrandingForm((previous) => ({ ...previous, linkedinUrl: event.target.value }))
+                                        }
+                                        className={profileInputClasses}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-3">
                                 <button
                                     type="button"
                                     onClick={cancelEditing}
                                     className="rounded-lg border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] hover:border-[var(--accent)] hover:text-[var(--accent-dark)]"
                                 >
-                                    Close
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={savingSection === 'branding'}
+                                    className="rounded-lg bg-[var(--accent)] px-6 py-2 text-sm font-semibold text-[var(--accent-text)] shadow-md transition disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {savingSection === 'branding' ? 'Saving…' : 'Save changes'}
                                 </button>
                             </div>
-                        </div>
+                        </form>
                     ) : (
                         <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-[200px,1fr]">
                             <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-6 text-center">
-                                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
-                                    Logo
-                                </div>
-                                <p className="text-sm text-[var(--text-muted)]">Upload your logo to personalize your profile.</p>
+                                {profile?.logo_url ? (
+                                    <img
+                                        src={profile.logo_url}
+                                        alt="Company logo"
+                                        className="h-20 w-20 rounded-full object-cover shadow-sm"
+                                    />
+                                ) : (
+                                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
+                                        Logo
+                                    </div>
+                                )}
+                                <p className="text-sm text-[var(--text-muted)]">
+                                    {profile?.logo_url ? 'Logo preview from your link.' : 'Add a logo URL to personalize your profile.'}
+                                </p>
                             </div>
                             <div className="space-y-3">
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">Social Links</p>
-                                <ul className="space-y-2 text-[var(--text-muted)]">
-                                    <li>Facebook: <span className="text-[var(--text-main)]">N/A</span></li>
-                                    <li>Instagram: <span className="text-[var(--text-main)]">N/A</span></li>
-                                    <li>LinkedIn: <span className="text-[var(--text-main)]">N/A</span></li>
+                                <ul className="space-y-2 text-sm text-[var(--text-muted)]">
+                                    <li>
+                                        Facebook:{' '}
+                                        {profile?.facebook_url ? (
+                                            <a
+                                                href={profile.facebook_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-[var(--accent-dark)] hover:underline"
+                                            >
+                                                {profile.facebook_url}
+                                            </a>
+                                        ) : (
+                                            <span className="text-[var(--text-main)]">N/A</span>
+                                        )}
+                                    </li>
+                                    <li>
+                                        Instagram:{' '}
+                                        {profile?.instagram_url ? (
+                                            <a
+                                                href={profile.instagram_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-[var(--accent-dark)] hover:underline"
+                                            >
+                                                {profile.instagram_url}
+                                            </a>
+                                        ) : (
+                                            <span className="text-[var(--text-main)]">N/A</span>
+                                        )}
+                                    </li>
+                                    <li>
+                                        LinkedIn:{' '}
+                                        {profile?.linkedin_url ? (
+                                            <a
+                                                href={profile.linkedin_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-[var(--accent-dark)] hover:underline"
+                                            >
+                                                {profile.linkedin_url}
+                                            </a>
+                                        ) : (
+                                            <span className="text-[var(--text-main)]">N/A</span>
+                                        )}
+                                    </li>
                                 </ul>
                             </div>
                         </div>
@@ -2149,36 +2379,49 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                     </div>
                     <div className="mt-6 grid gap-6 md:grid-cols-[220px,1fr]">
                         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-6 text-center">
-                            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
-                                Logo
-                            </div>
-                            <p className="text-sm text-[var(--text-muted)]">Add your logo for instant recognition.</p>
+                            {profile?.logo_url ? (
+                                <img
+                                    src={profile.logo_url}
+                                    alt="Company logo"
+                                    className="h-20 w-20 rounded-full object-cover shadow-sm"
+                                />
+                            ) : (
+                                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
+                                    Logo
+                                </div>
+                            )}
+                            <p className="text-sm text-[var(--text-muted)]">
+                                {profile?.logo_url ? 'Logo pulled from your branding settings.' : 'Add your logo for instant recognition.'}
+                            </p>
                         </div>
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                             <div>
-                                <h3 className="text-xl font-semibold text-[var(--text-main)]">{profile?.companyName || 'Your Business Name'}</h3>
-                                <p className="text-sm text-[var(--text-muted)]">
-                                    {profile?.yearsInBusiness ? `${profile.yearsInBusiness}+ years in business` : 'Years in business not set'}
-                                </p>
+                                <h3 className="text-xl font-semibold text-[var(--text-main)]">
+                                    {profile?.company_name || profile?.dba_name || 'Your Business Name'}
+                                </h3>
+                                <p className="text-sm text-[var(--text-muted)]">{yearsInBusinessLabel}</p>
                             </div>
+                            {profile?.about && (
+                                <p className="text-sm text-[var(--text-main)] whitespace-pre-line">{profile.about}</p>
+                            )}
                             <div className="flex flex-wrap gap-2 text-sm">
                                 <span className="rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-[var(--text-muted)]">
-                                    {profile?.hasLicense ? 'Licensed' : 'License status pending'}
+                                    {profile?.has_license ? 'License status verified' : 'License status pending'}
                                 </span>
                                 <span className="rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-[var(--text-muted)]">
-                                    {profile?.hasInsurance ? 'Insured' : 'Insurance not provided'}
+                                    {profile?.has_insurance ? 'Insurance on file' : 'Insurance not provided'}
                                 </span>
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">Serving</p>
-                                <p className="text-sm text-[var(--text-main)]">
-                                    {profile?.city || profile?.state ? [profile?.city, profile?.state].filter(Boolean).join(', ') : 'Service area not set'}
-                                </p>
+                                <p className="text-sm text-[var(--text-main)]">{previewServiceAreas}</p>
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">Featured services</p>
                                 <p className="text-sm text-[var(--text-main)]">
-                                    {profile && profile.services.length > 0 ? profile.services.slice(0, 3).join(', ') : 'Add services to showcase your expertise'}
+                                    {specialties.length > 0
+                                        ? specialties.join(', ')
+                                        : 'Add specialties to showcase your expertise'}
                                 </p>
                             </div>
                         </div>
@@ -2198,6 +2441,8 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         </div>
     );
 };
+
+
 const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast: (message: string, type: 'success' | 'error') => void; }> = ({ onNavigate, showToast }) => {
     // For now, hardcode a member to get badge data. This would come from context/API.
     const { currentUser } = useAuth();
