@@ -251,16 +251,18 @@ interface SupabaseServiceRequest {
     id: string | number;
     profile_id?: string | null;
     request_type?: string | null;
-    service?: string | null;
     title?: string | null;
     description?: string | null;
     status?: string | null;
     priority?: string | null;
-    priority_level?: string | null;
     admin_notes?: string | null;
     assigned_admin_id?: string | null;
+    consumes_blog_post_quota?: boolean | null;
+    consumes_spotlight_quota?: boolean | null;
+    source?: string | null;
     created_at?: string | null;
     updated_at?: string | null;
+    due_date?: string | null;
     [key: string]: unknown;
 }
 
@@ -631,12 +633,12 @@ const mapDocumentRow = (document: SupabaseMemberDocument): DashboardDocument => 
 };
 
 const mapServiceRequestRow = (request: SupabaseServiceRequest): DashboardServiceRequest => {
-    const rawPriority = request.priority ?? request.priority_level;
+    const rawPriority = request.priority;
     const normalizedPriority = normalizeServiceRequestPriority(rawPriority);
 
     return {
         id: String(request.id),
-        service: getServiceRequestTypeLabel(request.request_type ?? request.service),
+        service: getServiceRequestTypeLabel(request.request_type),
         title: request.title ?? 'Untitled Request',
         status: normalizeRequestStatus(request.status),
         createdAt: request.created_at ?? request.updated_at ?? null,
@@ -647,10 +649,10 @@ const mapServiceRequestRow = (request: SupabaseServiceRequest): DashboardService
 const mapMemberServiceRequestRow = (request: SupabaseServiceRequest): MemberServiceRequest => ({
     id: String(request.id),
     profileId: request.profile_id ?? '',
-    requestType: getServiceRequestTypeLabel(request.request_type ?? request.service),
+    requestType: getServiceRequestTypeLabel(request.request_type),
     title: request.title ?? 'Untitled Request',
     description: request.description ?? null,
-    priority: normalizeServiceRequestPriority(request.priority ?? request.priority_level),
+    priority: normalizeServiceRequestPriority(request.priority),
     status: normalizeServiceRequestStatus(request.status),
     adminNotes: request.admin_notes ?? null,
     assignedAdminId:
@@ -980,8 +982,9 @@ const MyRequests: React.FC<{
         try {
             const { data, error: requestError } = await supabase
                 .from('service_requests')
+                // Request only real columns; request_type/priority map to MemberServiceRequest.requestType/priority
                 .select(
-                    'id, profile_id, request_type, service, title, description, priority_level, status, admin_notes, assigned_admin_id, created_at, updated_at',
+                    'id, profile_id, request_type, title, description, status, priority, admin_notes, assigned_admin_id, consumes_blog_post_quota, consumes_spotlight_quota, source, created_at, updated_at, due_date',
                 )
                 .eq('profile_id', session.user.id)
                 .order('created_at', { ascending: false });
@@ -3678,7 +3681,10 @@ const MemberDashboard: React.FC = () => {
         const [requestsResult, activityResult] = await Promise.allSettled([
             supabase
                 .from('service_requests')
-                .select('*')
+                // Match DB columns so request_type/priority map cleanly to member UI fields
+                .select(
+                    'id, profile_id, request_type, title, description, status, priority, admin_notes, assigned_admin_id, consumes_blog_post_quota, consumes_spotlight_quota, source, created_at, updated_at, due_date',
+                )
                 .eq('profile_id', session.user.id)
                 .order('created_at', { ascending: false }),
             supabase
@@ -3815,7 +3821,10 @@ const MemberDashboard: React.FC = () => {
                         .maybeSingle(),
                     supabase
                         .from('service_requests')
-                        .select('*')
+                        // Ensure dashboard uses real DB column names (request_type/priority/etc.)
+                        .select(
+                            'id, profile_id, request_type, title, description, status, priority, admin_notes, assigned_admin_id, consumes_blog_post_quota, consumes_spotlight_quota, source, created_at, updated_at, due_date',
+                        )
                         .eq('profile_id', session.user.id)
                         .order('created_at', { ascending: false })
                         .limit(5),

@@ -36,12 +36,15 @@ interface SupabaseServiceRequestRow {
     title?: string | null;
     description?: string | null;
     priority?: string | null;
-    priority_level?: string | null;
     status?: string | null;
     admin_notes?: string | null;
     assigned_admin_id?: string | null;
     created_at?: string | null;
     updated_at?: string | null;
+    consumes_blog_post_quota?: boolean | null;
+    consumes_spotlight_quota?: boolean | null;
+    source?: string | null;
+    due_date?: string | null;
     [key: string]: unknown;
 }
 
@@ -126,7 +129,7 @@ const mapRequestRow = (row: SupabaseServiceRequestRow): MemberServiceRequest => 
     requestType: row.request_type ?? 'Service Request',
     title: row.title ?? 'Untitled Request',
     description: row.description ?? null,
-    priority: normalizePriority(row.priority ?? row.priority_level),
+    priority: normalizePriority(row.priority),
     status: normalizeStatus(row.status),
     adminNotes: row.admin_notes ?? null,
     assignedAdminId: row.assigned_admin_id !== null && row.assigned_admin_id !== undefined
@@ -197,8 +200,9 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
             const [requestResult, adminResult] = await Promise.all([
                 supabase
                     .from('service_requests')
+                    // Request explicit columns that exist in service_requests; request_type/priority power the admin UI labels
                     .select(
-                        'id, profile_id, request_type, title, description, priority_level, status, admin_notes, assigned_admin_id, created_at, updated_at',
+                        'id, profile_id, request_type, title, description, status, priority, admin_notes, assigned_admin_id, consumes_blog_post_quota, consumes_spotlight_quota, source, created_at, updated_at, due_date',
                     )
                     .in('status', ['open', 'in_progress'])
                     .order('created_at', { ascending: false }),
@@ -361,7 +365,7 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
                 supabaseUpdates.status = updates.status;
             }
             if (Object.prototype.hasOwnProperty.call(updates, 'priority')) {
-                supabaseUpdates.priority_level = updates.priority;
+                supabaseUpdates.priority = updates.priority;
             }
             if (Object.prototype.hasOwnProperty.call(updates, 'adminNotes')) {
                 supabaseUpdates.admin_notes = updates.adminNotes ?? null;
