@@ -1426,8 +1426,33 @@ type PublicProfileRow = {
     linkedin_url: string | null;
 };
 
+type MemberDocument = {
+    id: string;
+    profile_id: string;
+    doc_type: string;
+    status: string;
+    file_url: string | null;
+    uploaded_at: string | null;
+    approved_at: string | null;
+    rejected_at: string | null;
+    admin_notes: string | null;
+};
+
 const PROFILE_SELECT_FIELDS =
     'id, email, full_name, company_name, dba_name, about, phone, address_line1, city, state, postal_code, country, website_url, years_in_business, services, service_areas, has_license, has_insurance, logo_url, facebook_url, instagram_url, linkedin_url';
+
+const IICRC_DOCUMENT_LABELS: Record<string, string> = {
+    iicrc_wrt: 'IICRC Water Damage (WRT)',
+    iicrc_fsrt: 'IICRC Fire & Smoke (FSRT)',
+    iicrc_amrt: 'IICRC Applied Microbial (AMRT)',
+    iicrc_biohazard: 'IICRC Biohazard / Trauma',
+};
+
+const OTHER_CERT_DOCUMENT_LABELS: Record<string, string> = {
+    epa_leadsafe: 'EPA Lead-Safe',
+    osha_safety: 'OSHA Safety',
+    other_cert: 'Other certification',
+};
 
 const normalizeProfile = (raw: PublicProfileRow): PublicProfileRow => ({
     ...raw,
@@ -1454,7 +1479,7 @@ const normalizeProfile = (raw: PublicProfileRow): PublicProfileRow => ({
     linkedin_url: raw.linkedin_url ?? null,
 });
 
-const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
+const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; onNavigate?: (view: MemberView) => void; }> = ({ showToast, onNavigate }) => {
     const { session } = useAuth();
     const userId = session?.user?.id ?? null;
     const userEmail = session?.user?.email ?? '';
@@ -1492,6 +1517,9 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
     });
     const [brandingErrors, setBrandingErrors] = useState<BrandingErrorsState>({});
     const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+    const [approvedDocuments, setApprovedDocuments] = useState<MemberDocument[]>([]);
+    const [pendingDocuments, setPendingDocuments] = useState<MemberDocument[]>([]);
+    const [documentsError, setDocumentsError] = useState<string | null>(null);
 
     useEffect(() => {
         latestShowToast.current = showToast;
@@ -1547,6 +1575,104 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
             isMounted = false;
         };
     }, [userId]);
+
+    useEffect(() => {
+        if (!userId) {
+            setApprovedDocuments([]);
+            setPendingDocuments([]);
+            setDocumentsError(null);
+            return;
+        }
+
+        let isMounted = true;
+
+        const fetchDocuments = async () => {
+            try {
+                const [approvedResult, pendingResult] = await Promise.all([
+                    supabase
+                        .from('member_documents')
+                        .select('id, profile_id, doc_type, status, file_url, uploaded_at, approved_at, rejected_at, admin_notes')
+                        .eq('profile_id', userId)
+                        .eq('status', 'approved'),
+                    supabase
+                        .from('member_documents')
+                        .select('id, profile_id, doc_type, status, file_url, uploaded_at, approved_at, rejected_at, admin_notes')
+                        .eq('profile_id', userId)
+                        .eq('status', 'pending'),
+                ]);
+
+                if (!isMounted) {
+                    return;
+                }
+
+                if (approvedResult.error) {
+                    throw approvedResult.error;
+                }
+
+                if (pendingResult.error) {
+                    throw pendingResult.error;
+                }
+
+                const approvedRows = (approvedResult.data as MemberDocument[] | null) ?? [];
+                const pendingRows = (pendingResult.data as MemberDocument[] | null) ?? [];
+
+                setApprovedDocuments(approvedRows);
+                setPendingDocuments(pendingRows);
+                setDocumentsError(null);
+            } catch (error) {
+                console.error('Failed to load member documents for profile view', error);
+                if (!isMounted) {
+                    return;
+                }
+                setApprovedDocuments([]);
+                setPendingDocuments([]);
+                setDocumentsError('Could not load document status');
+            }
+        };
+
+        void fetchDocuments();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [userId]);
+
+    const hasApprovedLicense = useMemo(
+        () => approvedDocuments.some((document) => document.doc_type === 'state_license'),
+        [approvedDocuments],
+    );
+    const hasApprovedInsurance = useMemo(
+        () => approvedDocuments.some((document) => document.doc_type === 'insurance_proof'),
+        [approvedDocuments],
+    );
+    const hasPendingLicense = useMemo(
+        () => pendingDocuments.some((document) => document.doc_type === 'state_license'),
+        [pendingDocuments],
+    );
+    const hasPendingInsurance = useMemo(
+        () => pendingDocuments.some((document) => document.doc_type === 'insurance_proof'),
+        [pendingDocuments],
+    );
+    const iicrcCertifications = useMemo(() => {
+        const labels = new Set<string>();
+        for (const document of approvedDocuments) {
+            const label = IICRC_DOCUMENT_LABELS[document.doc_type as keyof typeof IICRC_DOCUMENT_LABELS];
+            if (label) {
+                labels.add(label);
+            }
+        }
+        return Array.from(labels);
+    }, [approvedDocuments]);
+    const otherCertifications = useMemo(() => {
+        const labels = new Set<string>();
+        for (const document of approvedDocuments) {
+            const label = OTHER_CERT_DOCUMENT_LABELS[document.doc_type as keyof typeof OTHER_CERT_DOCUMENT_LABELS];
+            if (label) {
+                labels.add(label);
+            }
+        }
+        return Array.from(labels);
+    }, [approvedDocuments]);
 
     const startEditing = (section: ProfileSectionKey) => {
         if (section === 'business') {
@@ -1930,8 +2056,8 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
             Boolean(profile.postal_code?.trim()),
             Boolean(profile.phone?.trim()),
             profile.years_in_business !== null && profile.years_in_business !== undefined,
-            Boolean(profile.has_license),
-            Boolean(profile.has_insurance),
+            hasApprovedLicense,
+            hasApprovedInsurance,
             (profile.service_areas ?? []).length > 0,
             (profile.services ?? []).length > 0,
             Boolean(profile.website_url?.trim()),
@@ -1939,7 +2065,40 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
 
         const completed = checks.filter(Boolean).length;
         return Math.round((completed / checks.length) * 100);
-    }, [profile]);
+    }, [profile, hasApprovedLicense, hasApprovedInsurance]);
+
+    useEffect(() => {
+        if (!profile || !userId) {
+            return;
+        }
+
+        const updates: Partial<PublicProfileRow> = {};
+
+        if (hasApprovedLicense && !profile.has_license) {
+            updates.has_license = true;
+        }
+
+        if (hasApprovedInsurance && !profile.has_insurance) {
+            updates.has_insurance = true;
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return;
+        }
+
+        const syncCredentialFlags = async () => {
+            const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
+
+            if (error) {
+                console.error('Failed to sync credential flags to profile record', error);
+                return;
+            }
+
+            setProfile((previous) => (previous ? { ...previous, ...updates } : previous));
+        };
+
+        void syncCredentialFlags();
+    }, [hasApprovedLicense, hasApprovedInsurance, profile, userId]);
 
     if (!session || !userId) {
         return (
@@ -2317,6 +2476,139 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             </div>
                         </div>
                     )}
+                </Card>
+
+                <Card>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Credentials & Compliance</h2>
+                            <p className="text-sm text-[var(--text-muted)]">Track your license, insurance, and certifications.</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => onNavigate?.('documents')}
+                            className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-text)] shadow-md transition hover:bg-[var(--accent-dark)] hover:text-white"
+                        >
+                            <DocumentTextIcon className="h-5 w-5" /> Manage documents
+                        </button>
+                    </div>
+
+                    <div className="mt-6 space-y-6">
+                        {documentsError && (
+                            <div className="rounded-lg border border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-4 py-3 text-sm text-[var(--text-muted)]">
+                                Could not load document status. Please try again later.
+                            </div>
+                        )}
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">License status</p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {documentsError ? (
+                                        <span className="inline-flex items-center gap-2 rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-sm font-semibold text-[var(--text-muted)]">
+                                            <ExclamationTriangleIcon className="h-4 w-4" /> Status unavailable
+                                        </span>
+                                    ) : hasApprovedLicense ? (
+                                        <span className="inline-flex items-center gap-2 rounded-full bg-success/10 px-3 py-1 text-sm font-semibold text-success">
+                                            <CheckCircleIcon className="h-4 w-4" /> License verified
+                                        </span>
+                                    ) : hasPendingLicense ? (
+                                        <span className="inline-flex items-center gap-2 rounded-full bg-warning/10 px-3 py-1 text-sm font-semibold text-yellow-800">
+                                            <ClockIcon className="h-4 w-4" /> License pending review
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-2 rounded-full bg-error/10 px-3 py-1 text-sm font-semibold text-error">
+                                            <ExclamationTriangleIcon className="h-4 w-4" /> License not on file
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Insurance status</p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {documentsError ? (
+                                        <span className="inline-flex items-center gap-2 rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-sm font-semibold text-[var(--text-muted)]">
+                                            <ExclamationTriangleIcon className="h-4 w-4" /> Status unavailable
+                                        </span>
+                                    ) : hasApprovedInsurance ? (
+                                        <span className="inline-flex items-center gap-2 rounded-full bg-success/10 px-3 py-1 text-sm font-semibold text-success">
+                                            <CheckCircleIcon className="h-4 w-4" /> Insurance on file
+                                        </span>
+                                    ) : hasPendingInsurance ? (
+                                        <span className="inline-flex items-center gap-2 rounded-full bg-warning/10 px-3 py-1 text-sm font-semibold text-yellow-800">
+                                            <ClockIcon className="h-4 w-4" /> Insurance pending review
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-2 rounded-full bg-error/10 px-3 py-1 text-sm font-semibold text-error">
+                                            <ExclamationTriangleIcon className="h-4 w-4" /> Insurance not on file
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">IICRC certifications</p>
+                                {documentsError ? (
+                                    <p className="text-sm text-[var(--text-muted)]">Status unavailable.</p>
+                                ) : iicrcCertifications.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                        {iicrcCertifications.map((label) => (
+                                            <span
+                                                key={label}
+                                                className="rounded-full bg-[var(--accent-bg-subtle)] px-3 py-1 text-sm font-medium text-[var(--accent-dark)]"
+                                            >
+                                                {label}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-[var(--text-muted)]">No IICRC certifications on file.</p>
+                                )}
+                            </div>
+                            <div className="space-y-2">
+                                <p className="text-sm font-semibold text-[var(--text-muted)]">Other certifications</p>
+                                {documentsError ? (
+                                    <p className="text-sm text-[var(--text-muted)]">Status unavailable.</p>
+                                ) : otherCertifications.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                        {otherCertifications.map((label) => (
+                                            <span
+                                                key={label}
+                                                className="rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-sm font-medium text-[var(--text-main)]"
+                                            >
+                                                {label}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-[var(--text-muted)]">No additional certifications on file.</p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-4 text-sm">
+                            <button
+                                type="button"
+                                onClick={() => onNavigate?.('documents')}
+                                className="font-semibold text-[var(--accent-dark)] hover:underline"
+                            >
+                                Upload license proof
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onNavigate?.('documents')}
+                                className="font-semibold text-[var(--accent-dark)] hover:underline"
+                            >
+                                Upload insurance proof
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onNavigate?.('documents')}
+                                className="font-semibold text-[var(--accent-dark)] hover:underline"
+                            >
+                                Upload certification
+                            </button>
+                        </div>
+                    </div>
                 </Card>
 
                 <Card>
@@ -2723,10 +3015,22 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             )}
                             <div className="flex flex-wrap gap-2 text-sm">
                                 <span className="rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-[var(--text-muted)]">
-                                    {profile?.has_license ? 'License status verified' : 'License status pending'}
+                                    {documentsError
+                                        ? 'License status unavailable'
+                                        : hasApprovedLicense
+                                            ? 'License verified'
+                                            : hasPendingLicense
+                                                ? 'License pending review'
+                                                : 'License not provided'}
                                 </span>
                                 <span className="rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-[var(--text-muted)]">
-                                    {profile?.has_insurance ? 'Insurance on file' : 'Insurance not provided'}
+                                    {documentsError
+                                        ? 'Insurance status unavailable'
+                                        : hasApprovedInsurance
+                                            ? 'Insurance on file'
+                                            : hasPendingInsurance
+                                                ? 'Insurance pending review'
+                                                : 'Insurance not provided'}
                                 </span>
                             </div>
                             <div>
@@ -4861,7 +5165,7 @@ const MemberDashboard: React.FC = () => {
                     />
                 );
             case 'profile':
-                return <MemberProfile showToast={showToast} />;
+                return <MemberProfile showToast={showToast} onNavigate={setActiveView} />;
             case 'badge':
                  return <MemberBadge onNavigate={setActiveView} showToast={showToast} />;
             case 'documents':
