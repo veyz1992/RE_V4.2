@@ -1361,6 +1361,20 @@ const MyRequests: React.FC<{
 
 const profileInputClasses = "w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3";
 
+interface BrandingFormState {
+    logoUrl: string;
+    facebookUrl: string;
+    instagramUrl: string;
+    linkedinUrl: string;
+}
+
+interface BrandingErrorsState {
+    logo?: string;
+    facebookUrl?: string;
+    instagramUrl?: string;
+    linkedinUrl?: string;
+}
+
 type ProfileSectionKey = 'business' | 'contact' | 'services' | 'branding';
 
 type PublicProfileRow = {
@@ -1441,12 +1455,14 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         websiteUrl: '',
     });
     const [servicesForm, setServicesForm] = useState({ serviceAreasText: '', servicesText: '' });
-    const [brandingForm, setBrandingForm] = useState({
+    const [brandingForm, setBrandingForm] = useState<BrandingFormState>({
         logoUrl: '',
         facebookUrl: '',
         instagramUrl: '',
         linkedinUrl: '',
     });
+    const [brandingErrors, setBrandingErrors] = useState<BrandingErrorsState>({});
+    const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
     useEffect(() => {
         latestShowToast.current = showToast;
@@ -1536,6 +1552,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                 instagramUrl: profile?.instagram_url ?? '',
                 linkedinUrl: profile?.linkedin_url ?? '',
             });
+            setBrandingErrors({});
         }
 
         setEditingSection(section);
@@ -1640,20 +1657,161 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         }
     };
 
+    const handleLogoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (isUploadingLogo) {
+            event.target.value = '';
+            return;
+        }
+
+        const file = event.target.files?.[0];
+
+        if (!file) {
+            return;
+        }
+
+        setBrandingErrors((previous) => ({ ...previous, logo: undefined }));
+
+        if (!userId) {
+            latestShowToast.current?.('You must be logged in to upload a logo.', 'error');
+            event.target.value = '';
+            return;
+        }
+
+        const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/webp'];
+        if (!allowedMimeTypes.includes(file.type)) {
+            setBrandingErrors((previous) => ({ ...previous, logo: 'Logo must be a PNG, JPEG, or WEBP file.' }));
+            event.target.value = '';
+            return;
+        }
+
+        const maxBytes = 5 * 1024 * 1024;
+        if (file.size > maxBytes) {
+            setBrandingErrors((previous) => ({ ...previous, logo: 'Logo must be 5 MB or smaller.' }));
+            event.target.value = '';
+            return;
+        }
+
+        setIsUploadingLogo(true);
+
+        const extensionFromMime: Record<string, string> = {
+            'image/png': 'png',
+            'image/jpeg': 'jpg',
+            'image/webp': 'webp',
+        };
+
+        const fileExtension = extensionFromMime[file.type] ?? file.name.split('.').pop()?.toLowerCase() ?? 'png';
+        const filePath = `profiles/${userId}/logo-${Date.now()}.${fileExtension}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('profile-logos')
+            .upload(filePath, file, { upsert: true, contentType: file.type });
+
+        if (uploadError) {
+            console.error('Logo upload failed', uploadError);
+            setBrandingErrors((previous) => ({ ...previous, logo: 'Failed to upload logo. Please try again.' }));
+            latestShowToast.current?.('Failed to upload logo. Please try again.', 'error');
+            setIsUploadingLogo(false);
+            event.target.value = '';
+            return;
+        }
+
+        const { data: publicUrlData, error: publicUrlError } = supabase.storage
+            .from('profile-logos')
+            .getPublicUrl(filePath);
+
+        if (publicUrlError || !publicUrlData?.publicUrl) {
+            console.error('Failed to retrieve logo URL', publicUrlError);
+            setBrandingErrors((previous) => ({ ...previous, logo: 'Failed to retrieve logo URL. Please try again.' }));
+            latestShowToast.current?.('Failed to retrieve logo URL. Please try again.', 'error');
+            setIsUploadingLogo(false);
+            event.target.value = '';
+            return;
+        }
+
+        const success = await persistProfileUpdate({ logo_url: publicUrlData.publicUrl }, 'Logo updated.');
+
+        if (success) {
+            setBrandingForm((previous) => ({ ...previous, logoUrl: publicUrlData.publicUrl }));
+            setBrandingErrors((previous) => ({ ...previous, logo: undefined }));
+        } else {
+            setBrandingErrors((previous) => ({ ...previous, logo: 'Failed to save logo. Please try again.' }));
+        }
+
+        setIsUploadingLogo(false);
+        event.target.value = '';
+    };
+
+    const handleLogoRemove = async () => {
+        if (isUploadingLogo) {
+            return;
+        }
+
+        if (!userId) {
+            latestShowToast.current?.('You must be logged in to update your logo.', 'error');
+            return;
+        }
+
+        setBrandingErrors((previous) => ({ ...previous, logo: undefined }));
+        setIsUploadingLogo(true);
+
+        const success = await persistProfileUpdate({ logo_url: null }, 'Logo removed.');
+
+        if (success) {
+            setBrandingForm((previous) => ({ ...previous, logoUrl: '' }));
+        } else {
+            setBrandingErrors((previous) => ({ ...previous, logo: 'Failed to remove logo. Please try again.' }));
+        }
+
+        setIsUploadingLogo(false);
+    };
+
     const handleBrandingSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         setSavingSection('branding');
 
-        const trimOrNull = (value: string) => {
-            const trimmed = value.trim();
-            return trimmed.length > 0 ? trimmed : null;
-        };
+        const trimmedFacebook = brandingForm.facebookUrl.trim();
+        const trimmedInstagram = brandingForm.instagramUrl.trim();
+        const trimmedLinkedin = brandingForm.linkedinUrl.trim();
+
+        const errors: BrandingErrorsState = {};
+
+        const isValidSocialUrl = (value: string) => /^https?:\/\//i.test(value);
+
+        if (trimmedFacebook && !isValidSocialUrl(trimmedFacebook)) {
+            errors.facebookUrl = 'URL must start with http:// or https://';
+        }
+
+        if (trimmedInstagram && !isValidSocialUrl(trimmedInstagram)) {
+            errors.instagramUrl = 'URL must start with http:// or https://';
+        }
+
+        if (trimmedLinkedin && !isValidSocialUrl(trimmedLinkedin)) {
+            errors.linkedinUrl = 'URL must start with http:// or https://';
+        }
+
+        if (Object.keys(errors).length > 0) {
+            setBrandingErrors((previous) => ({
+                ...previous,
+                facebookUrl: errors.facebookUrl,
+                instagramUrl: errors.instagramUrl,
+                linkedinUrl: errors.linkedinUrl,
+            }));
+            setSavingSection(null);
+            return;
+        }
+
+        setBrandingErrors((previous) => ({
+            ...previous,
+            facebookUrl: undefined,
+            instagramUrl: undefined,
+            linkedinUrl: undefined,
+        }));
 
         const updates: Partial<PublicProfileRow> = {
-            logo_url: trimOrNull(brandingForm.logoUrl),
-            facebook_url: trimOrNull(brandingForm.facebookUrl),
-            instagram_url: trimOrNull(brandingForm.instagramUrl),
-            linkedin_url: trimOrNull(brandingForm.linkedinUrl),
+            logo_url: brandingForm.logoUrl.trim().length > 0 ? brandingForm.logoUrl.trim() : null,
+            facebook_url: trimmedFacebook || null,
+            instagram_url: trimmedInstagram || null,
+            linkedin_url: trimmedLinkedin || null,
         };
 
         const success = await persistProfileUpdate(updates, 'Branding details updated.');
@@ -2216,20 +2374,53 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
 
                     {editingSection === 'branding' ? (
                         <form className="mt-6 space-y-6" onSubmit={handleBrandingSubmit}>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="branding-logo">
-                                    Logo URL
-                                </label>
-                                <input
-                                    id="branding-logo"
-                                    type="url"
-                                    value={brandingForm.logoUrl}
-                                    onChange={(event) =>
-                                        setBrandingForm((previous) => ({ ...previous, logoUrl: event.target.value }))
-                                    }
-                                    className={profileInputClasses}
-                                    placeholder="https://yourcdn.com/logo.png"
-                                />
+                            <div className="grid grid-cols-1 gap-6 md:grid-cols-[200px,1fr]">
+                                <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-6 text-center">
+                                    {brandingForm.logoUrl ? (
+                                        <img
+                                            src={brandingForm.logoUrl}
+                                            alt="Company logo"
+                                            className="h-24 w-24 rounded-xl object-cover shadow-sm"
+                                        />
+                                    ) : (
+                                        <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-[var(--bg-card)] text-sm font-semibold text-[var(--text-muted)]">
+                                            Company logo
+                                        </div>
+                                    )}
+                                    <p className="text-sm text-[var(--text-muted)]">
+                                        {brandingForm.logoUrl
+                                            ? 'Your current logo preview.'
+                                            : 'Upload your company logo to feature it on your profile.'}
+                                    </p>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="branding-logo">
+                                            Company logo
+                                        </label>
+                                        <input
+                                            id="branding-logo"
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/webp"
+                                            onChange={handleLogoFileChange}
+                                            disabled={isUploadingLogo}
+                                            className={profileInputClasses}
+                                        />
+                                        <p className="text-xs text-[var(--text-muted)]">PNG, JPG, or WEBP up to 5 MB.</p>
+                                        {isUploadingLogo && <p className="text-xs text-[var(--text-muted)]">Uploading…</p>}
+                                        {brandingErrors.logo && <p className="text-xs text-error">{brandingErrors.logo}</p>}
+                                        {brandingForm.logoUrl && (
+                                            <button
+                                                type="button"
+                                                onClick={handleLogoRemove}
+                                                disabled={isUploadingLogo}
+                                                className="inline-flex items-center gap-2 text-sm font-semibold text-error transition hover:text-error/80 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                <TrashIcon className="h-4 w-4" /> Remove logo
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                                 <div className="space-y-2">
@@ -2240,11 +2431,16 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                         id="branding-facebook"
                                         type="url"
                                         value={brandingForm.facebookUrl}
-                                        onChange={(event) =>
-                                            setBrandingForm((previous) => ({ ...previous, facebookUrl: event.target.value }))
-                                        }
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            setBrandingForm((previous) => ({ ...previous, facebookUrl: value }));
+                                            setBrandingErrors((previous) => ({ ...previous, facebookUrl: undefined }));
+                                        }}
                                         className={profileInputClasses}
                                     />
+                                    {brandingErrors.facebookUrl && (
+                                        <p className="text-xs text-error">{brandingErrors.facebookUrl}</p>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="branding-instagram">
@@ -2254,11 +2450,16 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                         id="branding-instagram"
                                         type="url"
                                         value={brandingForm.instagramUrl}
-                                        onChange={(event) =>
-                                            setBrandingForm((previous) => ({ ...previous, instagramUrl: event.target.value }))
-                                        }
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            setBrandingForm((previous) => ({ ...previous, instagramUrl: value }));
+                                            setBrandingErrors((previous) => ({ ...previous, instagramUrl: undefined }));
+                                        }}
                                         className={profileInputClasses}
                                     />
+                                    {brandingErrors.instagramUrl && (
+                                        <p className="text-xs text-error">{brandingErrors.instagramUrl}</p>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium text-[var(--text-muted)]" htmlFor="branding-linkedin">
@@ -2268,11 +2469,16 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                         id="branding-linkedin"
                                         type="url"
                                         value={brandingForm.linkedinUrl}
-                                        onChange={(event) =>
-                                            setBrandingForm((previous) => ({ ...previous, linkedinUrl: event.target.value }))
-                                        }
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            setBrandingForm((previous) => ({ ...previous, linkedinUrl: value }));
+                                            setBrandingErrors((previous) => ({ ...previous, linkedinUrl: undefined }));
+                                        }}
                                         className={profileInputClasses}
                                     />
+                                    {brandingErrors.linkedinUrl && (
+                                        <p className="text-xs text-error">{brandingErrors.linkedinUrl}</p>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex justify-end gap-3">
@@ -2299,15 +2505,15 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                     <img
                                         src={profile.logo_url}
                                         alt="Company logo"
-                                        className="h-20 w-20 rounded-full object-cover shadow-sm"
+                                        className="h-24 w-24 rounded-xl object-cover shadow-sm"
                                     />
                                 ) : (
-                                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
-                                        Logo
+                                    <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-[var(--bg-card)] text-sm font-semibold text-[var(--text-muted)]">
+                                        Company logo
                                     </div>
                                 )}
                                 <p className="text-sm text-[var(--text-muted)]">
-                                    {profile?.logo_url ? 'Logo preview from your link.' : 'Add a logo URL to personalize your profile.'}
+                                    {profile?.logo_url ? 'Logo preview from your upload.' : 'Upload a logo to personalize your profile.'}
                                 </p>
                             </div>
                             <div className="space-y-3">
