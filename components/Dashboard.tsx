@@ -22,6 +22,7 @@ import {
     SERVICE_REQUEST_TYPE_OPTIONS,
 } from '../constants';
 import { supabase } from '@/lib/supabase';
+import { normalizeWebsiteUrl, isLikelyValidWebsite } from '@/lib/urlHelpers';
 import type { PostgrestError } from '@supabase/supabase-js';
 
 // --- Reusable Components ---
@@ -1697,6 +1698,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         country: '',
         websiteUrl: '',
     });
+    const [contactErrors, setContactErrors] = useState<{ websiteUrl?: string }>({});
     const [servicesForm, setServicesForm] = useState<ServicesFormState>({
         serviceAreasText: '',
         selectedSpecialties: [],
@@ -1891,6 +1893,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                 country: profile?.country ?? '',
                 websiteUrl: profile?.website_url ?? '',
             });
+            setContactErrors({});
         } else if (section === 'services') {
             const serviceAreas = profile?.service_areas ?? [];
             const services = profile?.services ?? [];
@@ -1971,8 +1974,22 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
     const handleContactSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         setSavingSection('contact');
+        setContactErrors({});
 
-        const websiteUrl = contactForm.websiteUrl.trim();
+        const websiteInput = contactForm.websiteUrl.trim();
+        let normalizedWebsite: string | null = null;
+
+        if (websiteInput.length > 0) {
+            if (!isLikelyValidWebsite(websiteInput)) {
+                setContactErrors({
+                    websiteUrl: 'Please enter a valid website like yourcompany.com or https://yourcompany.com.',
+                });
+                setSavingSection(null);
+                return;
+            }
+
+            normalizedWebsite = normalizeWebsiteUrl(websiteInput);
+        }
 
         const updates: Partial<PublicProfileRow> = {
             phone: contactForm.phone.trim() || null,
@@ -1981,7 +1998,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
             state: contactForm.state.trim() || null,
             postal_code: contactForm.postalCode.trim() || null,
             country: contactForm.country.trim() || null,
-            website_url: websiteUrl.length > 0 ? websiteUrl : null,
+            website_url: normalizedWebsite,
         };
 
         const success = await persistProfileUpdate(updates, 'Contact details updated.');
@@ -2326,6 +2343,14 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
             ? `${profile.years_in_business} ${profile.years_in_business === 1 ? 'year' : 'years'} in business`
             : 'Years in business not set';
 
+    const normalizedWebsiteUrl = useMemo(
+        () => normalizeWebsiteUrl(profile?.website_url ?? null),
+        [profile?.website_url],
+    );
+    const websiteDisplayLabel = normalizedWebsiteUrl
+        ? normalizedWebsiteUrl.replace(/^https?:\/\//i, '')
+        : null;
+
     return (
         <div className="animate-fade-in space-y-8">
             <div className="space-y-2">
@@ -2611,14 +2636,26 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                     </label>
                                     <input
                                         id="contact-website"
-                                        type="url"
+                                        type="text"
                                         value={contactForm.websiteUrl}
-                                        onChange={(event) =>
-                                            setContactForm((previous) => ({ ...previous, websiteUrl: event.target.value }))
-                                        }
-                                        className={profileInputClasses}
-                                        placeholder="https://example.com"
+                                        onChange={(event) => {
+                                            const nextValue = event.target.value;
+                                            setContactForm((previous) => ({ ...previous, websiteUrl: nextValue }));
+                                            if (contactErrors.websiteUrl) {
+                                                setContactErrors((previous) => ({ ...previous, websiteUrl: undefined }));
+                                            }
+                                        }}
+                                        className={`${profileInputClasses} ${
+                                            contactErrors.websiteUrl ? 'border-error focus:border-error' : ''
+                                        }`}
+                                        placeholder="yourcompany.com"
                                     />
+                                    <p className="text-xs text-[var(--text-muted)]">
+                                        We’ll automatically add https:// for you. Just enter your domain.
+                                    </p>
+                                    {contactErrors.websiteUrl && (
+                                        <p className="text-xs font-semibold text-error">{contactErrors.websiteUrl}</p>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex justify-end gap-3">
@@ -2654,14 +2691,14 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">Website URL</p>
-                                {profile?.website_url ? (
+                                {normalizedWebsiteUrl ? (
                                     <a
-                                        href={profile.website_url}
+                                        href={normalizedWebsiteUrl}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="mt-1 block text-lg font-semibold text-[var(--accent-dark)] hover:underline"
                                     >
-                                        {profile.website_url}
+                                        {websiteDisplayLabel ?? normalizedWebsiteUrl}
                                     </a>
                                 ) : (
                                     <p className="mt-1 text-lg text-[var(--text-main)]">N/A</p>
@@ -3207,23 +3244,23 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                 <p className="text-sm text-[var(--text-main)] whitespace-pre-line">{profile.about}</p>
                             )}
                             <div className="flex flex-wrap gap-2 text-sm">
-                                <span className="rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-[var(--text-muted)]">
-                                    {documentsError
-                                        ? 'License status unavailable'
-                                        : hasApprovedLicense
-                                            ? 'License verified'
-                                            : hasPendingLicense
-                                                ? 'License pending review'
-                                                : 'License not provided'}
+                                <span
+                                    className={`rounded-full px-3 py-1 font-semibold ${
+                                        hasApprovedLicense
+                                            ? 'bg-success/10 text-success'
+                                            : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+                                    }`}
+                                >
+                                    {hasApprovedLicense ? 'License verified' : 'License not verified'}
                                 </span>
-                                <span className="rounded-full bg-[var(--bg-subtle)] px-3 py-1 text-[var(--text-muted)]">
-                                    {documentsError
-                                        ? 'Insurance status unavailable'
-                                        : hasApprovedInsurance
-                                            ? 'Insurance on file'
-                                            : hasPendingInsurance
-                                                ? 'Insurance pending review'
-                                                : 'Insurance not provided'}
+                                <span
+                                    className={`rounded-full px-3 py-1 font-semibold ${
+                                        hasApprovedInsurance
+                                            ? 'bg-success/10 text-success'
+                                            : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+                                    }`}
+                                >
+                                    {hasApprovedInsurance ? 'Insurance verified' : 'Insurance not provided'}
                                 </span>
                             </div>
                             <div>
@@ -3238,6 +3275,19 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                         : 'Add specialties to showcase your expertise'}
                                 </p>
                             </div>
+                            {normalizedWebsiteUrl && (
+                                <div>
+                                    <p className="text-sm font-semibold text-[var(--text-muted)]">Website</p>
+                                    <a
+                                        href={normalizedWebsiteUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-sm font-semibold text-[var(--accent-dark)] hover:underline"
+                                    >
+                                        {websiteDisplayLabel ?? normalizedWebsiteUrl}
+                                    </a>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </Card>
@@ -3245,11 +3295,19 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                 <Card className="border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)]">
                     <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Public Profile Card</h2>
                     <p className="mt-2 text-sm text-[var(--text-muted)]">
-                        Upload a logo and complete your address to generate your Restoration Expertise profile card.
+                        Soon you’ll be able to download a one-sheet profile card with your logo, featured services, and
+                        verification badges to drop into proposals, emails, and presentations.
                     </p>
                     <p className="mt-2 text-sm text-[var(--text-muted)]">
-                        Once ready, you'll be able to download a shareable one-sheet to showcase on your proposals and website.
+                        We’re putting the finishing touches on this export experience—stay tuned.
                     </p>
+                    <button
+                        type="button"
+                        disabled
+                        className="mt-4 inline-flex items-center rounded-full bg-[var(--border-subtle)]/60 px-4 py-2 text-sm font-semibold text-[var(--text-muted)] cursor-not-allowed"
+                    >
+                        Profile card coming soon
+                    </button>
                 </Card>
             </div>
         </div>
