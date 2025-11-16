@@ -7,7 +7,7 @@ export interface Benefit {
   title: string;
   description: string;
   icon: string; // Placeholder for icon component name
-  quota?: number;
+  quota?: number | null;
   used?: number;
   nextDate?: string;
   status?: 'Active' | 'Inactive';

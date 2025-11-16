@@ -23,6 +23,8 @@ import {
 } from '../constants';
 import { supabase } from '@/lib/supabase';
 import { normalizeWebsiteUrl, isLikelyValidWebsite } from '@/lib/urlHelpers';
+import { REQUEST_TYPE_SEO_BLOG, type SeoBlogPeriod } from '@/config/benefits';
+import { useSeoBlogUsage } from '@/hooks/useSeoBlogUsage';
 import type { PostgrestError } from '@supabase/supabase-js';
 
 // --- Reusable Components ---
@@ -179,6 +181,13 @@ type DashboardServiceRequest = {
     status: DashboardServiceRequestStatus;
     createdAt: string | null;
     priority?: string | null;
+};
+
+type SeoBlogPostRequestFormValues = {
+    topic: string;
+    keyword?: string;
+    url?: string;
+    notes?: string;
 };
 
 interface SupabaseProfile {
@@ -3939,8 +3948,9 @@ const MemberDocuments: React.FC<{
     );
 };
 const BenefitDetailModal: React.FC<{ benefit: Benefit; onClose: () => void; onRequest: (title: string) => void; }> = ({ benefit, onClose, onRequest }) => {
-    const progressPercent = benefit.quota && benefit.used ? (benefit.used / benefit.quota) * 100 : 0;
-    const canRequest = benefit.quota !== undefined && benefit.used !== undefined && benefit.used < benefit.quota;
+    const hasUsage = benefit.quota !== undefined && benefit.quota !== null && benefit.used !== undefined;
+    const progressPercent = hasUsage && benefit.quota ? (benefit.used! / benefit.quota) * 100 : 0;
+    const canRequest = hasUsage && benefit.quota !== undefined && benefit.quota !== null && benefit.used! < benefit.quota;
 
     return (
         <div className="fixed inset-0 bg-[var(--bg-overlay)] flex items-center justify-center z-50 p-4 animate-fade-in" onClick={onClose}>
@@ -3952,7 +3962,7 @@ const BenefitDetailModal: React.FC<{ benefit: Benefit; onClose: () => void; onRe
                     <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)] mb-2">{benefit.title}</h2>
                     <p className="text-[var(--text-muted)] text-lg">{benefit.description}</p>
                     
-                    {benefit.quota !== undefined && benefit.used !== undefined && (
+                    {hasUsage && (
                         <div className="mt-6">
                             <h3 className="font-semibold text-[var(--text-main)] mb-2">Current Usage</h3>
                             <div className="flex justify-between text-sm font-medium text-[var(--text-muted)] mb-1">
@@ -3991,8 +4001,9 @@ const BenefitDetailModal: React.FC<{ benefit: Benefit; onClose: () => void; onRe
 const UsageOverviewChart: React.FC<{ benefits: Benefit[] }> = ({ benefits }) => {
     const { totalUsed, totalQuota, usagePercent, readableBenefits } = useMemo(() => {
         const trackableBenefits = benefits.filter(b => b.quota !== undefined && b.used !== undefined);
-        const totalUsed = trackableBenefits.reduce((sum, b) => sum + (b.used || 0), 0);
-        const totalQuota = trackableBenefits.reduce((sum, b) => sum + (b.quota || 0), 0);
+        const numericBenefits = trackableBenefits.filter(b => typeof b.quota === 'number' && b.quota !== null && b.quota > 0);
+        const totalUsed = numericBenefits.reduce((sum, b) => sum + (b.used || 0), 0);
+        const totalQuota = numericBenefits.reduce((sum, b) => sum + (typeof b.quota === 'number' ? b.quota : 0), 0);
         const usagePercent = totalQuota > 0 ? (totalUsed / totalQuota) * 100 : 0;
         return { totalUsed, totalQuota, usagePercent, readableBenefits: trackableBenefits };
     }, [benefits]);
@@ -4024,7 +4035,7 @@ const UsageOverviewChart: React.FC<{ benefits: Benefit[] }> = ({ benefits }) => 
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center font-bold text-[var(--text-main)]">
                         <span className="font-playfair text-3xl">{totalUsed}</span>
-                        <span className="text-lg text-[var(--text-muted)]">/ {totalQuota} Used</span>
+                        <span className="text-lg text-[var(--text-muted)]">{totalQuota > 0 ? `/ ${totalQuota} Used` : 'Usage'}</span>
                     </div>
                 </div>
                 <div className="w-full">
@@ -4033,10 +4044,29 @@ const UsageOverviewChart: React.FC<{ benefits: Benefit[] }> = ({ benefits }) => 
                              <li key={b.title} className="text-sm">
                                  <div className="flex justify-between font-medium">
                                      <span>{b.title}</span>
-                                     <span className="text-[var(--text-muted)]">{b.used}/{b.quota}</span>
+                                     <span className="text-[var(--text-muted)]">
+                                         {b.quota === null
+                                             ? `${b.used ?? 0} / Unlimited`
+                                             : typeof b.quota === 'number'
+                                                 ? `${b.used ?? 0} / ${b.quota}`
+                                                 : `${b.used ?? 0}`}
+                                     </span>
                                  </div>
                                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                                     <div className="bg-[var(--accent)] h-1.5 rounded-full" style={{ width: `${(b.used! / b.quota!) * 100}%`}}></div>
+                                     <div
+                                         className="bg-[var(--accent)] h-1.5 rounded-full"
+                                         style={{
+                                             width: `${(() => {
+                                                 if (b.quota === null) {
+                                                     return 100;
+                                                 }
+                                                 if (!b.quota || typeof b.quota !== 'number' || b.quota <= 0 || b.used === undefined) {
+                                                     return 0;
+                                                 }
+                                                 return Math.min(100, (b.used / b.quota) * 100);
+                                             })()}%`,
+                                         }}
+                                     ></div>
                                  </div>
                              </li>
                         ))}
@@ -4044,6 +4074,119 @@ const UsageOverviewChart: React.FC<{ benefits: Benefit[] }> = ({ benefits }) => 
                 </div>
             </div>
         </Card>
+    );
+};
+
+const SeoBlogPostRequestModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (values: SeoBlogPostRequestFormValues) => void;
+    isSubmitting: boolean;
+    usageSummary: { used: number; limit: number | null; period: SeoBlogPeriod };
+}> = ({ isOpen, onClose, onSubmit, isSubmitting, usageSummary }) => {
+    const [formValues, setFormValues] = useState<SeoBlogPostRequestFormValues>({ topic: '', keyword: '', url: '', notes: '' });
+    const [formError, setFormError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setFormValues({ topic: '', keyword: '', url: '', notes: '' });
+            setFormError(null);
+        }
+    }, [isOpen]);
+
+    if (!isOpen) {
+        return null;
+    }
+
+    const handleSubmit = (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!formValues.topic.trim()) {
+            setFormError('Please provide a topic or working title.');
+            return;
+        }
+        setFormError(null);
+        onSubmit(formValues);
+    };
+
+    const usageLabel = (() => {
+        if (usageSummary.limit === null) {
+            return `${usageSummary.used} used · Unlimited plan`;
+        }
+        if (usageSummary.limit === 0) {
+            return 'No SEO blog posts included in this plan.';
+        }
+        const remaining = Math.max((usageSummary.limit ?? 0) - usageSummary.used, 0);
+        const windowLabel = usageSummary.period === 'year' ? 'year' : 'month';
+        return `${remaining} remaining this ${windowLabel}`;
+    })();
+
+    return (
+        <div className="fixed inset-0 bg-[var(--bg-overlay)] flex items-center justify-center z-50 p-4 animate-fade-in" onClick={onClose}>
+            <div className="bg-[var(--bg-card)] rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto relative animate-slide-up" onClick={e => e.stopPropagation()}>
+                <div className="p-6 sm:p-8">
+                    <button onClick={onClose} className="absolute top-4 right-4 text-[var(--text-muted)] hover:text-[var(--text-main)]">
+                        <XMarkIcon className="w-8 h-8" />
+                    </button>
+                    <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-2">Request an SEO Blog Post</h2>
+                    <p className="text-sm text-[var(--text-muted)] mb-4">{usageLabel}</p>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-semibold text-[var(--text-main)] mb-1">Post topic / working title *</label>
+                            <input
+                                type="text"
+                                value={formValues.topic}
+                                onChange={(event) => setFormValues((prev) => ({ ...prev, topic: event.target.value }))}
+                                className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                                placeholder="e.g. Top Water Damage Prevention Tips"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-[var(--text-main)] mb-1">Target service / keyword</label>
+                            <input
+                                type="text"
+                                value={formValues.keyword ?? ''}
+                                onChange={(event) => setFormValues((prev) => ({ ...prev, keyword: event.target.value }))}
+                                className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                                placeholder="e.g. basement flooding cleanup"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-[var(--text-main)] mb-1">Target URL</label>
+                            <input
+                                type="url"
+                                value={formValues.url ?? ''}
+                                onChange={(event) => setFormValues((prev) => ({ ...prev, url: event.target.value }))}
+                                className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                                placeholder="https://yourdomain.com/services/water-damage"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-[var(--text-main)] mb-1">Notes for our writers</label>
+                            <textarea
+                                value={formValues.notes ?? ''}
+                                onChange={(event) => setFormValues((prev) => ({ ...prev, notes: event.target.value }))}
+                                rows={4}
+                                className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                                placeholder="Share any angles, internal resources, or calls-to-action we should highlight."
+                            />
+                        </div>
+                        {formError && <p className="text-sm text-error">{formError}</p>}
+                        <div className="flex flex-col sm:flex-row justify-end gap-3 pt-2">
+                            <button type="button" onClick={onClose} className="w-full sm:w-auto py-2.5 px-6 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="w-full sm:w-auto py-2.5 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)] disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                                {isSubmitting ? 'Submitting...' : 'Submit request'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     );
 };
 
@@ -4149,14 +4292,63 @@ const useCurrentPlanData = () => {
 };
 
 const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
-    const { currentUser, updateUser } = useAuth();
+    const { currentUser, updateUser, session } = useAuth();
     const [localBenefits, setLocalBenefits] = useState(currentUser?.benefits || []);
     const [selectedBenefit, setSelectedBenefit] = useState<Benefit | null>(null);
+    const [isSeoRequestModalOpen, setSeoRequestModalOpen] = useState(false);
+    const [isSubmittingSeoRequest, setIsSubmittingSeoRequest] = useState(false);
     const { profile, membership, subscription, isLoading: isPlanLoading, error: planError } = useCurrentPlanData();
+    const SEO_BLOG_BENEFIT_TITLE = 'SEO Blog Posts';
+
+    const profileId = profile?.id ?? session?.user?.id ?? null;
+    const {
+        loading: seoUsageLoading,
+        error: seoUsageError,
+        used: seoPostsUsed,
+        limit: seoPostsLimit,
+        period: seoUsagePeriod,
+        refresh: refreshSeoUsage,
+    } = useSeoBlogUsage(profileId);
+
+    const hasSeoQuota = seoPostsLimit === null || (seoPostsLimit ?? 0) > 0;
+    const hasReachedSeoLimit = Boolean(
+        hasSeoQuota &&
+        seoPostsLimit !== null &&
+        typeof seoPostsLimit === 'number' &&
+        seoPostsLimit > 0 &&
+        seoPostsUsed >= seoPostsLimit,
+    );
 
     useEffect(() => {
         setLocalBenefits(currentUser?.benefits || []);
     }, [currentUser?.benefits]);
+
+    const normalizedBenefits = useMemo(() => {
+        return localBenefits.map((benefit) => {
+            if (benefit.title !== SEO_BLOG_BENEFIT_TITLE) {
+                return benefit;
+            }
+            return {
+                ...benefit,
+                quota: seoPostsLimit,
+                used: seoPostsUsed,
+            };
+        });
+    }, [localBenefits, seoPostsLimit, seoPostsUsed]);
+
+    const seoUsageDetails = {
+        loading: seoUsageLoading,
+        error: seoUsageError,
+        used: seoPostsUsed,
+        limit: seoPostsLimit,
+        period: seoUsagePeriod,
+    };
+
+    const seoRequestDisabledMessage = !hasSeoQuota
+        ? 'No SEO blog posts included in this plan.'
+        : hasReachedSeoLimit
+            ? 'You’ve reached your SEO blog post limit for this period.'
+            : undefined;
 
     if (!currentUser) return null;
 
@@ -4245,9 +4437,77 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
         setSelectedBenefit(null);
     };
 
+    const handleSeoRequestClick = () => {
+        if (!profileId) {
+            showToast('We couldn’t find your member profile. Please contact support.', 'error');
+            return;
+        }
+
+        if (!hasSeoQuota) {
+            showToast('Upgrade your plan to unlock SEO blog post requests.', 'error');
+            return;
+        }
+
+        if (hasReachedSeoLimit) {
+            showToast('You’ve reached your SEO blog post limit for this period.', 'error');
+            return;
+        }
+
+        setSeoRequestModalOpen(true);
+    };
+
+    const handleSeoRequestSubmit = async (values: SeoBlogPostRequestFormValues) => {
+        if (!profileId) {
+            showToast('We couldn’t find your member profile. Please contact support.', 'error');
+            return;
+        }
+
+        const trimmedTopic = values.topic.trim();
+        if (!trimmedTopic) {
+            showToast('Please provide a topic for your SEO blog post.', 'error');
+            return;
+        }
+
+        setIsSubmittingSeoRequest(true);
+        try {
+            const descriptionParts = [
+                values.keyword ? `Target service / keyword: ${values.keyword}` : null,
+                values.url ? `Target URL: ${values.url}` : null,
+                values.notes ? `Notes: ${values.notes}` : null,
+            ].filter(Boolean) as string[];
+
+            const description = descriptionParts.length > 0 ? descriptionParts.join('\n') : null;
+
+            const { error } = await supabase.from('service_requests').insert({
+                profile_id: profileId,
+                request_type: REQUEST_TYPE_SEO_BLOG,
+                title: trimmedTopic,
+                description,
+                status: 'open',
+                priority: 'normal',
+                source: 'member_portal',
+                consumes_blog_post_quota: true,
+            });
+
+            if (error) {
+                throw error;
+            }
+
+            showToast('SEO blog post request submitted.', 'success');
+            setSeoRequestModalOpen(false);
+            refreshSeoUsage();
+        } catch (error) {
+            console.error('Failed to submit SEO blog post request', error);
+            showToast('Unable to submit your SEO blog post request. Please try again.', 'error');
+        } finally {
+            setIsSubmittingSeoRequest(false);
+        }
+    };
+
     const BenefitCard: React.FC<{ benefit: Benefit, onClick: () => void }> = ({ benefit, onClick }) => {
         const Icon = iconMap[benefit.icon];
-        const progressPercent = benefit.quota && benefit.used ? (benefit.used / benefit.quota) * 100 : 0;
+        const hasUsage = benefit.quota !== undefined && benefit.quota !== null && benefit.used !== undefined;
+        const progressPercent = hasUsage && benefit.quota ? (benefit.used! / benefit.quota) * 100 : 0;
 
         return (
             <Card onClick={onClick} className="flex flex-col">
@@ -4261,7 +4521,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                     </div>
                 </div>
                 <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] flex-grow">
-                    {benefit.quota !== undefined && benefit.used !== undefined && (
+                    {hasUsage && (
                         <div>
                             <div className="flex justify-between text-sm font-medium text-[var(--text-muted)] mb-1">
                                 <span>Usage</span>
@@ -4276,13 +4536,105 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                     {benefit.status && <p className="text-sm font-semibold text-[var(--text-main)]">Status: <span className="font-normal text-success">{benefit.status}</span></p>}
                     {benefit.isIncluded && <p className="text-sm font-semibold text-success flex items-center gap-1"><CheckCircleIcon className="w-4 h-4" /> Included in your plan</p>}
                 </div>
-                {benefit.quota !== undefined && (
+                {benefit.quota !== undefined && benefit.quota !== null && (
                     <div className="mt-4 text-right">
                         <button onClick={(e) => { e.stopPropagation(); onClick(); }} className="py-2 px-4 bg-[var(--accent)] text-[var(--accent-text)] font-bold text-sm rounded-lg shadow-sm hover:bg-[var(--accent-light)]">
                             Request Now
                         </button>
                     </div>
                 )}
+            </Card>
+        );
+    };
+
+    const SeoBlogBenefitCard: React.FC<{
+        benefit: Benefit;
+        usage: typeof seoUsageDetails;
+        onRequest: () => void;
+        canRequest: boolean;
+        disabledMessage?: string;
+    }> = ({ benefit, usage, onRequest, canRequest, disabledMessage }) => {
+        const Icon = iconMap[benefit.icon];
+
+        const usageSummary = () => {
+            if (usage.loading) {
+                return 'Loading usage...';
+            }
+            if (usage.error) {
+                return usage.error;
+            }
+            if (usage.limit === 0) {
+                return 'No SEO blog posts included in this plan.';
+            }
+            if (usage.limit === null) {
+                return `${usage.used} used · Unlimited plan`;
+            }
+            return `${usage.used} of ${usage.limit} used`;
+        };
+
+        const progressPercent = (() => {
+            if (usage.loading) {
+                return 0;
+            }
+            if (usage.limit === null) {
+                return 100;
+            }
+            if (!usage.limit || usage.limit <= 0) {
+                return 0;
+            }
+            if (usage.limit > 0) {
+                return Math.min(100, (usage.used / usage.limit) * 100);
+            }
+            return 0;
+        })();
+
+        const periodLabel = usage.period === 'year' ? 'per year' : 'per month';
+        const requestDisabled = usage.loading || !canRequest || Boolean(disabledMessage);
+
+        return (
+            <Card className="flex flex-col">
+                <div className="flex items-start gap-4">
+                    <div className="bg-[var(--accent-bg-subtle)] text-[var(--accent-dark)] p-3 rounded-full">
+                        {Icon && <Icon className="w-6 h-6" />}
+                    </div>
+                    <div>
+                        <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{benefit.title}</h3>
+                        <p className="text-sm text-[var(--text-muted)] mt-1">{benefit.description}</p>
+                    </div>
+                </div>
+                <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] flex-grow space-y-3">
+                    <div>
+                        <div className="flex justify-between text-sm font-medium text-[var(--text-muted)] mb-1">
+                            <span>Usage</span>
+                            <span>{usageSummary()}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                            <div className="bg-[var(--accent)] h-2.5 rounded-full" style={{ width: `${progressPercent}%` }}></div>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] mt-1">Resets {periodLabel}</p>
+                    </div>
+                    {usage.error && !usage.loading && (
+                        <p className="text-sm text-error">{usage.error}</p>
+                    )}
+                    {disabledMessage && (
+                        <p className="text-sm text-[var(--text-muted)]">{disabledMessage}</p>
+                    )}
+                </div>
+                <div className="mt-4 text-right">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (requestDisabled) {
+                                return;
+                            }
+                            onRequest();
+                        }}
+                        disabled={requestDisabled}
+                        className="py-2 px-4 bg-[var(--accent)] text-[var(--accent-text)] font-bold text-sm rounded-lg shadow-sm hover:bg-[var(--accent-light)] disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        Request Now
+                    </button>
+                </div>
             </Card>
         );
     };
@@ -4324,12 +4676,26 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
             </Card>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {localBenefits.map((benefit, index) => (
-                    <BenefitCard key={index} benefit={benefit} onClick={() => setSelectedBenefit(benefit)} />
-                ))}
+                {normalizedBenefits.map((benefit, index) => {
+                    if (benefit.title === SEO_BLOG_BENEFIT_TITLE) {
+                        return (
+                            <SeoBlogBenefitCard
+                                key={`${benefit.title}-${index}`}
+                                benefit={benefit}
+                                usage={seoUsageDetails}
+                                onRequest={handleSeoRequestClick}
+                                canRequest={Boolean(profileId && hasSeoQuota && !hasReachedSeoLimit)}
+                                disabledMessage={seoRequestDisabledMessage}
+                            />
+                        );
+                    }
+                    return (
+                        <BenefitCard key={`${benefit.title}-${index}`} benefit={benefit} onClick={() => setSelectedBenefit(benefit)} />
+                    );
+                })}
             </div>
 
-            <UsageOverviewChart benefits={localBenefits} />
+            <UsageOverviewChart benefits={normalizedBenefits} />
             
             <div className="bg-gradient-to-r from-gold to-gold-dark text-charcoal p-8 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-6">
                 <div className="text-center md:text-left">
@@ -4342,12 +4708,19 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
             </div>
             
             {selectedBenefit && (
-                <BenefitDetailModal 
-                    benefit={localBenefits.find(b => b.title === selectedBenefit.title) || selectedBenefit} 
-                    onClose={() => setSelectedBenefit(null)} 
+                <BenefitDetailModal
+                    benefit={normalizedBenefits.find(b => b.title === selectedBenefit.title) || selectedBenefit}
+                    onClose={() => setSelectedBenefit(null)}
                     onRequest={handleRequestBenefit}
                 />
             )}
+            <SeoBlogPostRequestModal
+                isOpen={isSeoRequestModalOpen}
+                onClose={() => setSeoRequestModalOpen(false)}
+                onSubmit={handleSeoRequestSubmit}
+                isSubmitting={isSubmittingSeoRequest}
+                usageSummary={seoUsageDetails}
+            />
         </div>
     );
 };
