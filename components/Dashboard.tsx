@@ -3286,11 +3286,6 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                     <h3 className="text-xl font-semibold text-[var(--text-main)]">
                                         {profile?.company_name || profile?.dba_name || 'Your Business Name'}
                                     </h3>
-                                    {isVerifiedBusiness && (
-                                        <span className="inline-flex items-center rounded-full bg-[var(--accent)] px-3 py-1 text-sm font-semibold text-[var(--accent-text)]">
-                                            Verified business
-                                        </span>
-                                    )}
                                 </div>
                                 {hasYearsInBusinessValue && (
                                     <p className="text-sm text-[var(--text-muted)]">{yearsInBusinessLabel}</p>
@@ -3300,6 +3295,11 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                 <p className="text-sm text-[var(--text-main)] whitespace-pre-line">{profile.about}</p>
                             )}
                             <div className="flex flex-wrap gap-2 text-sm">
+                                {isVerifiedBusiness && (
+                                    <span className="inline-flex items-center rounded-full bg-success px-3 py-1 font-semibold text-white shadow-sm">
+                                        Verified business
+                                    </span>
+                                )}
                                 <span
                                     className={`rounded-full px-3 py-1 font-semibold ${
                                         isLicensed
@@ -3346,7 +3346,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                     <a
                                         href={normalizedWebsiteUrl}
                                         target="_blank"
-                                        rel="noreferrer"
+                                        rel="noopener noreferrer"
                                         className="text-sm font-semibold text-[var(--accent-dark)] hover:underline"
                                     >
                                         {websiteDisplayLabel ?? normalizedWebsiteUrl}
