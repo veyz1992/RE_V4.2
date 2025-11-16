@@ -2366,10 +2366,12 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
             ? serviceAreas.join(', ')
             : [profile?.city, profile?.state].filter(Boolean).join(', ') || 'Service area not set';
 
-    const yearsInBusinessLabel =
-        profile?.years_in_business && profile.years_in_business > 0
-            ? `${profile.years_in_business} ${profile.years_in_business === 1 ? 'year' : 'years'} in business`
-            : 'Years in business not set';
+    const yearsInBusinessValue =
+        typeof profile?.years_in_business === 'number' ? profile.years_in_business : null;
+    const hasYearsInBusinessValue = Boolean(yearsInBusinessValue && yearsInBusinessValue > 0);
+    const yearsInBusinessLabel = hasYearsInBusinessValue
+        ? `${yearsInBusinessValue} ${yearsInBusinessValue === 1 ? 'year' : 'years'} in business`
+        : 'Years in business not set';
 
     const normalizedWebsiteUrl = useMemo(
         () => normalizeWebsiteUrl(profile?.website_url ?? null),
@@ -3279,11 +3281,20 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             </p>
                         </div>
                         <div className="space-y-4">
-                            <div>
-                                <h3 className="text-xl font-semibold text-[var(--text-main)]">
-                                    {profile?.company_name || profile?.dba_name || 'Your Business Name'}
-                                </h3>
-                                <p className="text-sm text-[var(--text-muted)]">{yearsInBusinessLabel}</p>
+                            <div className="space-y-1">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <h3 className="text-xl font-semibold text-[var(--text-main)]">
+                                        {profile?.company_name || profile?.dba_name || 'Your Business Name'}
+                                    </h3>
+                                    {isVerifiedBusiness && (
+                                        <span className="inline-flex items-center rounded-full bg-[var(--accent)] px-3 py-1 text-sm font-semibold text-[var(--accent-text)]">
+                                            Verified business
+                                        </span>
+                                    )}
+                                </div>
+                                {hasYearsInBusinessValue && (
+                                    <p className="text-sm text-[var(--text-muted)]">{yearsInBusinessLabel}</p>
+                                )}
                             </div>
                             {profile?.about && (
                                 <p className="text-sm text-[var(--text-main)] whitespace-pre-line">{profile.about}</p>
@@ -3316,11 +3327,6 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                 >
                                     {hasIicrcCertification ? 'IICRC certified' : 'No IICRC certifications'}
                                 </span>
-                                {isVerifiedBusiness && (
-                                    <span className="rounded-full bg-[var(--accent)] px-3 py-1 font-semibold text-[var(--accent-text)]">
-                                        Verified business
-                                    </span>
-                                )}
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">Serving</p>
