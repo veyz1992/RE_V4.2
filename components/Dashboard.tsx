@@ -24,7 +24,14 @@ import {
 import { supabase } from '@/lib/supabase';
 import { normalizeWebsiteUrl, isLikelyValidWebsite } from '@/lib/urlHelpers';
 import { REQUEST_TYPE_SEO_BLOG, type SeoBlogPeriod } from '@/config/benefits';
-import { PLAN_BENEFITS, normalizeMembershipTier, type MembershipTier, type PlanBenefits } from '@/config/membershipPlans';
+import {
+    PLAN_BENEFITS,
+    normalizeMembershipTier as normalizeLegacyMembershipTier,
+    type MembershipTier as LegacyMembershipTier,
+    type PlanBenefits,
+} from '@/config/membershipPlans';
+import PlanManagementModal from '@/components/billing/PlanManagementModal';
+import { normalizePlanTier, type MembershipTier as PlanConfigMembershipTier } from '@/config/plans';
 import type { PostgrestError } from '@supabase/supabase-js';
 
 // --- Reusable Components ---
@@ -101,7 +108,7 @@ const normalizeTierKey = (tier: string): string => {
         return 'free';
     }
 
-    return normalizeMembershipTier(tier);
+    return normalizeLegacyMembershipTier(tier);
 };
 
 const BENEFITS_BY_TIER: Record<string, OverviewState['benefits']> = {
@@ -4349,6 +4356,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
     const [selectedBenefit, setSelectedBenefit] = useState<Benefit | null>(null);
     const [isSeoRequestModalOpen, setSeoRequestModalOpen] = useState(false);
     const [isSubmittingSeoRequest, setIsSubmittingSeoRequest] = useState(false);
+    const [isPlanModalOpen, setPlanModalOpen] = useState(false);
     const { profile, membership, subscription, isLoading: isPlanLoading, error: planError } = useCurrentPlanData();
     const SEO_BLOG_BENEFIT_TITLE = 'SEO Blog Posts';
 
@@ -4370,15 +4378,17 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
     }, []);
 
     const fallbackTierLabel = currentUser?.package ?? null;
+    const planModalTierSource = profile?.membership_tier ?? membership?.tier ?? fallbackTierLabel ?? null;
+    const planManagementTier: PlanConfigMembershipTier = normalizePlanTier(planModalTierSource);
     const rawTier = membership?.tier ?? profile?.membership_tier ?? fallbackTierLabel;
-    const normalizedPlanKey = rawTier && rawTier.toLowerCase().includes('free') ? 'free' : normalizeMembershipTier(rawTier);
-    const membershipPlanTier: MembershipTier = normalizedPlanKey === 'free'
-        ? normalizeMembershipTier(null)
-        : (normalizedPlanKey as MembershipTier);
+    const normalizedPlanKey = rawTier && rawTier.toLowerCase().includes('free') ? 'free' : normalizeLegacyMembershipTier(rawTier);
+    const membershipPlanTier: LegacyMembershipTier = normalizedPlanKey === 'free'
+        ? normalizeLegacyMembershipTier(null)
+        : (normalizedPlanKey as LegacyMembershipTier);
     const currentPlan = PLAN_BENEFITS[membershipPlanTier];
     const tierKeyForRulesSource = profile?.membership_tier ?? membership?.tier ?? fallbackTierLabel ?? membershipPlanTier;
     const tierKeyForRules = typeof tierKeyForRulesSource === 'string'
-        ? normalizeMembershipTier(tierKeyForRulesSource)
+        ? normalizeLegacyMembershipTier(tierKeyForRulesSource)
         : tierKeyForRulesSource;
 
     useEffect(() => {
@@ -4941,7 +4951,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                     </div>
                     <div className="flex gap-3 self-end md:self-center">
                         <button onClick={() => showToast('Coming soon', 'success')} className="py-2.5 px-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">View Invoice</button>
-                        <button onClick={() => showToast('Coming soon', 'success')} className="py-2.5 px-5 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)]">Upgrade Plan</button>
+                        <button onClick={() => setPlanModalOpen(true)} className="py-2.5 px-5 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)]">Manage Plan</button>
                     </div>
                 </div>
             </Card>
@@ -4991,11 +5001,17 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                     <h2 className="font-playfair text-2xl font-bold">Ready to grow faster?</h2>
                     <p className="mt-1">Upgrade your membership to unlock more SEO posts, faster reviews, and exclusive member promotions.</p>
                 </div>
-                <button onClick={() => showToast('Coming soon', 'success')} className="py-3 px-8 bg-charcoal text-white font-bold rounded-lg shadow-md hover:bg-charcoal-light transition-colors whitespace-nowrap">
-                    Compare Plans
+                <button onClick={() => setPlanModalOpen(true)} className="py-3 px-8 bg-charcoal text-white font-bold rounded-lg shadow-md hover:bg-charcoal-light transition-colors whitespace-nowrap">
+                    Manage Plan
                 </button>
             </div>
             
+            <PlanManagementModal
+                isOpen={isPlanModalOpen}
+                onClose={() => setPlanModalOpen(false)}
+                currentTier={planManagementTier}
+            />
+
             {selectedBenefit && (
                 <BenefitDetailModal
                     benefit={normalizedBenefits.find(b => b.title === selectedBenefit.title) || selectedBenefit}
@@ -6586,7 +6602,7 @@ const NewRequestModal: React.FC<{
     const [priority, setPriority] = useState<ServiceRequestPriority>('normal');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formError, setFormError] = useState<string | null>(null);
-    const modalPlan = PLAN_BENEFITS[normalizeMembershipTier(currentUser?.package ?? null)];
+    const modalPlan = PLAN_BENEFITS[normalizeLegacyMembershipTier(currentUser?.package ?? null)];
 
     const benefitNote = useMemo(() => {
         if (requestType === 'seo_blog_post') {
