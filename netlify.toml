@@ -12,6 +12,11 @@
   NODE_VERSION = "18"
 
 [[redirects]]
+  from = "/api/membership/checkout"
+  to = "/.netlify/functions/membership-checkout"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
