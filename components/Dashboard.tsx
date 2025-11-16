@@ -25,7 +25,6 @@ import { supabase } from '@/lib/supabase';
 import { normalizeWebsiteUrl, isLikelyValidWebsite } from '@/lib/urlHelpers';
 import { REQUEST_TYPE_SEO_BLOG, type SeoBlogPeriod } from '@/config/benefits';
 import { PLAN_BENEFITS, normalizeMembershipTier, type MembershipTier, type PlanBenefits } from '@/config/membershipPlans';
-import { useSeoBlogUsage } from '@/hooks/useSeoBlogUsage';
 import type { PostgrestError } from '@supabase/supabase-js';
 
 // --- Reusable Components ---
@@ -4044,19 +4043,12 @@ const BenefitDetailModal: React.FC<{ benefit: Benefit; onClose: () => void; onRe
 };
 
 
-const UsageOverviewChart: React.FC<{ benefits: Benefit[] }> = ({ benefits }) => {
-    const { totalUsed, totalQuota, usagePercent, readableBenefits } = useMemo(() => {
-        const trackableBenefits = benefits.filter(b => b.quota !== undefined && b.used !== undefined);
-        const numericBenefits = trackableBenefits.filter(b => typeof b.quota === 'number' && b.quota !== null && b.quota > 0);
-        const totalUsed = numericBenefits.reduce((sum, b) => sum + (b.used || 0), 0);
-        const totalQuota = numericBenefits.reduce((sum, b) => sum + (typeof b.quota === 'number' ? b.quota : 0), 0);
-        const usagePercent = totalQuota > 0 ? (totalUsed / totalQuota) * 100 : 0;
-        return { totalUsed, totalQuota, usagePercent, readableBenefits: trackableBenefits };
-    }, [benefits]);
-
+const UsageOverviewChart: React.FC<{ seoUsed: number; seoQuota: number | null }> = ({ seoUsed, seoQuota }) => {
     const radius = 60;
     const circumference = 2 * Math.PI * radius;
+    const usagePercent = seoQuota && seoQuota > 0 ? Math.min(100, (seoUsed / seoQuota) * 100) : 0;
     const offset = circumference - (usagePercent / 100) * circumference;
+    const quotaLabel = seoQuota && seoQuota > 0 ? `${seoUsed} / ${seoQuota}` : `${seoUsed} / –`;
 
     return (
         <Card>
@@ -4080,43 +4072,21 @@ const UsageOverviewChart: React.FC<{ benefits: Benefit[] }> = ({ benefits }) => 
                         />
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center font-bold text-[var(--text-main)]">
-                        <span className="font-playfair text-3xl">{totalUsed}</span>
-                        <span className="text-lg text-[var(--text-muted)]">{totalQuota > 0 ? `/ ${totalQuota} Used` : 'Usage'}</span>
+                        <span className="font-playfair text-3xl">{seoUsed}</span>
+                        <span className="text-lg text-[var(--text-muted)]">Usage</span>
                     </div>
                 </div>
                 <div className="w-full">
-                    <ul className="space-y-2">
-                        {readableBenefits.map(b => (
-                             <li key={b.title} className="text-sm">
-                                 <div className="flex justify-between font-medium">
-                                     <span>{b.title}</span>
-                                     <span className="text-[var(--text-muted)]">
-                                         {b.quota === null
-                                             ? `${b.used ?? 0} / Unlimited`
-                                             : typeof b.quota === 'number'
-                                                 ? `${b.used ?? 0} / ${b.quota}`
-                                                 : `${b.used ?? 0}`}
-                                     </span>
-                                 </div>
-                                 <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                                     <div
-                                         className="bg-[var(--accent)] h-1.5 rounded-full"
-                                         style={{
-                                             width: `${(() => {
-                                                 if (b.quota === null) {
-                                                     return 100;
-                                                 }
-                                                 if (!b.quota || typeof b.quota !== 'number' || b.quota <= 0 || b.used === undefined) {
-                                                     return 0;
-                                                 }
-                                                 return Math.min(100, (b.used / b.quota) * 100);
-                                             })()}%`,
-                                         }}
-                                     ></div>
-                                 </div>
-                             </li>
-                        ))}
-                    </ul>
+                    <div className="flex justify-between font-medium">
+                        <span>SEO Blog Posts</span>
+                        <span className="text-[var(--text-muted)]">{quotaLabel}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                        <div
+                            className="bg-[var(--accent)] h-1.5 rounded-full"
+                            style={{ width: `${seoQuota && seoQuota > 0 ? usagePercent : 0}%` }}
+                        ></div>
+                    </div>
                 </div>
             </div>
         </Card>
@@ -4337,6 +4307,43 @@ const useCurrentPlanData = () => {
     return state;
 };
 
+const BENEFIT_KEYS = {
+    SEO_BLOG_POST: 'seo_blog_post',
+    QUARTERLY_REVIEW: 'quarterly_review',
+    TRUST_BADGE: 'trust_badge',
+    PRIORITY_SUPPORT: 'priority_support',
+    BLUEPRINT_STEPS: 'blueprint_99_steps',
+} as const;
+
+type BenefitKey = typeof BENEFIT_KEYS[keyof typeof BENEFIT_KEYS];
+
+interface BenefitRule {
+    id: string;
+    tier: string;
+    benefit_key: BenefitKey;
+    quota: number | null;
+    reset_period?: string | null;
+    included: boolean;
+    sort_order?: number | null;
+    is_active?: boolean | null;
+}
+
+interface BenefitUsageRow {
+    id: string;
+    profile_id: string;
+    benefit_key: BenefitKey;
+    period_start: string;
+    period_end: string;
+    used: number;
+}
+
+const mapResetPeriodToUsagePeriod = (resetPeriod?: string | null): SeoBlogPeriod => {
+    if (resetPeriod?.toLowerCase() === 'yearly') {
+        return 'year';
+    }
+    return 'month';
+};
+
 const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
     const { currentUser, session } = useAuth();
     const [selectedBenefit, setSelectedBenefit] = useState<Benefit | null>(null);
@@ -4346,14 +4353,21 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
     const SEO_BLOG_BENEFIT_TITLE = 'SEO Blog Posts';
 
     const profileId = profile?.id ?? session?.user?.id ?? null;
-    const {
-        loading: seoUsageLoading,
-        error: seoUsageError,
-        used: seoPostsUsed,
-        limit: seoPostsLimit,
-        period: seoUsagePeriod,
-        refresh: refreshSeoUsage,
-    } = useSeoBlogUsage(profileId);
+
+    const [benefitRules, setBenefitRules] = useState<BenefitRule[]>([]);
+    const [benefitRulesLoading, setBenefitRulesLoading] = useState(true);
+    const [benefitRulesError, setBenefitRulesError] = useState<string | null>(null);
+
+    const [seoUsageState, setSeoUsageState] = useState<{ loading: boolean; error: string | null; used: number }>(() => ({
+        loading: Boolean(profileId),
+        error: null,
+        used: 0,
+    }));
+    const [usageRefreshIndex, setUsageRefreshIndex] = useState(0);
+
+    const refreshSeoUsage = useCallback(() => {
+        setUsageRefreshIndex((previous) => previous + 1);
+    }, []);
 
     const fallbackTierLabel = currentUser?.package ?? null;
     const rawTier = membership?.tier ?? profile?.membership_tier ?? fallbackTierLabel;
@@ -4362,7 +4376,132 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
         ? normalizeMembershipTier(null)
         : (normalizedPlanKey as MembershipTier);
     const currentPlan = PLAN_BENEFITS[membershipPlanTier];
+    const tierKeyForRulesSource = profile?.membership_tier ?? membership?.tier ?? fallbackTierLabel ?? membershipPlanTier;
+    const tierKeyForRules = typeof tierKeyForRulesSource === 'string'
+        ? normalizeMembershipTier(tierKeyForRulesSource)
+        : tierKeyForRulesSource;
+
+    useEffect(() => {
+        if (!tierKeyForRules) {
+            setBenefitRules([]);
+            setBenefitRulesLoading(false);
+            return;
+        }
+
+        let isMounted = true;
+        setBenefitRulesLoading(true);
+        setBenefitRulesError(null);
+
+        const loadBenefitRules = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('benefit_rules')
+                    .select('*')
+                    .eq('tier', tierKeyForRules)
+                    .eq('is_active', true)
+                    .eq('included', true)
+                    .order('sort_order', { ascending: true });
+
+                if (error) {
+                    throw error;
+                }
+
+                if (!isMounted) {
+                    return;
+                }
+
+                setBenefitRules((data as BenefitRule[]) ?? []);
+                setBenefitRulesLoading(false);
+            } catch (error) {
+                console.error('Failed to load benefit rules', error);
+                if (!isMounted) {
+                    return;
+                }
+                setBenefitRules([]);
+                setBenefitRulesError('Unable to load membership benefits right now.');
+                setBenefitRulesLoading(false);
+            }
+        };
+
+        void loadBenefitRules();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [tierKeyForRules]);
+
+    useEffect(() => {
+        if (!profileId) {
+            setSeoUsageState({ loading: false, error: null, used: 0 });
+            return;
+        }
+
+        let isMounted = true;
+        setSeoUsageState((previous) => ({ ...previous, loading: true, error: null }));
+
+        const loadUsage = async () => {
+            const todayIso = new Date().toISOString();
+            try {
+                const { data, error } = await supabase
+                    .from('benefit_usage')
+                    .select('*')
+                    .eq('profile_id', profileId)
+                    .eq('benefit_key', BENEFIT_KEYS.SEO_BLOG_POST)
+                    .lte('period_start', todayIso)
+                    .gte('period_end', todayIso)
+                    .order('period_start', { ascending: false })
+                    .limit(1);
+
+                if (error) {
+                    throw error;
+                }
+
+                if (!isMounted) {
+                    return;
+                }
+
+                const usageRow = (data as BenefitUsageRow[] | null)?.[0] ?? null;
+                setSeoUsageState({
+                    loading: false,
+                    error: null,
+                    used: usageRow?.used ?? 0,
+                });
+            } catch (error) {
+                console.error('Failed to load SEO blog usage', error);
+                if (!isMounted) {
+                    return;
+                }
+                setSeoUsageState({
+                    loading: false,
+                    error: 'Usage data unavailable',
+                    used: 0,
+                });
+            }
+        };
+
+        void loadUsage();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [profileId, usageRefreshIndex]);
     const planBenefits = useMemo(() => createPlanBenefitDefinitions(currentPlan), [currentPlan]);
+
+    const seoUsageLoading = seoUsageState.loading;
+    const seoUsageError = seoUsageState.error;
+    const seoPostsUsed = seoUsageState.used;
+
+    const getRule = useCallback((key: BenefitKey) => {
+        return benefitRules.find((rule) => rule.benefit_key === key);
+    }, [benefitRules]);
+
+    const seoRule = getRule(BENEFIT_KEYS.SEO_BLOG_POST);
+    const reviewRule = getRule(BENEFIT_KEYS.QUARTERLY_REVIEW);
+    const trustRule = getRule(BENEFIT_KEYS.TRUST_BADGE);
+    const supportRule = getRule(BENEFIT_KEYS.PRIORITY_SUPPORT);
+    const seoQuota = typeof seoRule?.quota === 'number' && seoRule.quota > 0 ? seoRule.quota : null;
+    const reviewQuota = typeof reviewRule?.quota === 'number' && reviewRule.quota > 0 ? reviewRule.quota : null;
+    const seoUsagePeriod = mapResetPeriodToUsagePeriod(seoRule?.reset_period);
 
     const [localBenefits, setLocalBenefits] = useState(planBenefits);
 
@@ -4370,44 +4509,72 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
         setLocalBenefits(planBenefits);
     }, [planBenefits]);
 
-    const hasPlanSeoQuota = currentPlan.seoPostsPerYear > 0;
-    const hasSeoQuota = hasPlanSeoQuota && (seoPostsLimit === null || (seoPostsLimit ?? 0) > 0);
-    const hasReachedSeoLimit = Boolean(
-        hasSeoQuota &&
-        seoPostsLimit !== null &&
-        typeof seoPostsLimit === 'number' &&
-        seoPostsLimit > 0 &&
-        seoPostsUsed >= seoPostsLimit,
-    );
+    const hasSeoQuota = typeof seoQuota === 'number' && seoQuota > 0;
+    const hasReachedSeoLimit = Boolean(hasSeoQuota && seoQuota !== null && seoPostsUsed >= seoQuota);
 
     const normalizedBenefits = useMemo(() => {
         return localBenefits.map((benefit) => {
-            if (benefit.title !== SEO_BLOG_BENEFIT_TITLE) {
-                return benefit;
+            if (benefit.title === SEO_BLOG_BENEFIT_TITLE) {
+                const hasBenefit = Boolean(seoRule?.included) && hasSeoQuota;
+                return {
+                    ...benefit,
+                    quota: hasBenefit ? seoQuota : null,
+                    used: hasBenefit ? seoPostsUsed : 0,
+                    isIncluded: hasBenefit,
+                    description: hasBenefit && seoQuota
+                        ? `You can request up to ${pluralize(seoQuota, 'SEO blog post')} per ${seoUsagePeriod === 'year' ? 'year' : 'period'}.`
+                        : 'No SEO blog posts included in this plan.',
+                };
             }
-            return {
-                ...benefit,
-                quota: seoPostsLimit,
-                used: seoPostsUsed,
-            };
+
+            if (benefit.title === 'Quarterly Website Review') {
+                const isIncluded = Boolean(reviewRule?.included);
+                return {
+                    ...benefit,
+                    isIncluded,
+                    description: isIncluded && reviewQuota
+                        ? `Up to ${pluralize(reviewQuota, 'website review')} per year.`
+                        : isIncluded
+                            ? 'Included in your plan.'
+                            : 'Not included in this plan.',
+                };
+            }
+
+            if (benefit.title === 'Trust Badge & Network Listing') {
+                const isIncluded = Boolean(trustRule?.included);
+                return {
+                    ...benefit,
+                    isIncluded,
+                    status: isIncluded ? 'Active' : 'Not included in this plan.',
+                };
+            }
+
+            if (benefit.title === 'Priority Support') {
+                const isIncluded = Boolean(supportRule?.included);
+                return {
+                    ...benefit,
+                    isIncluded,
+                    description: isIncluded
+                        ? benefit.description
+                        : 'Not included in this plan.',
+                };
+            }
+
+            return benefit;
         });
-    }, [localBenefits, seoPostsLimit, seoPostsUsed]);
+    }, [localBenefits, seoRule, hasSeoQuota, seoQuota, seoPostsUsed, seoUsagePeriod, reviewRule, reviewQuota, trustRule, supportRule]);
 
     const seoUsageDetails = {
         loading: seoUsageLoading,
         error: seoUsageError,
         used: seoPostsUsed,
-        limit: seoPostsLimit,
+        limit: seoQuota ?? 0,
         period: seoUsagePeriod,
     };
 
-    const seoRequestDisabledMessage = !hasPlanSeoQuota
-        ? undefined
-        : !hasSeoQuota
-            ? 'No SEO blog posts included in this plan.'
-            : hasReachedSeoLimit
-                ? 'You’ve reached your SEO blog post limit for this period.'
-                : undefined;
+    const seoRequestDisabledMessage = hasReachedSeoLimit
+        ? 'You’ve reached your SEO blog post limit for this period.'
+        : undefined;
 
     if (!currentUser) return null;
 
@@ -4502,7 +4669,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
         }
 
         if (!hasSeoQuota) {
-            showToast('Upgrade your plan to unlock SEO blog post requests.', 'error');
+            showToast('No SEO blog posts are included in your current plan.', 'error');
             return;
         }
 
@@ -4562,13 +4729,14 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
         }
     };
 
-    const BenefitCard: React.FC<{ benefit: Benefit, onClick: () => void, plan: PlanBenefits }> = ({ benefit, onClick, plan }) => {
+    const BenefitCard: React.FC<{ benefit: Benefit, onClick: () => void }> = ({ benefit, onClick }) => {
         const Icon = iconMap[benefit.icon];
         const hasUsage = benefit.quota !== undefined && benefit.quota !== null && benefit.used !== undefined;
         const progressPercent = hasUsage && benefit.quota ? (benefit.used! / benefit.quota) * 100 : 0;
         const isWebsiteReviewCard = benefit.title === 'Quarterly Website Review';
         const isTrustBadgeCard = benefit.title === 'Trust Badge & Network Listing';
         const isPrioritySupportCard = benefit.title === 'Priority Support';
+        const cardClassName = !benefit.isIncluded && isPrioritySupportCard ? 'opacity-60' : '';
 
         const includedLine = (
             <p className="text-sm font-semibold text-success flex items-center gap-1">
@@ -4582,10 +4750,10 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
 
         const renderStatusSection = () => {
             if (isWebsiteReviewCard) {
-                return plan.websiteReviewsPerYear > 0 ? includedLine : notIncludedLine;
+                return benefit.isIncluded ? includedLine : notIncludedLine;
             }
             if (isTrustBadgeCard) {
-                if (plan.includesTrustBadge) {
+                if (benefit.isIncluded) {
                     return (
                         <>
                             <p className="text-sm font-semibold text-[var(--text-main)]">
@@ -4595,10 +4763,12 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                         </>
                     );
                 }
-                return notIncludedLine;
+                return (
+                    <p className="text-sm font-semibold text-[var(--text-muted)]">Status: Not included in this plan.</p>
+                );
             }
             if (isPrioritySupportCard) {
-                return plan.includesPrioritySupport ? includedLine : notIncludedLine;
+                return benefit.isIncluded ? includedLine : notIncludedLine;
             }
             if (benefit.status) {
                 return (
@@ -4614,7 +4784,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
         };
 
         return (
-            <Card onClick={onClick} className="flex flex-col">
+            <Card onClick={onClick} className={`flex flex-col ${cardClassName}`}>
                 <div className="flex items-start gap-4">
                     <div className="bg-[var(--accent-bg-subtle)] text-[var(--accent-dark)] p-3 rounded-full">
                         {Icon && <Icon className="w-6 h-6" />}
@@ -4656,13 +4826,10 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
         onRequest: () => void;
         canRequest: boolean;
         disabledMessage?: string;
-        planLimit: number;
-    }> = ({ benefit, usage, onRequest, canRequest, disabledMessage, planLimit }) => {
+    }> = ({ benefit, usage, onRequest, canRequest, disabledMessage }) => {
         const Icon = iconMap[benefit.icon];
-        const hasPlanSeoQuota = planLimit > 0;
-        const planSeoMessage = hasPlanSeoQuota
-            ? `You can request up to ${pluralize(planLimit, 'SEO blog post')} per year.`
-            : 'No SEO blog posts included in this plan.';
+        const hasQuota = typeof usage.limit === 'number' && usage.limit > 0;
+        const quotaValue = hasQuota ? usage.limit ?? 0 : null;
 
         const usageSummary = () => {
             if (usage.loading) {
@@ -4671,33 +4838,22 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
             if (usage.error) {
                 return usage.error;
             }
-            if (usage.limit === 0) {
+            if (!hasQuota || !quotaValue) {
                 return 'No SEO blog posts included in this plan.';
             }
-            if (usage.limit === null) {
-                return `${usage.used} used · Unlimited plan`;
-            }
-            return `${usage.used} of ${usage.limit} used`;
+            return `${usage.used} of ${quotaValue} used`;
         };
 
         const progressPercent = (() => {
-            if (usage.loading) {
+            if (usage.loading || !hasQuota || !quotaValue) {
                 return 0;
             }
-            if (usage.limit === null) {
-                return 100;
-            }
-            if (!usage.limit || usage.limit <= 0) {
-                return 0;
-            }
-            if (usage.limit > 0) {
-                return Math.min(100, (usage.used / usage.limit) * 100);
-            }
-            return 0;
+            return Math.min(100, (usage.used / quotaValue) * 100);
         })();
 
-        const periodLabel = usage.period === 'year' ? 'per year' : 'per month';
-        const requestDisabled = !hasPlanSeoQuota || usage.loading || !canRequest || Boolean(disabledMessage);
+        const periodLabel = usage.period === 'year' ? 'year' : 'period';
+        const usageNarrativeLabel = usage.period === 'year' ? 'this year' : 'this period';
+        const requestDisabled = !hasQuota || usage.loading || !canRequest || Boolean(disabledMessage);
 
         return (
             <Card className="flex flex-col">
@@ -4711,7 +4867,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                     </div>
                 </div>
                 <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] flex-grow space-y-3">
-                    {hasPlanSeoQuota ? (
+                    {hasQuota && quotaValue ? (
                         <div>
                             <div className="flex justify-between text-sm font-medium text-[var(--text-muted)] mb-1">
                                 <span>Usage</span>
@@ -4720,11 +4876,13 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                             <div className="w-full bg-gray-200 rounded-full h-2.5">
                                 <div className="bg-[var(--accent)] h-2.5 rounded-full" style={{ width: `${progressPercent}%` }}></div>
                             </div>
-                            <p className="text-xs text-[var(--text-muted)] mt-1">Resets {periodLabel}</p>
-                            <p className="text-sm text-[var(--text-muted)] mt-3">{planSeoMessage}</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-1">Resets per {periodLabel}</p>
+                            <p className="text-sm text-[var(--text-muted)] mt-3">
+                                You have used {usage.loading ? '–' : usage.used} of {quotaValue} SEO blog posts {usageNarrativeLabel}.
+                            </p>
                         </div>
                     ) : (
-                        <p className="text-sm font-semibold text-[var(--text-muted)]">{planSeoMessage}</p>
+                        <p className="text-sm font-semibold text-[var(--text-muted)]">No SEO blog posts included in this plan.</p>
                     )}
                     {usage.error && !usage.loading && (
                         <p className="text-sm text-error">{usage.error}</p>
@@ -4788,33 +4946,45 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                 </div>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {normalizedBenefits.map((benefit, index) => {
-                    if (benefit.title === SEO_BLOG_BENEFIT_TITLE) {
-                        return (
-                                <SeoBlogBenefitCard
+            {benefitRulesError && (
+                <Card>
+                    <p className="text-sm text-error">{benefitRulesError}</p>
+                </Card>
+            )}
+
+            {benefitRulesLoading ? (
+                <Card>
+                    <p className="text-sm text-[var(--text-muted)]">Loading your benefits...</p>
+                </Card>
+            ) : (
+                <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {normalizedBenefits.map((benefit, index) => {
+                            if (benefit.title === SEO_BLOG_BENEFIT_TITLE) {
+                                return (
+                                    <SeoBlogBenefitCard
+                                        key={`${benefit.title}-${index}`}
+                                        benefit={benefit}
+                                        usage={seoUsageDetails}
+                                        onRequest={handleSeoRequestClick}
+                                        canRequest={Boolean(profileId && hasSeoQuota && !hasReachedSeoLimit)}
+                                        disabledMessage={seoRequestDisabledMessage}
+                                    />
+                                );
+                            }
+                            return (
+                                <BenefitCard
                                     key={`${benefit.title}-${index}`}
                                     benefit={benefit}
-                                    usage={seoUsageDetails}
-                                    onRequest={handleSeoRequestClick}
-                                    canRequest={Boolean(profileId && hasSeoQuota && !hasReachedSeoLimit)}
-                                    disabledMessage={seoRequestDisabledMessage}
-                                    planLimit={currentPlan.seoPostsPerYear}
+                                    onClick={() => setSelectedBenefit(benefit)}
                                 />
-                        );
-                    }
-                    return (
-                        <BenefitCard
-                            key={`${benefit.title}-${index}`}
-                            benefit={benefit}
-                            onClick={() => setSelectedBenefit(benefit)}
-                            plan={currentPlan}
-                        />
-                    );
-                })}
-            </div>
+                            );
+                        })}
+                    </div>
 
-            <UsageOverviewChart benefits={normalizedBenefits} />
+                    <UsageOverviewChart seoUsed={seoPostsUsed} seoQuota={seoQuota} />
+                </>
+            )}
             
             <div className="bg-gradient-to-r from-gold to-gold-dark text-charcoal p-8 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-6">
                 <div className="text-center md:text-left">
