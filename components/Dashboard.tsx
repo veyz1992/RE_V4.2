@@ -444,23 +444,73 @@ const isPostgrestError = (error: unknown): error is PostgrestError => {
     return Boolean(error && typeof error === 'object' && 'code' in (error as Record<string, unknown>));
 };
 
-const DOCUMENT_TYPE_LABELS: Record<string, string> = {
-    business_license: 'Business License',
-    license: 'Business License',
-    liability_insurance: 'Proof of Liability Insurance',
-    insurance: 'Proof of Liability Insurance',
-    w9: 'W-9 Form',
-    other: 'Supporting Document',
-};
+const DOCUMENT_TYPE_OPTIONS = [
+    {
+        value: 'state_license',
+        label: 'Business License',
+        description: 'Upload your state or local contractor license.',
+    },
+    {
+        value: 'insurance_proof',
+        label: 'Proof of Liability Insurance',
+        description: 'Certificate of insurance showing active coverage.',
+    },
+    {
+        value: 'iicrc_wrt',
+        label: 'IICRC Water Damage (WRT)',
+        description: 'Upload your IICRC WRT certificate.',
+    },
+    {
+        value: 'iicrc_fsrt',
+        label: 'IICRC Fire & Smoke (FSRT)',
+        description: 'Upload your IICRC FSRT certificate.',
+    },
+    {
+        value: 'iicrc_amrt',
+        label: 'IICRC Applied Microbial (AMRT)',
+        description: 'Upload your IICRC AMRT certificate.',
+    },
+    {
+        value: 'iicrc_biohazard',
+        label: 'IICRC Biohazard / Trauma',
+        description: 'Upload your IICRC biohazard/trauma certificate.',
+    },
+    {
+        value: 'epa_leadsafe',
+        label: 'EPA Lead-Safe Certification',
+        description: 'EPA RRP / lead-safe certification.',
+    },
+    {
+        value: 'osha_safety',
+        label: 'OSHA Safety Training',
+        description: 'OSHA 10/30 or equivalent safety certification.',
+    },
+    {
+        value: 'other_cert',
+        label: 'Other Certification or Document',
+        description: 'Any other credential you want us to review.',
+    },
+] as const;
 
-const getDocumentTypeLabel = (docType?: string | null): string => {
+type DocumentTypeOption = (typeof DOCUMENT_TYPE_OPTIONS)[number];
+
+const findDocumentTypeOption = (docType?: string | null): DocumentTypeOption | undefined => {
     if (!docType) {
-        return 'Document';
+        return undefined;
     }
 
     const normalized = docType.toLowerCase();
-    if (DOCUMENT_TYPE_LABELS[normalized]) {
-        return DOCUMENT_TYPE_LABELS[normalized];
+    return DOCUMENT_TYPE_OPTIONS.find((option) => option.value === normalized);
+};
+
+const getDocumentTypeLabel = (docType?: string | null): string => {
+    const option = findDocumentTypeOption(docType);
+    if (option) {
+        return option.label;
+    }
+
+    if (!docType) {
+        return 'Document';
     }
 
     return docType
@@ -3213,11 +3263,6 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
     );
 };
 
-const DOCUMENT_UPLOAD_OPTIONS = [
-    { value: 'license', label: 'Business License' },
-    { value: 'insurance', label: 'Proof of Liability Insurance' },
-];
-
 const MemberDocuments: React.FC<{
     documents: DashboardDocument[];
     onNavigate: (view: MemberView) => void;
@@ -3229,6 +3274,7 @@ const MemberDocuments: React.FC<{
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [uploadError, setUploadError] = useState<string | null>(null);
     const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+    const [docTypeError, setDocTypeError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { session } = useAuth();
 
@@ -3257,10 +3303,12 @@ const MemberDocuments: React.FC<{
     } as const;
 
     const uploadedDocuments = documents.filter((doc) => doc.status !== 'notUploaded');
+    const selectedDocTypeOption = useMemo(() => findDocumentTypeOption(selectedDocType), [selectedDocType]);
 
     const resetMessages = () => {
         setUploadError(null);
         setUploadSuccess(null);
+        setDocTypeError(null);
     };
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -3287,8 +3335,13 @@ const MemberDocuments: React.FC<{
             return;
         }
 
-        if (!selectedDocType || !selectedFile) {
-            setUploadError('Select a document type and file to upload.');
+        if (!selectedDocType) {
+            setDocTypeError('Please choose a document type.');
+            return;
+        }
+
+        if (!selectedFile) {
+            setUploadError('Select a file to upload.');
             return;
         }
 
@@ -3324,6 +3377,7 @@ const MemberDocuments: React.FC<{
             setUploadSuccess('Document uploaded successfully. We will review it shortly.');
             setSelectedFile(null);
             setSelectedDocType('');
+            setDocTypeError(null);
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
@@ -3502,12 +3556,16 @@ const MemberDocuments: React.FC<{
                             className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                         >
                             <option value="">Select a document type</option>
-                            {DOCUMENT_UPLOAD_OPTIONS.map((option) => (
+                            {DOCUMENT_TYPE_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {option.label}
                                 </option>
                             ))}
                         </select>
+                        {selectedDocTypeOption?.description && (
+                            <p className="mt-2 text-sm text-[var(--text-muted)]">{selectedDocTypeOption.description}</p>
+                        )}
+                        {docTypeError && <p className="mt-2 text-sm text-error">{docTypeError}</p>}
                     </div>
 
                     <div className="relative flex flex-col items-center justify-center p-10 border-2 border-dashed rounded-xl bg-[var(--bg-subtle)] border-[var(--border-subtle)]">
@@ -3561,25 +3619,29 @@ const MemberDocuments: React.FC<{
                 {uploadedDocuments.length === 0 ? (
                     <Card className="text-sm text-[var(--text-muted)]">No documents have been uploaded yet.</Card>
                 ) : (
-                    uploadedDocuments.map((doc) => (
-                        <Card key={doc.id} className="flex flex-col gap-3">
-                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                                <div>
-                                    <div className="flex items-center gap-3">
-                                        <p className="font-bold text-[var(--text-main)]">{doc.fileName}</p>
-                                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusConfig[doc.status].pill}`}>
-                                            {statusConfig[doc.status].label}
-                                        </span>
+                    uploadedDocuments.map((doc) => {
+                        const docTypeLabel = getDocumentTypeLabel(doc.docType ?? undefined);
+                        return (
+                            <Card key={doc.id} className="flex flex-col gap-3">
+                                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-3">
+                                            <p className="font-bold text-[var(--text-main)]">{docTypeLabel}</p>
+                                            <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${statusConfig[doc.status].pill}`}>
+                                                {statusConfig[doc.status].label}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-[var(--text-muted)] mt-1">File: {doc.fileName ?? 'Uploaded document'}</p>
+                                        <p className="text-sm text-[var(--text-muted)] mt-1">
+                                            {doc.uploadTimestamp ?? 'Pending timestamp'}
+                                            {doc.fileSize ? ` • ${doc.fileSize}` : ''}
+                                        </p>
+                                        {doc.adminNote && <p className="text-xs text-[var(--text-muted)] italic mt-2">Admin Note: {doc.adminNote}</p>}
                                     </div>
-                                    <p className="text-sm text-[var(--text-muted)] mt-1">
-                                        {doc.uploadTimestamp ?? 'Pending timestamp'}
-                                        {doc.fileSize ? ` • ${doc.fileSize}` : ''}
-                                    </p>
-                                    {doc.adminNote && <p className="text-xs text-[var(--text-muted)] italic mt-2">Admin Note: {doc.adminNote}</p>}
                                 </div>
-                            </div>
-                        </Card>
-                    ))
+                            </Card>
+                        );
+                    })
                 )}
             </div>
 
