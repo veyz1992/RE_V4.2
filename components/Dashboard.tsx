@@ -1871,6 +1871,34 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         }
         return Array.from(labels);
     }, [approvedDocuments]);
+    const { isLicensed, isInsured, hasIicrcCertification, isVerifiedBusiness } = useMemo(() => {
+        const normalizedScore = Number.isFinite(completenessScore) ? completenessScore : 0;
+        const hasIicrc = (iicrcCertifications ?? []).length > 0;
+        const licensed = hasApprovedLicense;
+        const insured = hasApprovedInsurance;
+        return {
+            isLicensed: licensed,
+            isInsured: insured,
+            hasIicrcCertification: hasIicrc,
+            isVerifiedBusiness: licensed && insured && hasIicrc && normalizedScore >= 80,
+        };
+    }, [hasApprovedLicense, hasApprovedInsurance, iicrcCertifications, completenessScore]);
+    const credentialBadgeItems = useMemo(() => {
+        const badges: Array<{ key: string; label: string; variant: 'accent' | 'success' }> = [];
+        if (isVerifiedBusiness) {
+            badges.push({ key: 'verified-business', label: 'Verified business', variant: 'accent' });
+        }
+        if (isLicensed) {
+            badges.push({ key: 'licensed', label: 'Licensed contractor', variant: 'success' });
+        }
+        if (isInsured) {
+            badges.push({ key: 'insured', label: 'Fully insured', variant: 'success' });
+        }
+        if (hasIicrcCertification) {
+            badges.push({ key: 'iicrc', label: 'IICRC certified', variant: 'success' });
+        }
+        return badges;
+    }, [hasIicrcCertification, isInsured, isLicensed, isVerifiedBusiness]);
 
     const startEditing = (section: ProfileSectionKey) => {
         if (section === 'business') {
@@ -2723,6 +2751,23 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                         </button>
                     </div>
 
+                    {credentialBadgeItems.length > 0 && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            {credentialBadgeItems.map((badge) => (
+                                <span
+                                    key={badge.key}
+                                    className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+                                        badge.variant === 'accent'
+                                            ? 'bg-[var(--accent)] text-[var(--accent-text)]'
+                                            : 'bg-success/10 text-success'
+                                    }`}
+                                >
+                                    {badge.label}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+
                     <div className="mt-6 space-y-6">
                         {documentsError && (
                             <div className="rounded-lg border border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-4 py-3 text-sm text-[var(--text-muted)]">
@@ -2780,7 +2825,7 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">IICRC certifications</p>
                                 {documentsError ? (
                                     <p className="text-sm text-[var(--text-muted)]">Status unavailable.</p>
-                                ) : iicrcCertifications.length > 0 ? (
+                                ) : hasIicrcCertification ? (
                                     <div className="flex flex-wrap gap-2">
                                         {iicrcCertifications.map((label) => (
                                             <span
@@ -3246,22 +3291,36 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             <div className="flex flex-wrap gap-2 text-sm">
                                 <span
                                     className={`rounded-full px-3 py-1 font-semibold ${
-                                        hasApprovedLicense
+                                        isLicensed
                                             ? 'bg-success/10 text-success'
                                             : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
                                     }`}
                                 >
-                                    {hasApprovedLicense ? 'License verified' : 'License not verified'}
+                                    {isLicensed ? 'License verified' : 'License not verified'}
                                 </span>
                                 <span
                                     className={`rounded-full px-3 py-1 font-semibold ${
-                                        hasApprovedInsurance
+                                        isInsured
                                             ? 'bg-success/10 text-success'
                                             : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
                                     }`}
                                 >
-                                    {hasApprovedInsurance ? 'Insurance verified' : 'Insurance not provided'}
+                                    {isInsured ? 'Insurance verified' : 'Insurance not provided'}
                                 </span>
+                                <span
+                                    className={`rounded-full px-3 py-1 font-semibold ${
+                                        hasIicrcCertification
+                                            ? 'bg-success/10 text-success'
+                                            : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+                                    }`}
+                                >
+                                    {hasIicrcCertification ? 'IICRC certified' : 'No IICRC certifications'}
+                                </span>
+                                {isVerifiedBusiness && (
+                                    <span className="rounded-full bg-[var(--accent)] px-3 py-1 font-semibold text-[var(--accent-text)]">
+                                        Verified business
+                                    </span>
+                                )}
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-[var(--text-muted)]">Serving</p>
