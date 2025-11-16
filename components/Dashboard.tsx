@@ -4047,26 +4047,186 @@ const UsageOverviewChart: React.FC<{ benefits: Benefit[] }> = ({ benefits }) => 
     );
 };
 
+const useCurrentPlanData = () => {
+    const { session } = useAuth();
+    const [state, setState] = useState<{
+        profile: SupabaseProfile | null;
+        membership: SupabaseMembership | null;
+        subscription: SupabaseSubscription | null;
+        isLoading: boolean;
+        error: Error | null;
+    }>({
+        profile: null,
+        membership: null,
+        subscription: null,
+        isLoading: true,
+        error: null,
+    });
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadPlanData = async () => {
+            if (!session?.user?.id) {
+                if (isMounted) {
+                    setState({ profile: null, membership: null, subscription: null, isLoading: false, error: null });
+                }
+                return;
+            }
+
+            setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+            try {
+                const [profileResult, membershipResult, subscriptionResult] = await Promise.all([
+                    supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .maybeSingle(),
+                    supabase
+                        .from('memberships')
+                        .select('*')
+                        .eq('profile_id', session.user.id)
+                        .eq('status', 'active')
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle(),
+                    supabase
+                        .from('subscriptions')
+                        .select('*')
+                        .eq('profile_id', session.user.id)
+                        .eq('status', 'active')
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle(),
+                ]);
+
+                const getSafeData = <T,>(result: { data: T | null; error: PostgrestError | null }): T | null => {
+                    if (result.error && result.error.code !== 'PGRST116') {
+                        throw result.error;
+                    }
+                    return result.data as T | null;
+                };
+
+                const profileData = getSafeData<SupabaseProfile>(profileResult);
+                const membershipData = getSafeData<SupabaseMembership>(membershipResult);
+                const subscriptionData = getSafeData<SupabaseSubscription>(subscriptionResult);
+
+                if (!isMounted) {
+                    return;
+                }
+
+                setState({
+                    profile: profileData,
+                    membership: membershipData,
+                    subscription: subscriptionData,
+                    isLoading: false,
+                    error: null,
+                });
+            } catch (error) {
+                console.error('Failed to load current plan data', error);
+                if (!isMounted) {
+                    return;
+                }
+                setState({
+                    profile: null,
+                    membership: null,
+                    subscription: null,
+                    isLoading: false,
+                    error: error instanceof Error ? error : new Error('Failed to load current plan data'),
+                });
+            }
+        };
+
+        void loadPlanData();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [session?.user?.id]);
+
+    return state;
+};
+
 const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
     const { currentUser, updateUser } = useAuth();
     const [localBenefits, setLocalBenefits] = useState(currentUser?.benefits || []);
     const [selectedBenefit, setSelectedBenefit] = useState<Benefit | null>(null);
+    const { profile, membership, subscription, isLoading: isPlanLoading, error: planError } = useCurrentPlanData();
 
     useEffect(() => {
         setLocalBenefits(currentUser?.benefits || []);
     }, [currentUser?.benefits]);
 
-    if (!currentUser || !currentUser.plan) return null;
-
-    const { plan } = currentUser;
+    if (!currentUser) return null;
 
     const planColors = {
+        Free: 'bg-gray-200 text-charcoal',
         Gold: 'bg-gold text-charcoal',
         Silver: 'bg-gray-300 text-charcoal',
         Bronze: 'bg-yellow-700 text-white',
         'Founding Member': 'bg-charcoal text-gold',
         Platinum: 'bg-gray-800 text-white',
     };
+
+    const determinePlanName = (): string => {
+        const fallback = 'free';
+        if (planError) {
+            return fallback;
+        }
+        const tier = membership?.tier ?? profile?.membership_tier ?? fallback;
+        const normalizedKey = normalizeTierKey(tier);
+        return PLAN_LABELS[normalizedKey] ?? tier ?? PLAN_LABELS.free;
+    };
+
+    const planName = determinePlanName();
+    const planChipStyles = planColors[planName] ?? 'bg-gray-200 text-charcoal';
+
+    const ratingValue = planError ? null : membership?.badge_rating ?? profile?.badge_rating ?? null;
+
+    const subscriptionLine = (): string => {
+        if (planError) {
+            return 'No active subscription';
+        }
+
+        const isActiveSubscription = subscription?.status?.toLowerCase() === 'active';
+        if (isActiveSubscription) {
+            const cycle = subscription?.billing_cycle?.toLowerCase();
+            let cycleLabel = 'Billed via current plan';
+            if (cycle === 'monthly') {
+                cycleLabel = 'Billed monthly';
+            } else if (cycle === 'annual' || cycle === 'yearly' || cycle === 'annually') {
+                cycleLabel = 'Billed annually';
+            }
+
+            const renewalDate = subscription?.current_period_end ? formatDate(subscription.current_period_end) : null;
+            if (renewalDate) {
+                return `${cycleLabel} • Renews on ${renewalDate}`;
+            }
+            return cycleLabel;
+        }
+
+        if (profile?.next_billing_date) {
+            const renewalDate = formatDate(profile.next_billing_date);
+            if (renewalDate) {
+                return `Renews on ${renewalDate}`;
+            }
+        }
+
+        return 'No active subscription';
+    };
+
+    const billingLine = subscriptionLine();
+
+    const PlanSkeleton = () => (
+        <div className="mt-2 space-y-3 w-full animate-pulse">
+            <div className="flex items-center gap-3">
+                <div className="h-6 w-24 bg-[var(--bg-subtle)] rounded-full" />
+                <div className="h-6 w-20 bg-[var(--bg-subtle)] rounded-full" />
+            </div>
+            <div className="h-4 w-48 bg-[var(--bg-subtle)] rounded" />
+        </div>
+    );
 
     const iconMap: { [key: string]: React.FC<{ className?: string }> } = {
         NewspaperIcon, ChartBarIcon, ShieldCheckIcon, ChatBubbleOvalLeftEllipsisIcon,
@@ -4136,13 +4296,25 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
 
             <Card>
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
+                    <div className="w-full">
                         <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Your Current Plan</h2>
-                        <div className="flex items-center gap-3 mt-2">
-                             <span className={`px-4 py-1 text-sm font-bold rounded-full ${planColors[plan.name] || 'bg-gray-200'}`}>{plan.name}</span>
-                             <span className="font-semibold text-[var(--text-main)]">{plan.rating}</span>
-                        </div>
-                        <p className="text-sm text-[var(--text-muted)] mt-2">{plan.billingCycle} • Renews on {plan.renewalDate}</p>
+                        {isPlanLoading ? (
+                            <PlanSkeleton />
+                        ) : (
+                            <>
+                                <div className="flex flex-wrap items-center gap-3 mt-2">
+                                    <span className={`px-4 py-1 text-sm font-bold rounded-full ${planChipStyles}`}>{planName}</span>
+                                    {ratingValue ? (
+                                        <span className="px-3 py-1 text-xs font-semibold rounded-full bg-[var(--accent-bg-subtle)] text-[var(--accent-dark)]">
+                                            {ratingValue}
+                                        </span>
+                                    ) : (
+                                        <span className="text-sm text-[var(--text-muted)]">No rating yet</span>
+                                    )}
+                                </div>
+                                <p className="text-sm text-[var(--text-muted)] mt-2">{billingLine}</p>
+                            </>
+                        )}
                     </div>
                     <div className="flex gap-3 self-end md:self-center">
                         <button onClick={() => showToast('Coming soon', 'success')} className="py-2.5 px-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">View Invoice</button>
