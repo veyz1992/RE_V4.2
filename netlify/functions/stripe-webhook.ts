@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
-import { TIER_CONFIG } from '../../constants';
+import { mapPriceIdToTier, normalizeMembershipTier, type MembershipTier } from '../lib/membershipPlans';
 
 type Event = {
   httpMethod: string;
@@ -60,20 +60,6 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
   },
 });
 
-// Build price mapping from centralized config
-const PRICE_IDS: Record<string, string> = {};
-Object.entries(TIER_CONFIG).forEach(([tierName, config]) => {
-  const envValue = process.env[config.stripeEnvKey];
-  if (!envValue) {
-    throw new Error(`Missing environment variable: ${config.stripeEnvKey}`);
-  }
-  PRICE_IDS[tierName] = envValue;
-});
-
-const PRICE_TO_TIER = Object.fromEntries(
-  Object.entries(PRICE_IDS).map(([tier, priceId]) => [priceId, tier]),
-) as Record<string, string>;
-
 // Utility functions
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
@@ -82,15 +68,6 @@ const jsonResponse = (statusCode: number, body: unknown) => ({
   },
   body: JSON.stringify(body),
 });
-
-const getTierFromPriceId = (priceId: string): string => {
-  const tier = PRICE_TO_TIER[priceId];
-  if (!tier) {
-    console.warn(`Unknown price ID: ${priceId}, defaulting to Bronze`);
-    return 'Bronze';
-  }
-  return tier;
-};
 
 // Idempotency check using Stripe event ID
 const isEventProcessed = async (eventId: string): Promise<boolean> => {
@@ -140,29 +117,12 @@ const findLatestAssessment = async (email: string): Promise<any | null> => {
 };
 
 // Map Stripe price/metadata to membership tier
-const mapPriceToTier = (priceId: string, metadata?: Record<string, string>): string => {
-  // Check metadata first for explicit tier mapping
+const mapPriceToTier = (priceId: string, metadata?: Record<string, string>): MembershipTier => {
   if (metadata?.tier) {
-    return metadata.tier;
+    return normalizeMembershipTier(metadata.tier);
   }
 
-  // Fallback to price ID mapping from TIER_CONFIG
-  const tier = getTierFromPriceId(priceId);
-  
-  // Map tier names to database values
-  switch (tier.toLowerCase()) {
-    case 'founding member':
-    case 'founding-member':
-      return 'gold';
-    case 'gold':
-      return 'gold';
-    case 'silver':
-      return 'silver';
-    case 'bronze':
-      return 'bronze';
-    default:
-      return 'gold'; // Default for unknown tiers
-  }
+  return mapPriceIdToTier(priceId);
 };
 
 // Find or create Supabase Auth user
@@ -336,7 +296,7 @@ const upsertSubscription = async (
 ): Promise<void> => {
   const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id;
   const priceId = subscription.items.data[0]?.price?.id;
-  const tier = priceId ? getTierFromPriceId(priceId) : 'Bronze';
+  const tier = priceId ? mapPriceIdToTier(priceId) : 'free';
 
   const subscriptionData: any = {
     profile_id: profileId,
@@ -563,7 +523,7 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
 
           // Step 4: Determine membership tier from subscription
           const priceId = subscription.items.data[0]?.price?.id;
-          const membershipTier = priceId ? mapPriceToTier(priceId, session.metadata || {}) : 'gold';
+          const membershipTier = priceId ? mapPriceToTier(priceId, session.metadata || {}) : 'free';
           console.log(`Mapped price ${priceId} to tier: ${membershipTier}`);
 
           // Step 5: Get customer data for additional profile info
@@ -637,7 +597,7 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
         // Update membership status based on subscription status
         const membershipStatus = subscription.status === 'active' ? 'active' : 'inactive';
         const priceId = subscription.items.data[0]?.price?.id;
-        const tier = priceId ? getTierFromPriceId(priceId) : 'Bronze';
+        const tier = priceId ? mapPriceIdToTier(priceId) : 'free';
         
         await upsertMembership(profile.id, tier, membershipStatus);
 

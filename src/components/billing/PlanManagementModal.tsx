@@ -1,5 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { PLANS, type MembershipTier, type PlanDefinition, normalizePlanTier } from '@/config/plans';
+import { useAuth } from '@/context/AuthContext';
+
+const MEMBERSHIP_CHECKOUT_ENDPOINT = '/api/membership/checkout';
 
 interface PlanManagementModalProps {
   isOpen: boolean;
@@ -18,6 +21,10 @@ const getPlanActionLabel = (plan: PlanDefinition, currentSortOrder: number): str
 };
 
 const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClose, currentTier }) => {
+  const { session } = useAuth();
+  const [pendingTier, setPendingTier] = useState<MembershipTier | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   if (!isOpen) {
     return null;
   }
@@ -35,9 +42,50 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
     }).sort((a, b) => a.sortOrder - b.sortOrder);
   }, [normalizedTier]);
 
-  const handleChangePlan = (targetTier: MembershipTier) => {
-    // TODO: Implement plan change workflow via Stripe/Supabase
-    console.log('TODO: change plan from', normalizedTier, 'to', targetTier);
+  const handleChangePlan = async (targetTier: MembershipTier) => {
+    if (targetTier === normalizedTier || pendingTier) {
+      return;
+    }
+
+    if (!session?.access_token) {
+      console.error('Failed to start checkout: no active session');
+      setErrorMessage('You need to be signed in to change your plan.');
+      return;
+    }
+
+    setPendingTier(targetTier);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch(MEMBERSHIP_CHECKOUT_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ tier: targetTier }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        console.error('Failed to start checkout', data);
+        setErrorMessage(data?.error ?? data?.message ?? 'This plan is not available yet.');
+        return;
+      }
+
+      const data = await response.json();
+      if (data?.url) {
+        window.location.href = data.url;
+        return;
+      }
+
+      setErrorMessage('Unable to start checkout. Missing redirect URL.');
+    } catch (error) {
+      console.error('Error starting checkout', error);
+      setErrorMessage('Unable to start checkout right now. Please try again soon.');
+    } finally {
+      setPendingTier(null);
+    }
   };
 
   return (
@@ -60,12 +108,18 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
           <p className="text-[var(--text-muted)]">
             See what’s included in each membership and switch when you’re ready.
           </p>
+          {errorMessage && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {errorMessage}
+            </div>
+          )}
         </div>
         <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
           {plansToDisplay.map((plan) => {
             const isCurrentPlan = plan.id === currentPlan?.id;
             const actionLabel = getPlanActionLabel(plan, currentSortOrder);
-            const buttonDisabled = isCurrentPlan;
+            const isProcessingTier = pendingTier === plan.id;
+            const buttonDisabled = isCurrentPlan || Boolean(pendingTier);
             const isUpgrade = plan.sortOrder > currentSortOrder;
             const buttonClasses = buttonDisabled
               ? 'bg-[var(--bg-subtle)] text-[var(--text-muted)] cursor-not-allowed'
@@ -117,7 +171,7 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
                   onClick={() => handleChangePlan(plan.id)}
                   className={`mt-6 w-full rounded-xl py-3 text-center text-sm font-bold transition-colors ${buttonClasses}`}
                 >
-                  {actionLabel}
+                  {isProcessingTier ? 'Opening checkout…' : actionLabel}
                 </button>
               </div>
             );

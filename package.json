@@ -17,6 +17,7 @@
     "stripe": "latest"
   },
   "devDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.53.2",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "madge": "^8.0.0",
