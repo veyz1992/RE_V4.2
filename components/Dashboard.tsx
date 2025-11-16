@@ -1451,6 +1451,32 @@ interface BrandingErrorsState {
 
 type ProfileSectionKey = 'business' | 'contact' | 'services' | 'branding';
 
+type CredentialFlags = {
+    hasApprovedLicense: boolean;
+    hasApprovedInsurance: boolean;
+    iicrcCerts: string[];
+};
+
+type ProfileCompletenessBreakdown = {
+    businessName: boolean;
+    yearsInBusiness: boolean;
+    description: boolean;
+    phone: boolean;
+    addressLine1: boolean;
+    cityState: boolean;
+    postalCountry: boolean;
+    license: boolean;
+    insurance: boolean;
+    iicrcCert: boolean;
+    logo: boolean;
+    socialLink: boolean;
+};
+
+type ProfileCompletenessResult = {
+    score: number;
+    breakdown: ProfileCompletenessBreakdown;
+};
+
 type PublicProfileRow = {
     id: string;
     email: string | null;
@@ -1502,6 +1528,124 @@ const OTHER_CERT_DOCUMENT_LABELS: Record<string, string> = {
     epa_leadsafe: 'EPA Lead-Safe',
     osha_safety: 'OSHA Safety',
     other_cert: 'Other certification',
+};
+
+const createEmptyBreakdown = (): ProfileCompletenessBreakdown => ({
+    businessName: false,
+    yearsInBusiness: false,
+    description: false,
+    phone: false,
+    addressLine1: false,
+    cityState: false,
+    postalCountry: false,
+    license: false,
+    insurance: false,
+    iicrcCert: false,
+    logo: false,
+    socialLink: false,
+});
+
+const calculateProfileCompleteness = (
+    profile: PublicProfileRow | null,
+    credentials: CredentialFlags,
+): ProfileCompletenessResult => {
+    const breakdown = createEmptyBreakdown();
+
+    if (profile) {
+        breakdown.businessName = Boolean(profile.company_name?.trim() || profile.full_name?.trim());
+        breakdown.yearsInBusiness = profile.years_in_business !== null && profile.years_in_business !== undefined;
+        breakdown.description = Boolean(profile.about?.trim());
+        breakdown.phone = Boolean(profile.phone?.trim());
+        breakdown.addressLine1 = Boolean(profile.address_line1?.trim());
+        breakdown.cityState = Boolean(profile.city?.trim()) && Boolean(profile.state?.trim());
+        breakdown.postalCountry = Boolean(profile.postal_code?.trim()) && Boolean(profile.country?.trim());
+        breakdown.logo = Boolean(profile.logo_url?.trim());
+        breakdown.socialLink = Boolean(
+            profile.facebook_url?.trim() || profile.instagram_url?.trim() || profile.linkedin_url?.trim(),
+        );
+    }
+
+    breakdown.license = credentials.hasApprovedLicense;
+    breakdown.insurance = credentials.hasApprovedInsurance;
+    breakdown.iicrcCert = credentials.iicrcCerts.length > 0;
+
+    let score = 0;
+
+    if (breakdown.businessName) {
+        score += 10;
+    }
+    if (breakdown.yearsInBusiness) {
+        score += 5;
+    }
+    if (breakdown.description) {
+        score += 5;
+    }
+
+    if (breakdown.phone) {
+        score += 5;
+    }
+    if (breakdown.addressLine1) {
+        score += 5;
+    }
+    if (breakdown.cityState) {
+        score += 5;
+    }
+    if (breakdown.postalCountry) {
+        score += 5;
+    }
+
+    if (breakdown.license) {
+        score += 20;
+    }
+    if (breakdown.insurance) {
+        score += 15;
+    }
+    if (breakdown.iicrcCert) {
+        score += 10;
+    }
+
+    if (breakdown.logo) {
+        score += 10;
+    }
+    if (breakdown.socialLink) {
+        score += 5;
+    }
+
+    return {
+        score: Math.max(0, Math.min(100, score)),
+        breakdown,
+    };
+};
+
+const deriveProfileCompletenessHints = (breakdown: ProfileCompletenessBreakdown | null): string[] => {
+    if (!breakdown) {
+        return [
+            'Add your business details to begin building your profile.',
+            'Complete your contact information so homeowners can reach you.',
+            'Upload credentials like your license or insurance to start earning trust.',
+        ];
+    }
+
+    const hints = [
+        !breakdown.license && 'Upload your business license to unlock verification.',
+        !breakdown.insurance && 'Add proof of liability insurance to build homeowner trust.',
+        !breakdown.iicrcCert && 'Share IICRC certifications to highlight your expertise.',
+        !breakdown.logo && 'Upload your logo to strengthen your brand.',
+        !breakdown.socialLink && 'Add a social link so homeowners can explore your work.',
+        !breakdown.addressLine1 && 'Complete your address so homeowners know where you’re based.',
+        !breakdown.cityState && 'Include your city and state to appear in the right searches.',
+        !breakdown.postalCountry && 'Add your postal code and country for accurate matching.',
+        !breakdown.phone && 'Provide a phone number so leads can reach you quickly.',
+        !breakdown.businessName && 'Share your company or owner name for quick recognition.',
+        !breakdown.description && 'Write a short business overview to showcase your services.',
+        !breakdown.yearsInBusiness && 'Let homeowners know how long you’ve been in business.',
+    ].filter((hint): hint is string => Boolean(hint));
+
+    if (hints.length === 0) {
+        return ['Fantastic! Your profile is fully complete.'];
+    }
+
+    return hints.slice(0, 4);
 };
 
 const normalizeProfile = (raw: PublicProfileRow): PublicProfileRow => ({
@@ -1570,6 +1714,8 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
     const [approvedDocuments, setApprovedDocuments] = useState<MemberDocument[]>([]);
     const [pendingDocuments, setPendingDocuments] = useState<MemberDocument[]>([]);
     const [documentsError, setDocumentsError] = useState<string | null>(null);
+    const [completenessScore, setCompletenessScore] = useState(0);
+    const [completenessBreakdown, setCompletenessBreakdown] = useState<ProfileCompletenessBreakdown | null>(null);
 
     useEffect(() => {
         latestShowToast.current = showToast;
@@ -2093,29 +2239,21 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
         return segments.length > 0 ? segments.join(' • ') : 'N/A';
     };
 
-    const completenessPercent = useMemo(() => {
-        if (!profile) {
-            return 0;
-        }
-
-        const checks = [
-            Boolean(profile.company_name?.trim()),
-            Boolean(profile.address_line1?.trim()),
-            Boolean(profile.city?.trim()),
-            Boolean(profile.state?.trim()),
-            Boolean(profile.postal_code?.trim()),
-            Boolean(profile.phone?.trim()),
-            profile.years_in_business !== null && profile.years_in_business !== undefined,
+    useEffect(() => {
+        const result = calculateProfileCompleteness(profile, {
             hasApprovedLicense,
             hasApprovedInsurance,
-            (profile.service_areas ?? []).length > 0,
-            (profile.services ?? []).length > 0,
-            Boolean(profile.website_url?.trim()),
-        ];
+            iicrcCerts: iicrcCertifications,
+        });
 
-        const completed = checks.filter(Boolean).length;
-        return Math.round((completed / checks.length) * 100);
-    }, [profile, hasApprovedLicense, hasApprovedInsurance]);
+        setCompletenessScore(result.score);
+        setCompletenessBreakdown(result.breakdown);
+    }, [profile, hasApprovedLicense, hasApprovedInsurance, iicrcCertifications]);
+
+    const completenessHints = useMemo(
+        () => deriveProfileCompletenessHints(completenessBreakdown),
+        [completenessBreakdown],
+    );
 
     useEffect(() => {
         if (!profile || !userId) {
@@ -2205,17 +2343,22 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
                             Complete your profile to unlock faster approvals and more homeowner matches.
                         </p>
                     </div>
-                    <span className="text-3xl font-bold text-[var(--accent-dark)]">{completenessPercent}%</span>
+                    <span className="text-3xl font-bold text-[var(--accent-dark)]">{completenessScore}%</span>
                 </div>
                 <div className="mt-4 h-3 w-full rounded-full bg-[var(--bg-subtle)]">
                     <div
                         className="h-3 rounded-full bg-[var(--accent)] transition-all duration-500"
-                        style={{ width: `${completenessPercent}%` }}
+                        style={{ width: `${completenessScore}%` }}
                     ></div>
                 </div>
                 <p className="mt-3 text-sm text-[var(--text-muted)]">
-                    We look for a licensed, insured business with a complete address and service overview.
+                    Your profile is {completenessScore}% complete.
                 </p>
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[var(--text-muted)]">
+                    {completenessHints.map((hint) => (
+                        <li key={hint}>{hint}</li>
+                    ))}
+                </ul>
             </Card>
 
             <div className="space-y-6">
