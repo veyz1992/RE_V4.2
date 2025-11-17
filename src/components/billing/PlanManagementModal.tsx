@@ -50,7 +50,7 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
   const normalizedTier = normalizePlanTier(currentTier);
 
   const handleSelect = async (tier: PaidMembershipTier) => {
-    if (tier === normalizedTier) {
+    if (tier === normalizedTier || pendingTier) {
       return;
     }
 
