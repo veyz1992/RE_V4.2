@@ -4380,6 +4380,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
     const fallbackTierLabel = currentUser?.package ?? null;
     const planModalTierSource = profile?.membership_tier ?? membership?.tier ?? fallbackTierLabel ?? null;
     const planManagementTier: PlanConfigMembershipTier = normalizePlanTier(planModalTierSource);
+    const hasActiveSubscription = Boolean(subscription);
     const rawTier = membership?.tier ?? profile?.membership_tier ?? fallbackTierLabel;
     const normalizedPlanKey = rawTier && rawTier.toLowerCase().includes('free') ? 'free' : normalizeLegacyMembershipTier(rawTier);
     const membershipPlanTier: LegacyMembershipTier = normalizedPlanKey === 'free'
@@ -4920,6 +4921,81 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
         );
     };
 
+    const resolveBenefitAssessmentId = useCallback(async (): Promise<string | number | null> => {
+        if (!profile?.id) {
+            return null;
+        }
+
+        if (profile.last_assessment_id) {
+            return profile.last_assessment_id;
+        }
+
+        try {
+            const { data, error } = await supabase
+                .from('assessments')
+                .select('id')
+                .eq('profile_id', profile.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (error) {
+                console.error('[MemberBenefits] Failed to resolve last assessment', error);
+                return null;
+            }
+
+            return data?.id ?? null;
+        } catch (resolveError) {
+            console.error('[MemberBenefits] Unexpected error while resolving last assessment', resolveError);
+            return null;
+        }
+    }, [profile?.id, profile?.last_assessment_id]);
+
+    const handlePlanCheckout = useCallback(
+        async (targetTier: PaidPlanTier) => {
+            if (!session?.user || !profile) {
+                throw new Error('We could not find your member profile. Please refresh and try again.');
+            }
+
+            const assessmentId = await resolveBenefitAssessmentId();
+
+            if (!assessmentId) {
+                throw new Error('We could not find your last assessment. Please contact support to continue.');
+            }
+
+            const email = session.user.email ?? profile.email ?? currentUser?.email ?? null;
+
+            if (!email) {
+                throw new Error('We could not find an email for your account. Please update your profile or contact support.');
+            }
+
+            const origin = typeof window !== 'undefined' ? window.location.origin : '';
+            const successUrl = origin
+                ? `${origin}/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}`
+                : undefined;
+            const cancelUrl = origin ? `${origin}/member/dashboard?checkout=cancelled` : undefined;
+
+            const checkoutSession = await startCheckout({
+                assessmentId,
+                email,
+                plan: targetTier,
+                profileId: profile.id,
+                metadata: {
+                    source: 'member-hub-benefits',
+                    context: hasActiveSubscription ? 'change-plan' : 'start-membership',
+                    requested_tier: targetTier,
+                },
+                successUrl,
+                cancelUrl,
+            });
+
+            if (typeof window !== 'undefined') {
+                window.location.href = checkoutSession.url;
+            }
+        },
+        [currentUser?.email, hasActiveSubscription, profile, resolveBenefitAssessmentId, session?.user],
+    );
+
     return (
         <div className="animate-fade-in space-y-8">
             <div>
@@ -5010,6 +5086,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                 isOpen={isPlanModalOpen}
                 onClose={() => setPlanModalOpen(false)}
                 currentTier={planManagementTier}
+                onSelectTier={handlePlanCheckout}
             />
 
             {selectedBenefit && (
@@ -5290,6 +5367,8 @@ const STATUS_TONE_CLASSES: Record<BillingSummaryTone, string> = {
     muted: 'bg-[var(--bg-subtle)] text-[var(--text-muted)] border-[var(--border-subtle)]',
 };
 
+type PaidPlanTier = Exclude<PlanConfigMembershipTier, 'free'>;
+
 const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({ onNavigate }) => {
     const { session } = useAuth();
     const { summary, loading, error, profile, subscription } = useBillingSummary();
@@ -5302,33 +5381,43 @@ const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({
     const billingIntervalLabel = formatBillingCycleLabel(subscription?.billing_cycle ?? null);
     const hasActiveSubscription = Boolean(subscription);
 
-    const handleStartMembership = useCallback(async () => {
-        if (!session?.user || !profile?.id) {
-            setStartError('We could not find your member profile. Please refresh and try again.');
-            return;
+    const resolveLastAssessmentId = useCallback(async (): Promise<string | number | null> => {
+        if (!profile?.id) {
+            return null;
         }
 
-        setIsStartingMembership(true);
-        setStartError(null);
+        if (profile.last_assessment_id) {
+            return profile.last_assessment_id;
+        }
 
         try {
-            let assessmentId = profile.last_assessment_id;
+            const { data, error } = await supabase
+                .from('assessments')
+                .select('id')
+                .eq('profile_id', profile.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
 
-            if (!assessmentId) {
-                const { data, error: assessmentError } = await supabase
-                    .from('assessments')
-                    .select('id')
-                    .eq('profile_id', profile.id)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-
-                if (assessmentError) {
-                    console.error('[MemberBilling] Failed to resolve last assessment', assessmentError);
-                }
-
-                assessmentId = data?.id ?? null;
+            if (error) {
+                console.error('[MemberBilling] Failed to resolve last assessment', error);
+                return null;
             }
+
+            return data?.id ?? null;
+        } catch (resolveError) {
+            console.error('[MemberBilling] Unexpected error while resolving last assessment', resolveError);
+            return null;
+        }
+    }, [profile?.id, profile?.last_assessment_id]);
+
+    const startPlanCheckout = useCallback(
+        async (targetTier: PaidPlanTier) => {
+            if (!session?.user || !profile) {
+                throw new Error('We could not find your member profile. Please refresh and try again.');
+            }
+
+            const assessmentId = await resolveLastAssessmentId();
 
             if (!assessmentId) {
                 throw new Error('We could not find your last assessment. Please contact support to continue.');
@@ -5349,9 +5438,13 @@ const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({
             const checkoutSession = await startCheckout({
                 assessmentId,
                 email,
-                plan: 'founding-member',
+                plan: targetTier,
                 profileId: profile.id,
-                metadata: { source: 'member-hub-billing' },
+                metadata: {
+                    source: 'member-hub-billing',
+                    context: hasActiveSubscription ? 'change-plan' : 'start-membership',
+                    requested_tier: targetTier,
+                },
                 successUrl,
                 cancelUrl,
             });
@@ -5359,6 +5452,21 @@ const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({
             if (typeof window !== 'undefined') {
                 window.location.href = checkoutSession.url;
             }
+        },
+        [hasActiveSubscription, profile, resolveLastAssessmentId, session?.user],
+    );
+
+    const handleStartMembership = useCallback(async () => {
+        if (!session?.user || !profile) {
+            setStartError('We could not find your member profile. Please refresh and try again.');
+            return;
+        }
+
+        setIsStartingMembership(true);
+        setStartError(null);
+
+        try {
+            await startPlanCheckout('founding-member');
         } catch (startError) {
             console.error('[MemberBilling] Failed to start membership checkout', startError);
             const fallbackMessage =
@@ -5369,7 +5477,7 @@ const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({
         } finally {
             setIsStartingMembership(false);
         }
-    }, [profile, session?.user]);
+    }, [profile, session?.user, startPlanCheckout]);
 
     const renderLoadingCard = () => (
         <Card className="space-y-6">
@@ -5473,6 +5581,7 @@ const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({
                 isOpen={isPlanModalOpen}
                 onClose={() => setPlanModalOpen(false)}
                 currentTier={membershipTier}
+                onSelectTier={startPlanCheckout}
             />
         </div>
     );
