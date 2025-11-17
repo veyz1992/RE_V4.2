@@ -640,6 +640,13 @@ LIMIT 5;
 - ✅ Added personalized welcome experience
 - ✅ Created premium styling with particle effects
 
+#### Magic Link Authentication:
+- ✅ Standardized all magic link redirects to `/member/dashboard`
+- ✅ Updated AuthContext login flow with consistent redirect logic
+- ✅ Updated SuccessPage post-checkout magic link flow
+- ✅ Implemented origin-aware redirect URL generation
+- ✅ Added fallback to VITE_APP_BASE_URL for SSR compatibility
+
 ### Architecture Improvements:
 - ✅ Unified assessment-saving flow
 - ✅ Single CTA with direct checkout integration  

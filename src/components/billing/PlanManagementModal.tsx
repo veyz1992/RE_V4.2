@@ -9,6 +9,11 @@ interface PlanManagementModalProps {
   onClose: () => void;
   currentTier: MembershipTier;
   onSelectTier: (tier: PaidMembershipTier) => Promise<void>;
+  activeSubscription?: {
+    tier?: string | null;
+    unit_amount_cents?: number | null;
+    billing_cycle?: string | null;
+  } | null;
 }
 
 const formatPlanPrice = (priceCents: number, billingCycle: 'monthly'): string => {
@@ -24,7 +29,7 @@ const formatPlanPrice = (priceCents: number, billingCycle: 'monthly'): string =>
   return `${formatted} / ${billingCycle === 'monthly' ? 'month' : billingCycle}`;
 };
 
-const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClose, currentTier, onSelectTier }) => {
+const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClose, currentTier, onSelectTier, activeSubscription }) => {
   const [pendingTier, setPendingTier] = useState<PaidMembershipTier | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -33,6 +38,25 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
   }
 
   const normalizedTier = normalizePlanTier(currentTier);
+
+  // Helper function to get the price and billing cycle for a plan
+  const getPlanPricing = (plan: typeof MEMBERSHIP_PLANS[number]) => {
+    const isCurrent = plan.checkoutTier === normalizedTier;
+    
+    // For the current plan, use active subscription data if available
+    if (isCurrent && activeSubscription?.unit_amount_cents && activeSubscription?.billing_cycle) {
+      return {
+        priceCents: activeSubscription.unit_amount_cents,
+        billingCycle: activeSubscription.billing_cycle as 'monthly'
+      };
+    }
+    
+    // For all other plans or if subscription data is missing, use default config values
+    return {
+      priceCents: plan.defaultPriceCents,
+      billingCycle: plan.billingCycle
+    };
+  };
 
   const handleSelect = async (tier: PaidMembershipTier) => {
     if (tier === normalizedTier || pendingTier) {
@@ -90,6 +114,7 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
                 : plan.isAvailable
                   ? 'Select'
                   : 'Coming soon';
+            const pricing = getPlanPricing(plan);
             return (
               <div
                 key={plan.tier}
@@ -103,7 +128,7 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h3 className="font-playfair text-2xl font-bold text-[var(--text-main)]">{plan.label}</h3>
-                      <p className="text-sm font-semibold text-[var(--text-muted)]">{formatPlanPrice(plan.defaultPriceCents, plan.billingCycle)}</p>
+                      <p className="text-sm font-semibold text-[var(--text-muted)]">{formatPlanPrice(pricing.priceCents, pricing.billingCycle)}</p>
                     </div>
                     {isCurrent && (
                       <span className="rounded-full bg-[var(--accent-bg-subtle)] px-3 py-0.5 text-xs font-semibold text-[var(--accent-dark)]">
