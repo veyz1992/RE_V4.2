@@ -1,13 +1,8 @@
 import React, { useState } from 'react';
 import { normalizePlanTier, type MembershipTier } from '@/config/plans';
+import { MEMBERSHIP_PLANS } from '@/config/membershipPlans';
 
 type PaidMembershipTier = Exclude<MembershipTier, 'free'>;
-
-type TierOption = {
-  code: PaidMembershipTier;
-  name: string;
-  description: string;
-};
 
 interface PlanManagementModalProps {
   isOpen: boolean;
@@ -16,28 +11,18 @@ interface PlanManagementModalProps {
   onSelectTier: (tier: PaidMembershipTier) => Promise<void>;
 }
 
-const TIER_OPTIONS: TierOption[] = [
-  {
-    code: 'founding-member',
-    name: 'Founding Member',
-    description: 'Legacy pricing and concierge support for our earliest partners.',
-  },
-  {
-    code: 'bronze',
-    name: 'Bronze',
-    description: 'Verified badge and essential visibility inside the network.',
-  },
-  {
-    code: 'silver',
-    name: 'Silver',
-    description: 'Everything in Bronze plus boosted SEO and compliance reviews.',
-  },
-  {
-    code: 'gold',
-    name: 'Gold',
-    description: 'Maximum visibility, spotlight placements, and priority support.',
-  },
-];
+const formatPlanPrice = (priceCents: number, billingCycle: 'monthly'): string => {
+  if (!priceCents || priceCents <= 0) {
+    return '—';
+  }
+  const amount = priceCents / 100;
+  const formatted = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+  }).format(amount);
+  return `${formatted} / ${billingCycle === 'monthly' ? 'month' : billingCycle}`;
+};
 
 const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClose, currentTier, onSelectTier }) => {
   const [pendingTier, setPendingTier] = useState<PaidMembershipTier | null>(null);
@@ -94,13 +79,20 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errorMessage}</div>
         )}
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {TIER_OPTIONS.map((tier) => {
-            const isCurrent = tier.code === normalizedTier;
-            const isProcessing = pendingTier === tier.code;
-            const buttonDisabled = isCurrent || Boolean(pendingTier);
+          {MEMBERSHIP_PLANS.map((plan) => {
+            const isCurrent = plan.checkoutTier === normalizedTier;
+            const isProcessing = pendingTier === plan.checkoutTier;
+            const buttonDisabled = isCurrent || Boolean(pendingTier) || !plan.isAvailable;
+            const buttonLabel = isCurrent
+              ? 'Current Plan'
+              : isProcessing
+                ? 'Opening checkout…'
+                : plan.isAvailable
+                  ? 'Select'
+                  : 'Coming soon';
             return (
               <div
-                key={tier.code}
+                key={plan.tier}
                 className={`flex h-full flex-col justify-between rounded-2xl border p-6 shadow-lg transition ${
                   isCurrent
                     ? 'border-[var(--accent)] bg-[var(--accent-bg-subtle)]/40'
@@ -109,26 +101,38 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-playfair text-2xl font-bold text-[var(--text-main)]">{tier.name}</h3>
+                    <div>
+                      <h3 className="font-playfair text-2xl font-bold text-[var(--text-main)]">{plan.label}</h3>
+                      <p className="text-sm font-semibold text-[var(--text-muted)]">{formatPlanPrice(plan.defaultPriceCents, plan.billingCycle)}</p>
+                    </div>
                     {isCurrent && (
                       <span className="rounded-full bg-[var(--accent-bg-subtle)] px-3 py-0.5 text-xs font-semibold text-[var(--accent-dark)]">
                         Current
                       </span>
                     )}
+                    {!plan.isAvailable && !isCurrent && (
+                      <span className="rounded-full bg-[var(--bg-subtle)] px-3 py-0.5 text-xs font-semibold text-[var(--text-muted)]">
+                        Coming soon
+                      </span>
+                    )}
                   </div>
-                  {tier.description && <p className="text-sm text-[var(--text-muted)]">{tier.description}</p>}
+                  {plan.description && <p className="text-sm text-[var(--text-muted)]">{plan.description}</p>}
                 </div>
                 <button
                   type="button"
                   disabled={buttonDisabled}
-                  onClick={() => handleSelect(tier.code)}
+                  onClick={() => {
+                    if (plan.isAvailable) {
+                      void handleSelect(plan.checkoutTier);
+                    }
+                  }}
                   className={`mt-6 w-full rounded-xl px-6 py-3 text-center text-sm font-bold transition ${
                     buttonDisabled
                       ? 'cursor-not-allowed bg-[var(--bg-subtle)] text-[var(--text-muted)]'
                       : 'bg-[var(--accent)] text-[var(--accent-text)] hover:bg-[var(--accent-light)]'
                   }`}
                 >
-                  {isCurrent ? 'Current Plan' : isProcessing ? 'Opening checkout…' : 'Select'}
+                  {buttonLabel}
                 </button>
               </div>
             );
