@@ -5148,15 +5148,12 @@ const formatDisplayDate = (value?: string | null): string | null => {
     }).format(date);
 };
 
-const createSummaryFromSubscription = (
-    profile: BillingProfileRow | null,
-    subscription: BillingSubscriptionRow | null,
-): BillingSummary => {
+const createSummaryFromSubscription = (subscription: BillingSubscriptionRow | null): BillingSummary => {
     if (!subscription) {
         return createFreeSummary();
     }
 
-    const planLabel = formatTierLabel(subscription.tier ?? profile?.membership_tier ?? null);
+    const planLabel = formatTierLabel(subscription.tier);
     const priceLabel = formatPriceLabel(subscription.unit_amount_cents, subscription.billing_cycle);
     const billingCycleLabel = formatBillingCycleLabel(subscription.billing_cycle);
     const normalizedStatus = (subscription.status ?? '').toLowerCase();
@@ -5181,7 +5178,7 @@ const createSummaryFromSubscription = (
         statusTone = 'muted';
     }
 
-    const renewalDate = subscription.current_period_end ?? profile?.next_billing_date ?? null;
+    const renewalDate = subscription.current_period_end;
     const formattedDate = formatDisplayDate(renewalDate);
     const nextChargeLabel = formattedDate
         ? `${subscription.cancel_at_period_end ? 'Ends on' : 'Renews on'} ${formattedDate}`
@@ -5246,7 +5243,7 @@ const useBillingSummary = () => {
                     .select('id, tier, status, billing_cycle, unit_amount_cents, current_period_start, current_period_end, cancel_at_period_end')
                     .eq('profile_id', profile.id)
                     .in('status', ['active', 'trialing', 'past_due'])
-                    .order('current_period_start', { ascending: false })
+                    .order('current_period_end', { ascending: false })
                     .limit(1)
                     .maybeSingle();
 
@@ -5254,7 +5251,7 @@ const useBillingSummary = () => {
                     throw subscriptionError;
                 }
 
-                const computedSummary = createSummaryFromSubscription(profile as BillingProfileRow, (subscription as BillingSubscriptionRow | null) ?? null);
+                const computedSummary = createSummaryFromSubscription((subscription as BillingSubscriptionRow | null) ?? null);
 
                 if (isMounted) {
                     setSummary(computedSummary);
@@ -5301,7 +5298,7 @@ const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({
     const [startError, setStartError] = useState<string | null>(null);
 
     const membershipTier: PlanConfigMembershipTier = normalizePlanTier(subscription?.tier ?? profile?.membership_tier ?? null);
-    const nextBillingDateLabel = formatDisplayDate(subscription?.current_period_end ?? profile?.next_billing_date ?? null);
+    const nextBillingDateLabel = formatDisplayDate(subscription?.current_period_end ?? null);
     const billingIntervalLabel = formatBillingCycleLabel(subscription?.billing_cycle ?? null);
     const hasActiveSubscription = Boolean(subscription);
 
@@ -5388,7 +5385,7 @@ const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({
     const renderInactiveState = () => (
         <Card className="space-y-6 text-center">
             <div className="space-y-2">
-                <p className="text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">Membership</p>
+                <p className="text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">No active membership</p>
                 <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">Start your Restoration Expertise membership</h2>
                 <p className="text-[var(--text-muted)]">
                     Unlock your badge listing, member events, and concierge marketing support by activating your Founding Member plan.
