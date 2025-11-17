@@ -21,6 +21,7 @@ import {
     SERVICE_REQUEST_TYPE_OPTIONS,
 } from '../constants';
 import { supabase } from '@/lib/supabase';
+import { startCheckout } from '@/lib/checkout';
 import { normalizeWebsiteUrl, isLikelyValidWebsite } from '@/lib/urlHelpers';
 import { REQUEST_TYPE_SEO_BLOG, type SeoBlogPeriod } from '@/config/benefits';
 import {
@@ -5054,9 +5055,11 @@ type BillingSummary = {
 
 type BillingProfileRow = {
     id: string;
+    email: string | null;
     membership_tier: string | null;
     stripe_subscription_id: string | null;
     next_billing_date: string | null;
+    last_assessment_id: string | number | null;
 };
 
 type BillingSubscriptionRow = {
@@ -5202,6 +5205,8 @@ const useBillingSummary = () => {
     const [summary, setSummary] = useState<BillingSummary>(createFreeSummary());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [profile, setProfile] = useState<BillingProfileRow | null>(null);
+    const [subscription, setSubscription] = useState<BillingSubscriptionRow | null>(null);
 
     useEffect(() => {
         let isMounted = true;
@@ -5221,7 +5226,7 @@ const useBillingSummary = () => {
             try {
                 const { data: profile, error: profileError } = await supabase
                     .from('profiles')
-                    .select('id, membership_tier, stripe_subscription_id, next_billing_date')
+                    .select('id, email, membership_tier, stripe_subscription_id, next_billing_date, last_assessment_id')
                     .eq('id', session.user.id)
                     .maybeSingle();
 
@@ -5253,11 +5258,15 @@ const useBillingSummary = () => {
 
                 if (isMounted) {
                     setSummary(computedSummary);
+                    setProfile(profile as BillingProfileRow);
+                    setSubscription((subscription as BillingSubscriptionRow | null) ?? null);
                 }
             } catch (fetchError) {
                 console.error('Failed to load billing summary', fetchError);
                 if (isMounted) {
                     setSummary(createFreeSummary());
+                    setProfile(null);
+                    setSubscription(null);
                     setError('Unable to load billing information. Please refresh to try again.');
                 }
             } finally {
@@ -5274,7 +5283,7 @@ const useBillingSummary = () => {
         };
     }, [session?.user?.id]);
 
-    return { summary, loading, error };
+    return { summary, loading, error, profile, subscription };
 };
 
 const STATUS_TONE_CLASSES: Record<BillingSummaryTone, string> = {
@@ -5285,7 +5294,174 @@ const STATUS_TONE_CLASSES: Record<BillingSummaryTone, string> = {
 };
 
 const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({ onNavigate }) => {
-    const { summary, loading, error } = useBillingSummary();
+    const { session } = useAuth();
+    const { summary, loading, error, profile, subscription } = useBillingSummary();
+    const [isPlanModalOpen, setPlanModalOpen] = useState(false);
+    const [isStartingMembership, setIsStartingMembership] = useState(false);
+    const [startError, setStartError] = useState<string | null>(null);
+
+    const membershipTier: PlanConfigMembershipTier = normalizePlanTier(subscription?.tier ?? profile?.membership_tier ?? null);
+    const nextBillingDateLabel = formatDisplayDate(subscription?.current_period_end ?? profile?.next_billing_date ?? null);
+    const billingIntervalLabel = formatBillingCycleLabel(subscription?.billing_cycle ?? null);
+    const hasActiveSubscription = Boolean(subscription);
+
+    const handleStartMembership = useCallback(async () => {
+        if (!session?.user || !profile?.id) {
+            setStartError('We could not find your member profile. Please refresh and try again.');
+            return;
+        }
+
+        setIsStartingMembership(true);
+        setStartError(null);
+
+        try {
+            let assessmentId = profile.last_assessment_id;
+
+            if (!assessmentId) {
+                const { data, error: assessmentError } = await supabase
+                    .from('assessments')
+                    .select('id')
+                    .eq('profile_id', profile.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (assessmentError) {
+                    console.error('[MemberBilling] Failed to resolve last assessment', assessmentError);
+                }
+
+                assessmentId = data?.id ?? null;
+            }
+
+            if (!assessmentId) {
+                throw new Error('We could not find your last assessment. Please contact support to continue.');
+            }
+
+            const email = session.user.email ?? profile.email;
+
+            if (!email) {
+                throw new Error('We could not find an email for your account. Please update your profile or contact support.');
+            }
+
+            const origin = typeof window !== 'undefined' ? window.location.origin : '';
+            const successUrl = origin
+                ? `${origin}/success/founding-member?checkout=success&session_id={CHECKOUT_SESSION_ID}`
+                : undefined;
+            const cancelUrl = origin ? `${origin}/member/dashboard?checkout=cancelled` : undefined;
+
+            const checkoutSession = await startCheckout({
+                assessmentId,
+                email,
+                plan: 'founding-member',
+                profileId: profile.id,
+                metadata: { source: 'member-hub-billing' },
+                successUrl,
+                cancelUrl,
+            });
+
+            if (typeof window !== 'undefined') {
+                window.location.href = checkoutSession.url;
+            }
+        } catch (startError) {
+            console.error('[MemberBilling] Failed to start membership checkout', startError);
+            const fallbackMessage =
+                startError instanceof Error
+                    ? startError.message
+                    : 'Unable to start checkout right now. Please try again.';
+            setStartError(fallbackMessage);
+        } finally {
+            setIsStartingMembership(false);
+        }
+    }, [profile, session?.user]);
+
+    const renderLoadingCard = () => (
+        <Card className="space-y-6">
+            <div className="space-y-3">
+                <div className="h-6 w-32 animate-pulse rounded-lg bg-[var(--bg-subtle)]" />
+                <div className="h-8 w-48 animate-pulse rounded-lg bg-[var(--bg-subtle)]" />
+                <div className="h-4 w-60 animate-pulse rounded-lg bg-[var(--bg-subtle)]" />
+            </div>
+            <div className="h-10 w-full animate-pulse rounded-xl bg-[var(--bg-subtle)]" />
+        </Card>
+    );
+
+    const renderInactiveState = () => (
+        <Card className="space-y-6 text-center">
+            <div className="space-y-2">
+                <p className="text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">Membership</p>
+                <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">Start your Restoration Expertise membership</h2>
+                <p className="text-[var(--text-muted)]">
+                    Unlock your badge listing, member events, and concierge marketing support by activating your Founding Member plan.
+                </p>
+            </div>
+            {startError && (
+                <div className="rounded-2xl border border-error/30 bg-error/5 px-4 py-3 text-sm text-error">{startError}</div>
+            )}
+            <button
+                type="button"
+                onClick={() => handleStartMembership()}
+                disabled={isStartingMembership}
+                className="w-full rounded-xl bg-[var(--accent)] px-6 py-3 text-center text-base font-bold text-[var(--accent-text)] shadow-lg transition hover:bg-[var(--accent-light)] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+                {isStartingMembership ? 'Connecting to Stripe…' : 'Start Membership'}
+            </button>
+            <div className="text-sm text-[var(--text-muted)]">
+                Already a member? <button className="font-semibold text-[var(--text-main)] underline" onClick={() => onNavigate?.('benefits')}>See what’s included</button>
+            </div>
+        </Card>
+    );
+
+    const renderActiveState = () => (
+        <Card className="space-y-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                    <p className="text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">Your plan</p>
+                    <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">{summary.planLabel}</h2>
+                    <p className="text-lg text-[var(--text-muted)]">{summary.priceLabel}</p>
+                </div>
+                <span className={`inline-flex items-center rounded-full border px-4 py-1 text-sm font-semibold ${STATUS_TONE_CLASSES[summary.statusTone]}`}>
+                    {summary.statusLabel}
+                </span>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-2xl bg-[var(--bg-subtle)] p-4 text-left">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Next billing date</p>
+                    <p className="text-lg font-semibold text-[var(--text-main)]">{nextBillingDateLabel ?? '—'}</p>
+                </div>
+                <div className="rounded-2xl bg-[var(--bg-subtle)] p-4 text-left">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Billing interval</p>
+                    <p className="text-lg font-semibold text-[var(--text-main)]">{billingIntervalLabel ?? '—'}</p>
+                </div>
+                <div className="rounded-2xl bg-[var(--bg-subtle)] p-4 text-left">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">Status</p>
+                    <p className="text-lg font-semibold text-[var(--text-main)]">{summary.nextChargeLabel}</p>
+                </div>
+            </div>
+
+            {error && (
+                <div className="rounded-2xl border border-error/30 bg-error/5 px-4 py-3 text-sm text-error">{error}</div>
+            )}
+
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <button
+                    type="button"
+                    onClick={() => setPlanModalOpen(true)}
+                    className="rounded-xl bg-[var(--accent)] px-6 py-3 text-center text-sm font-bold text-[var(--accent-text)] shadow-md transition hover:bg-[var(--accent-light)]"
+                >
+                    Change Plan
+                </button>
+                {/* TODO: Replace with Stripe Billing Portal link when available */}
+                <button
+                    type="button"
+                    disabled
+                    className="text-sm font-semibold text-[var(--text-muted)] underline-offset-4 disabled:cursor-not-allowed"
+                >
+                    Manage billing
+                </button>
+            </div>
+        </Card>
+    );
 
     return (
         <div className="animate-fade-in space-y-8">
@@ -5294,60 +5470,13 @@ const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({
                 <p className="mt-2 text-lg text-[var(--text-muted)]">Manage your Restoration Expertise membership, payment details, and invoices.</p>
             </div>
 
-            <Card className="space-y-4">
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                    <div>
-                        <p className="text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">Your Subscription</p>
-                        {loading ? (
-                            <div className="mt-3 space-y-2">
-                                <div className="h-7 w-48 animate-pulse rounded-lg bg-[var(--bg-subtle)]" />
-                                <div className="h-5 w-32 animate-pulse rounded-lg bg-[var(--bg-subtle)]" />
-                            </div>
-                        ) : (
-                            <div className="mt-3">
-                                <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">{summary.planLabel}</h2>
-                                <p className="text-lg text-[var(--text-muted)]">{summary.priceLabel}</p>
-                            </div>
-                        )}
-                    </div>
-                    {!loading && (
-                        <span className={`inline-flex items-center rounded-full border px-4 py-1 text-sm font-semibold ${STATUS_TONE_CLASSES[summary.statusTone]}`}>
-                            {summary.statusLabel}
-                        </span>
-                    )}
-                </div>
+            {loading ? renderLoadingCard() : hasActiveSubscription ? renderActiveState() : renderInactiveState()}
 
-                {loading ? (
-                    <p className="text-sm text-[var(--text-muted)]">Loading billing information…</p>
-                ) : (
-                    <>
-                        <p className="text-base text-[var(--text-main)]">{summary.nextChargeLabel}</p>
-                        {summary.isPaidPlan ? (
-                            <p className="text-sm text-[var(--text-muted)]">Billing cycle: {summary.billingCycleLabel ?? '—'}</p>
-                        ) : (
-                            <div className="rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-4 py-3 text-sm text-[var(--text-muted)]">
-                                You’re on the free plan. Upgrade to unlock SEO posts, reviews, and more.
-                            </div>
-                        )}
-                    </>
-                )}
-
-                {error && (
-                    <div className="rounded-2xl border border-error/30 bg-error/5 px-4 py-3 text-sm text-error">
-                        {error}
-                    </div>
-                )}
-
-                <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm text-[var(--text-muted)]">Ready for more visibility, reviews, and SEO support?</p>
-                    <button
-                        onClick={() => onNavigate?.('benefits')}
-                        className="w-full rounded-xl bg-[var(--accent)] px-5 py-2.5 text-center text-sm font-bold text-[var(--accent-text)] shadow-md transition hover:bg-[var(--accent-light)] sm:w-auto"
-                    >
-                        View Plans
-                    </button>
-                </div>
-            </Card>
+            <PlanManagementModal
+                isOpen={isPlanModalOpen}
+                onClose={() => setPlanModalOpen(false)}
+                currentTier={membershipTier}
+            />
         </div>
     );
 };
