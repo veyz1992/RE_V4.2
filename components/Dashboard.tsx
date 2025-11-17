@@ -5560,7 +5560,9 @@ const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({
                 <button
                     type="button"
                     disabled
-                    className="text-sm font-semibold text-[var(--text-muted)] underline-offset-4 disabled:cursor-not-allowed"
+                    title="Billing portal coming soon"
+                    aria-label="Manage billing (Billing portal coming soon)"
+                    className="text-sm font-semibold text-[var(--text-muted)] underline-offset-4 cursor-not-allowed opacity-70"
                 >
                     Manage billing
                 </button>
