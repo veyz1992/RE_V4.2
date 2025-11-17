@@ -3,7 +3,6 @@ import { HomeIcon, ListBulletIcon, UserCircleIcon, ArrowRightOnRectangleIcon, Pe
 import { useAuth } from '@/context/AuthContext';
 import {
     Benefit,
-    Invoice,
     MemberServiceRequest,
     ServiceRequestActivityLog,
     ServiceRequestPriority,
@@ -5031,274 +5030,327 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
 };
 
 
-const PauseBillingModal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: () => void; }> = ({ isOpen, onClose, onConfirm }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed inset-0 bg-[var(--bg-overlay)] flex items-center justify-center z-50 p-4 animate-fade-in" onClick={onClose}>
-            <div className="bg-[var(--bg-card)] rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto relative animate-slide-up" onClick={e => e.stopPropagation()}>
-                <div className="p-6 sm:p-8">
-                    <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Pause Billing</h2>
-                    <p className="text-[var(--text-muted)] mb-6">Your subscription will be paused from your next renewal date. You will not be billed and your benefits will be temporarily suspended.</p>
-                    <fieldset className="space-y-3">
-                        <legend className="font-semibold text-[var(--text-main)]">Pause duration (dummy):</legend>
-                        <label className="flex items-center gap-3 p-3 border rounded-lg"><input type="radio" name="pause-duration" className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)]"/> 1 Month</label>
-                        <label className="flex items-center gap-3 p-3 border rounded-lg"><input type="radio" name="pause-duration" className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)]"/> 3 Months</label>
-                    </fieldset>
-                </div>
-                <div className="p-6 bg-[var(--bg-subtle)] sticky bottom-0 rounded-b-2xl flex flex-col sm:flex-row justify-end items-center gap-4">
-                    <button onClick={onClose} className="w-full sm:w-auto py-2.5 px-6 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">Cancel</button>
-                    <button onClick={onConfirm} className="w-full sm:w-auto py-2.5 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)]">Confirm Pause</button>
-                </div>
-            </div>
-        </div>
-    );
+
+const BILLING_TIER_LABELS: Record<string, string> = {
+    founding: 'Founding Member',
+    'founding-member': 'Founding Member',
+    'founding_member': 'Founding Member',
+    bronze: 'Bronze',
+    silver: 'Silver',
+    gold: 'Gold',
 };
 
-const CancelSubscriptionModal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: () => void; }> = ({ isOpen, onClose, onConfirm }) => {
-    if (!isOpen) return null;
-    return (
-        <div className="fixed inset-0 bg-[var(--bg-overlay)] flex items-center justify-center z-50 p-4 animate-fade-in" onClick={onClose}>
-            <div className="bg-[var(--bg-card)] rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto relative animate-slide-up" onClick={e => e.stopPropagation()}>
-                <div className="p-6 sm:p-8 text-center">
-                    <div className="mx-auto w-16 h-16 flex items-center justify-center rounded-full bg-error/10 text-error mb-4">
-                        <ExclamationTriangleIcon className="w-8 h-8"/>
-                    </div>
-                    <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)] mb-4">Are you sure you want to cancel?</h2>
-                    <p className="text-[var(--text-muted)] text-lg">Canceling will remove your active badge and network listing at the end of your current period. You will lose access to all your membership benefits.</p>
-                </div>
-                <div className="p-6 bg-[var(--bg-subtle)] sticky bottom-0 rounded-b-2xl flex flex-col-reverse sm:flex-row justify-center items-center gap-4">
-                    <button onClick={onConfirm} className="w-full sm:w-auto py-2.5 px-6 bg-error text-white font-bold rounded-lg shadow-md hover:bg-red-600">Cancel at end of period</button>
-                    <button onClick={onClose} className="w-full sm:w-auto py-2.5 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)]">Keep my subscription</button>
-                </div>
-            </div>
-        </div>
-    );
+type BillingSummaryTone = 'success' | 'warning' | 'danger' | 'muted';
+
+type BillingSummary = {
+    planLabel: string;
+    priceLabel: string;
+    statusLabel: string;
+    statusTone: BillingSummaryTone;
+    nextChargeLabel: string;
+    isPaidPlan: boolean;
+    billingCycleLabel: string | null;
 };
 
+type BillingProfileRow = {
+    id: string;
+    membership_tier: string | null;
+    stripe_subscription_id: string | null;
+    next_billing_date: string | null;
+};
 
-const MemberBilling: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; billingData?: any; invoices?: any[]; }> = ({ showToast, billingData, invoices = [] }) => {
-    const { session } = useAuth();
-    const [isPauseModalOpen, setPauseModalOpen] = useState(false);
-    const [isCancelModalOpen, setCancelModalOpen] = useState(false);
+type BillingSubscriptionRow = {
+    id: string;
+    tier: string | null;
+    status: string | null;
+    billing_cycle: string | null;
+    unit_amount_cents: number | null;
+    current_period_start: string | null;
+    current_period_end: string | null;
+    cancel_at_period_end: boolean | null;
+};
 
-    const handleCancelSubscription = () => {
-        // TODO: Implement actual subscription cancellation via Stripe API
-        setCancelModalOpen(false);
-        showToast('Your subscription is scheduled for cancellation.', 'success');
-    };
-    
-    if (!billingData) {
-        return <Card><p>Billing information is not available.</p></Card>;
+const createFreeSummary = (): BillingSummary => ({
+    planLabel: 'Free Plan',
+    priceLabel: '—',
+    statusLabel: 'No active subscription',
+    statusTone: 'muted',
+    nextChargeLabel: 'You’re currently on the free plan.',
+    isPaidPlan: false,
+    billingCycleLabel: null,
+});
+
+const formatTierLabel = (tier?: string | null): string => {
+    if (!tier) {
+        return 'Member Plan';
     }
 
-    const subscription = {
-        plan: billingData.plan_name || 'Unknown Plan',
-        status: billingData.subscription_status || 'Unknown',
-        renewalDate: billingData.next_renewal_date,
-        price: billingData.plan_price || '$0',
-    };
+    const normalized = tier.toLowerCase().replace(/\s+/g, '-').replace(/_/g, '-');
+    if (BILLING_TIER_LABELS[normalized]) {
+        return BILLING_TIER_LABELS[normalized];
+    }
 
-    const paymentMethod = {
-        brand: billingData.payment_method_brand || 'Unknown',
-        last4: billingData.payment_method_last4 || '****',
-        expiry: billingData.payment_method_expiry || '',
-        cardholder: billingData.cardholder_name || session?.user?.email || 'Unknown',
-    };
-
-    const statusConfig = {
-        'Active': { text: 'Active', color: 'bg-success/20 text-success' },
-        'Past due': { text: 'Past Due', color: 'bg-warning/20 text-yellow-800' },
-        'Canceled': { text: 'Ends on ' + subscription.renewalDate, color: 'bg-gray-200 text-gray-dark' },
-    };
-    const currentStatus = statusConfig[subscription.status];
-
-    const getCardIcon = (brand: string) => {
-        if (brand.toLowerCase() === 'visa') return <div className="font-bold text-blue-800 italic text-2xl">VISA</div>;
-        if (brand.toLowerCase() === 'mastercard') return <div className="font-bold text-red-600">Mastercard</div>;
-        return <CreditCardIcon className="w-8 h-8 text-gray-dark"/>;
-    };
-    
-    const getInvoiceStatusColor = (status: Invoice['status']) => ({
-        'Paid': 'bg-success/20 text-success',
-        'Failed': 'bg-error/20 text-error',
-        'Pending': 'bg-warning/20 text-yellow-800',
-    }[status]);
-
-    const NextPaymentStrip = () => {
-        if (subscription.status === 'Past due') {
-            return (
-                <div className="p-4 rounded-xl bg-warning/10 border border-warning/20 flex items-center gap-4">
-                    <ExclamationTriangleIcon className="w-6 h-6 text-warning shrink-0" />
-                    <div>
-                        <p className="font-bold text-yellow-900">Your last payment failed.</p>
-                        <p className="text-sm text-yellow-800">Please update your payment method to avoid interruption.</p>
-                    </div>
-                </div>
-            )
-        }
-        if (subscription.status === 'Canceled') {
-             return (
-                <div className="p-4 rounded-xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] flex items-center gap-4">
-                    <ExclamationTriangleIcon className="w-6 h-6 text-[var(--text-muted)] shrink-0" />
-                    <div>
-                        <p className="font-bold text-[var(--text-main)]">Your subscription is scheduled to end on {subscription.renewalDate}.</p>
-                        <p className="text-sm text-[var(--text-muted)]">Your badge and benefits will become inactive after that date.</p>
-                    </div>
-                </div>
-            )
-        }
-        
-        return (
-            <div className="p-4 rounded-xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] flex items-center gap-4">
-                 <CreditCardIcon className="w-6 h-6 text-[var(--text-muted)] shrink-0" />
-                 <p className="text-[var(--text-main)] sm:text-lg">
-                    Next payment: <span className="font-bold">{subscription.price.split(' ')[0]} on {subscription.renewalDate}</span> • {subscription.planName} plan • Billed {subscription.billingCycle}
-                 </p>
-            </div>
-        )
-    };
-
-    return (
-        <>
-            <PauseBillingModal 
-                isOpen={isPauseModalOpen} 
-                onClose={() => setPauseModalOpen(false)} 
-                onConfirm={() => {
-                    showToast('Your subscription will be paused starting from the next billing cycle.', 'success');
-                    setPauseModalOpen(false);
-                }}
-            />
-            <CancelSubscriptionModal 
-                isOpen={isCancelModalOpen} 
-                onClose={() => setCancelModalOpen(false)} 
-                onConfirm={handleCancelSubscription}
-            />
-
-            <div className="animate-fade-in space-y-8">
-                <div>
-                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Billing & Subscription</h1>
-                    <p className="mt-2 text-lg text-[var(--text-muted)]">Manage your Restoration Expertise membership, payment details, and invoices.</p>
-                </div>
-                
-                <NextPaymentStrip />
-
-                <Card>
-                    <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-                        <div>
-                            <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Current Subscription</h2>
-                            <div className="flex items-center gap-4 mt-2">
-                                <p className="text-xl font-semibold text-[var(--text-main)]">{subscription.planName} – {subscription.price}</p>
-                                <span className={`px-3 py-1 text-xs font-bold rounded-full ${currentStatus.color}`}>{currentStatus.text}</span>
-                            </div>
-                            <p className="text-sm text-[var(--text-muted)] mt-2">
-                                {subscription.status === 'Canceled' ? 'Access ends' : 'Next charge'}: {subscription.renewalDate} • Member since: {subscription.startedAt}
-                            </p>
-                        </div>
-                        <div className="flex gap-3 self-end md:self-auto shrink-0">
-                            <button onClick={() => showToast('This will be connected to Stripe later.', 'success')} className="py-2.5 px-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">Change plan</button>
-                            <button onClick={() => showToast('This will be connected to Stripe later.', 'success')} className="py-2.5 px-5 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)]">Open customer portal</button>
-                        </div>
-                    </div>
-                </Card>
-
-                <Card className={subscription.status === 'Past due' ? 'border-2 border-warning' : ''}>
-                    <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Payment Method</h2>
-                    <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-                        <div className="flex items-center gap-4">
-                            <div className="w-16 h-10 bg-gray-200 rounded-md flex items-center justify-center">
-                                {getCardIcon(paymentMethod.brand)}
-                            </div>
-                            <div>
-                                <p className="font-semibold text-[var(--text-main)]">{paymentMethod.brand} ending in {paymentMethod.last4}</p>
-                                <p className="text-sm text-[var(--text-muted)]">Expires {paymentMethod.expiry}</p>
-                                <p className="text-sm text-[var(--text-muted)] mt-1">Cardholder: {paymentMethod.cardholder}</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-3 self-end md:self-auto shrink-0">
-                            <button onClick={() => showToast('Card update flow will be handled by Stripe in the live version.', 'success')} className="py-2.5 px-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">Update card</button>
-                            <button disabled className="py-2.5 px-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">Remove</button>
-                        </div>
-                    </div>
-                </Card>
-
-                <Card>
-                    <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Invoice History</h2>
-                    {/* Desktop Table */}
-                    <div className="overflow-x-auto hidden md:block">
-                        <table className="min-w-full">
-                            <thead>
-                                <tr className="border-b border-[var(--border-subtle)]">
-                                    <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Invoice #</th>
-                                    <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Date</th>
-                                    <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Amount</th>
-                                    <th className="py-3 px-4 text-left text-sm font-semibold text-[var(--text-muted)]">Status</th>
-                                    <th className="py-3 px-4 text-right text-sm font-semibold text-[var(--text-muted)]">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {invoices?.map(invoice => (
-                                    <tr key={invoice.id} className="border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-subtle)]">
-                                        <td className="py-3 px-4 text-[var(--text-main)] font-semibold">{invoice.id}</td>
-                                        <td className="py-3 px-4 text-[var(--text-main)]">{invoice.date}</td>
-                                        <td className="py-3 px-4 text-[var(--text-main)]">{invoice.amount}</td>
-                                        <td className="py-3 px-4">
-                                            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getInvoiceStatusColor(invoice.status)}`}>
-                                                {invoice.status}
-                                            </span>
-                                        </td>
-                                        <td className="py-3 px-4 text-right">
-                                            <button onClick={() => showToast('Download will be available in the live version.', 'success')} className="p-2 text-[var(--text-muted)] hover:text-[var(--accent-dark)]"><ArrowDownTrayIcon className="w-5 h-5"/></button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    {/* Mobile List */}
-                    <div className="space-y-4 md:hidden">
-                        {invoices?.map(invoice => (
-                            <div key={invoice.id} className="p-4 border border-[var(--border-subtle)] rounded-lg">
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <p className="font-bold text-[var(--text-main)]">{invoice.id}</p>
-                                        <p className="text-sm text-[var(--text-muted)]">{invoice.date}</p>
-                                    </div>
-                                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getInvoiceStatusColor(invoice.status)}`}>
-                                        {invoice.status}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center mt-3 pt-3 border-t border-[var(--border-subtle)]">
-                                    <p className="font-semibold text-[var(--text-main)]">{invoice.amount}</p>
-                                    <button onClick={() => showToast('Download will be available in the live version.', 'success')} className="flex items-center gap-2 py-1 px-3 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg text-sm font-semibold">
-                                        <ArrowDownTrayIcon className="w-4 h-4"/> PDF
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </Card>
-
-                <Card>
-                    <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-2">Manage Subscription</h2>
-                    <p className="text-[var(--text-muted)] mb-6">Control your membership status. Changes here will affect your access to benefits and your badge.</p>
-                    {subscription.status === 'Canceled' ? (
-                        <div className="p-4 bg-[var(--bg-subtle)] rounded-lg text-center text-[var(--text-muted)] font-medium">
-                            Subscription already scheduled for cancellation.
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <button onClick={() => setPauseModalOpen(true)} className="py-3 px-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">Pause billing</button>
-                            <button onClick={() => setCancelModalOpen(true)} className="py-3 px-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm text-error hover:bg-error/5">Cancel subscription</button>
-                            <button onClick={() => showToast('Use the payment method section above to update your card.', 'success')} className="py-3 px-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">Update billing details</button>
-                        </div>
-                    )}
-                </Card>
-
-            </div>
-        </>
-    );
+    return tier
+        .split(/\s|_/)
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
 };
 
+const formatPriceLabel = (unitAmountCents?: number | null, billingCycle?: string | null): string => {
+    if (!unitAmountCents || unitAmountCents <= 0 || !billingCycle) {
+        return '—';
+    }
+
+    const amount = unitAmountCents / 100;
+    const formattedAmount = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+    }).format(amount);
+
+    const normalizedCycle = billingCycle.toLowerCase() === 'yearly' ? 'year' : 'month';
+    return `${formattedAmount} / ${normalizedCycle}`;
+};
+
+const formatBillingCycleLabel = (billingCycle?: string | null): string | null => {
+    if (!billingCycle) {
+        return null;
+    }
+
+    const normalized = billingCycle.toLowerCase();
+    if (normalized === 'monthly') {
+        return 'Monthly';
+    }
+    if (normalized === 'yearly') {
+        return 'Yearly';
+    }
+    return billingCycle;
+};
+
+const formatDisplayDate = (value?: string | null): string | null => {
+    if (!value) {
+        return null;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    return new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+    }).format(date);
+};
+
+const createSummaryFromSubscription = (
+    profile: BillingProfileRow | null,
+    subscription: BillingSubscriptionRow | null,
+): BillingSummary => {
+    if (!subscription) {
+        return createFreeSummary();
+    }
+
+    const planLabel = formatTierLabel(subscription.tier ?? profile?.membership_tier ?? null);
+    const priceLabel = formatPriceLabel(subscription.unit_amount_cents, subscription.billing_cycle);
+    const billingCycleLabel = formatBillingCycleLabel(subscription.billing_cycle);
+    const normalizedStatus = (subscription.status ?? '').toLowerCase();
+
+    let statusLabel = 'Active';
+    let statusTone: BillingSummaryTone = 'success';
+
+    if (normalizedStatus === 'past_due') {
+        statusLabel = 'Past due';
+        statusTone = 'danger';
+    } else if (normalizedStatus === 'trialing') {
+        statusLabel = subscription.cancel_at_period_end ? 'Trial ending soon' : 'Trialing';
+        statusTone = 'success';
+    } else if (subscription.cancel_at_period_end) {
+        statusLabel = 'Cancels at end of period';
+        statusTone = 'warning';
+    } else if (normalizedStatus === 'active') {
+        statusLabel = 'Active';
+        statusTone = 'success';
+    } else if (normalizedStatus) {
+        statusLabel = normalizedStatus.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+        statusTone = 'muted';
+    }
+
+    const renewalDate = subscription.current_period_end ?? profile?.next_billing_date ?? null;
+    const formattedDate = formatDisplayDate(renewalDate);
+    const nextChargeLabel = formattedDate
+        ? `${subscription.cancel_at_period_end ? 'Ends on' : 'Renews on'} ${formattedDate}`
+        : subscription.cancel_at_period_end
+            ? 'This subscription will end at the close of the current period.'
+            : 'Next renewal date not available.';
+
+    return {
+        planLabel,
+        priceLabel,
+        statusLabel,
+        statusTone,
+        nextChargeLabel,
+        isPaidPlan: true,
+        billingCycleLabel,
+    };
+};
+
+const useBillingSummary = () => {
+    const { session } = useAuth();
+    const [summary, setSummary] = useState<BillingSummary>(createFreeSummary());
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const fetchSummary = async () => {
+            if (!session?.user?.id) {
+                if (isMounted) {
+                    setSummary(createFreeSummary());
+                    setLoading(false);
+                }
+                return;
+            }
+
+            setLoading(true);
+            setError(null);
+
+            try {
+                const { data: profile, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('id, membership_tier, stripe_subscription_id, next_billing_date')
+                    .eq('id', session.user.id)
+                    .maybeSingle();
+
+                if (profileError) {
+                    throw profileError;
+                }
+
+                if (!profile) {
+                    if (isMounted) {
+                        setSummary(createFreeSummary());
+                    }
+                    return;
+                }
+
+                const { data: subscription, error: subscriptionError } = await supabase
+                    .from('subscriptions')
+                    .select('id, tier, status, billing_cycle, unit_amount_cents, current_period_start, current_period_end, cancel_at_period_end')
+                    .eq('profile_id', profile.id)
+                    .in('status', ['active', 'trialing', 'past_due'])
+                    .order('current_period_start', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (subscriptionError && subscriptionError.code !== 'PGRST116') {
+                    throw subscriptionError;
+                }
+
+                const computedSummary = createSummaryFromSubscription(profile as BillingProfileRow, (subscription as BillingSubscriptionRow | null) ?? null);
+
+                if (isMounted) {
+                    setSummary(computedSummary);
+                }
+            } catch (fetchError) {
+                console.error('Failed to load billing summary', fetchError);
+                if (isMounted) {
+                    setSummary(createFreeSummary());
+                    setError('Unable to load billing information. Please refresh to try again.');
+                }
+            } finally {
+                if (isMounted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        void fetchSummary();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [session?.user?.id]);
+
+    return { summary, loading, error };
+};
+
+const STATUS_TONE_CLASSES: Record<BillingSummaryTone, string> = {
+    success: 'bg-success/10 text-success border-success/20',
+    warning: 'bg-warning/10 text-yellow-900 border-yellow-200',
+    danger: 'bg-error/10 text-error border-error/20',
+    muted: 'bg-[var(--bg-subtle)] text-[var(--text-muted)] border-[var(--border-subtle)]',
+};
+
+const MemberBilling: React.FC<{ onNavigate?: (view: MemberView) => void; }> = ({ onNavigate }) => {
+    const { summary, loading, error } = useBillingSummary();
+
+    return (
+        <div className="animate-fade-in space-y-8">
+            <div>
+                <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Billing & Subscription</h1>
+                <p className="mt-2 text-lg text-[var(--text-muted)]">Manage your Restoration Expertise membership, payment details, and invoices.</p>
+            </div>
+
+            <Card className="space-y-4">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                        <p className="text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">Your Subscription</p>
+                        {loading ? (
+                            <div className="mt-3 space-y-2">
+                                <div className="h-7 w-48 animate-pulse rounded-lg bg-[var(--bg-subtle)]" />
+                                <div className="h-5 w-32 animate-pulse rounded-lg bg-[var(--bg-subtle)]" />
+                            </div>
+                        ) : (
+                            <div className="mt-3">
+                                <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">{summary.planLabel}</h2>
+                                <p className="text-lg text-[var(--text-muted)]">{summary.priceLabel}</p>
+                            </div>
+                        )}
+                    </div>
+                    {!loading && (
+                        <span className={`inline-flex items-center rounded-full border px-4 py-1 text-sm font-semibold ${STATUS_TONE_CLASSES[summary.statusTone]}`}>
+                            {summary.statusLabel}
+                        </span>
+                    )}
+                </div>
+
+                {loading ? (
+                    <p className="text-sm text-[var(--text-muted)]">Loading billing information…</p>
+                ) : (
+                    <>
+                        <p className="text-base text-[var(--text-main)]">{summary.nextChargeLabel}</p>
+                        {summary.isPaidPlan ? (
+                            <p className="text-sm text-[var(--text-muted)]">Billing cycle: {summary.billingCycleLabel ?? '—'}</p>
+                        ) : (
+                            <div className="rounded-2xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-4 py-3 text-sm text-[var(--text-muted)]">
+                                You’re on the free plan. Upgrade to unlock SEO posts, reviews, and more.
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {error && (
+                    <div className="rounded-2xl border border-error/30 bg-error/5 px-4 py-3 text-sm text-error">
+                        {error}
+                    </div>
+                )}
+
+                <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-[var(--text-muted)]">Ready for more visibility, reviews, and SEO support?</p>
+                    <button
+                        onClick={() => onNavigate?.('benefits')}
+                        className="w-full rounded-xl bg-[var(--accent)] px-5 py-2.5 text-center text-sm font-bold text-[var(--accent-text)] shadow-md transition hover:bg-[var(--accent-light)] sm:w-auto"
+                    >
+                        View Plans
+                    </button>
+                </div>
+            </Card>
+        </div>
+    );
+};
 const communityEvents = [
     {
         title: "Monthly Owner Roundtable",
@@ -5917,8 +5969,6 @@ const MemberDashboard: React.FC = () => {
     const [recentRequests, setRecentRequests] = useState<DashboardServiceRequest[]>([]);
     const [overviewData, setOverviewData] = useState<OverviewState | null>(null);
     const [serviceRequests, setServiceRequests] = useState<any[]>([]);
-    const [billingData, setBillingData] = useState<any>(null);
-    const [invoices, setInvoices] = useState<any[]>([]);
     const [isDashboardLoading, setIsDashboardLoading] = useState(false);
     const [dashboardError, setDashboardError] = useState<string | null>(null);
 
@@ -6143,40 +6193,6 @@ const MemberDashboard: React.FC = () => {
         }
     }, [session?.user?.id]);
 
-    // Load billing data from v_member_billing view
-    const loadBillingData = useCallback(async () => {
-        if (!session?.user?.id) {
-            setBillingData(null);
-            setInvoices([]);
-            return;
-        }
-
-        const [billingResult, invoicesResult] = await Promise.allSettled([
-            supabase
-                .from('v_member_billing')
-                .select('*')
-                .eq('profile_id', session.user.id)
-                .maybeSingle(),
-            supabase
-                .from('invoices')
-                .select('*')
-                .eq('profile_id', session.user.id)
-                .order('invoice_date', { ascending: false })
-        ]);
-
-        if (billingResult.status === 'fulfilled' && !billingResult.value.error) {
-            setBillingData(billingResult.value.data);
-        } else {
-            console.error('Failed to load billing data:', billingResult.status === 'fulfilled' ? billingResult.value.error : 'Promise rejected');
-        }
-
-        if (invoicesResult.status === 'fulfilled' && !invoicesResult.value.error) {
-            setInvoices(invoicesResult.value.data || []);
-        } else {
-            console.error('Failed to load invoices:', invoicesResult.status === 'fulfilled' ? invoicesResult.value.error : 'Promise rejected');
-        }
-    }, [session?.user?.id]);
-
     useEffect(() => {
         if (toast) {
             const timer = setTimeout(() => setToast(null), 3000);
@@ -6219,7 +6235,6 @@ const MemberDashboard: React.FC = () => {
                 await Promise.all([
                     loadOverviewData(),
                     loadServiceRequests(),
-                    loadBillingData(),
                     refetchDocuments()
                 ]);
 
@@ -6351,7 +6366,7 @@ const MemberDashboard: React.FC = () => {
             case 'benefits':
                 return <MemberBenefits showToast={showToast} />;
             case 'billing':
-                return <MemberBilling showToast={showToast} billingData={billingData} invoices={invoices} />;
+                return <MemberBilling onNavigate={setActiveView} />;
             case 'community':
                 return <MemberCommunity onNavigate={setActiveView} />;
             case 'blueprint':
