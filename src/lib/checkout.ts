@@ -1,3 +1,4 @@
+import type { MembershipTier } from '@/config/plans';
 import { FUNCTION_ENDPOINTS } from './functions';
 
 const CHECKOUT_ENDPOINT = FUNCTION_ENDPOINTS.CHECKOUT;
@@ -8,10 +9,12 @@ const logCheckoutDebug = (...args: unknown[]) => {
   }
 };
 
+type PaidCheckoutTier = Exclude<MembershipTier, 'free'>;
+
 export interface StartCheckoutParams {
   assessmentId: string | number;
   email: string;
-  plan: 'founding-member';
+  plan: PaidCheckoutTier;
   profileId?: string | null;
   metadata?: Record<string, string | null | undefined>;
   successUrl?: string;

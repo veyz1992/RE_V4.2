@@ -1,28 +1,46 @@
-import React, { useMemo, useState } from 'react';
-import { PLANS, type MembershipTier, type PlanDefinition, normalizePlanTier } from '@/config/plans';
-import { useAuth } from '@/context/AuthContext';
+import React, { useState } from 'react';
+import { normalizePlanTier, type MembershipTier } from '@/config/plans';
 
-const MEMBERSHIP_CHECKOUT_ENDPOINT = '/api/membership/checkout';
+type PaidMembershipTier = Exclude<MembershipTier, 'free'>;
+
+type TierOption = {
+  code: PaidMembershipTier;
+  name: string;
+  description: string;
+};
 
 interface PlanManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentTier: MembershipTier;
+  onSelectTier: (tier: PaidMembershipTier) => Promise<void>;
 }
 
-const getPlanActionLabel = (plan: PlanDefinition, currentSortOrder: number): string => {
-  if (plan.sortOrder > currentSortOrder) {
-    return `Upgrade to ${plan.name}`;
-  }
-  if (plan.sortOrder < currentSortOrder) {
-    return `Downgrade to ${plan.name}`;
-  }
-  return 'Current plan';
-};
+const TIER_OPTIONS: TierOption[] = [
+  {
+    code: 'founding-member',
+    name: 'Founding Member',
+    description: 'Legacy pricing and concierge support for our earliest partners.',
+  },
+  {
+    code: 'bronze',
+    name: 'Bronze',
+    description: 'Verified badge and essential visibility inside the network.',
+  },
+  {
+    code: 'silver',
+    name: 'Silver',
+    description: 'Everything in Bronze plus boosted SEO and compliance reviews.',
+  },
+  {
+    code: 'gold',
+    name: 'Gold',
+    description: 'Maximum visibility, spotlight placements, and priority support.',
+  },
+];
 
-const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClose, currentTier }) => {
-  const { session } = useAuth();
-  const [pendingTier, setPendingTier] = useState<MembershipTier | null>(null);
+const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClose, currentTier, onSelectTier }) => {
+  const [pendingTier, setPendingTier] = useState<PaidMembershipTier | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) {
@@ -30,59 +48,24 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
   }
 
   const normalizedTier = normalizePlanTier(currentTier);
-  const currentPlan = PLANS.find((plan) => plan.id === normalizedTier) ?? null;
-  const currentSortOrder = currentPlan?.sortOrder ?? -1;
 
-  const plansToDisplay = useMemo(() => {
-    return PLANS.filter((plan) => {
-      if (plan.id === 'founding-member') {
-        return normalizedTier === 'founding-member';
-      }
-      return plan.isPubliclyAvailable;
-    }).sort((a, b) => a.sortOrder - b.sortOrder);
-  }, [normalizedTier]);
-
-  const handleChangePlan = async (targetTier: MembershipTier) => {
-    if (targetTier === normalizedTier || pendingTier) {
+  const handleSelect = async (tier: PaidMembershipTier) => {
+    if (tier === normalizedTier) {
       return;
     }
 
-    if (!session?.access_token) {
-      console.error('Failed to start checkout: no active session');
-      setErrorMessage('You need to be signed in to change your plan.');
-      return;
-    }
-
-    setPendingTier(targetTier);
+    setPendingTier(tier);
     setErrorMessage(null);
 
     try {
-      const response = await fetch(MEMBERSHIP_CHECKOUT_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ tier: targetTier }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        console.error('Failed to start checkout', data);
-        setErrorMessage(data?.error ?? data?.message ?? 'This plan is not available yet.');
-        return;
-      }
-
-      const data = await response.json();
-      if (data?.url) {
-        window.location.href = data.url;
-        return;
-      }
-
-      setErrorMessage('Unable to start checkout. Missing redirect URL.');
+      await onSelectTier(tier);
     } catch (error) {
-      console.error('Error starting checkout', error);
-      setErrorMessage('Unable to start checkout right now. Please try again soon.');
+      console.error('[PlanManagementModal] Failed to start checkout', error);
+      const fallbackMessage =
+        error instanceof Error
+          ? error.message
+          : 'Unable to start checkout right now. Please try again.';
+      setErrorMessage(fallbackMessage);
     } finally {
       setPendingTier(null);
     }
@@ -104,74 +87,48 @@ const PlanManagementModal: React.FC<PlanManagementModalProps> = ({ isOpen, onClo
         </button>
         <div className="space-y-2 pr-6">
           <p className="text-sm font-semibold uppercase tracking-widest text-[var(--accent-dark)]">Member plans</p>
-          <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">Compare and change your plan</h2>
-          <p className="text-[var(--text-muted)]">
-            See what’s included in each membership and switch when you’re ready.
-          </p>
-          {errorMessage && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              {errorMessage}
-            </div>
-          )}
+          <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)]">Choose the membership tier for you</h2>
+          <p className="text-[var(--text-muted)]">Pick the plan that fits your goals. You can upgrade or downgrade anytime.</p>
         </div>
-        <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-          {plansToDisplay.map((plan) => {
-            const isCurrentPlan = plan.id === currentPlan?.id;
-            const actionLabel = getPlanActionLabel(plan, currentSortOrder);
-            const isProcessingTier = pendingTier === plan.id;
-            const buttonDisabled = isCurrentPlan || Boolean(pendingTier);
-            const isUpgrade = plan.sortOrder > currentSortOrder;
-            const buttonClasses = buttonDisabled
-              ? 'bg-[var(--bg-subtle)] text-[var(--text-muted)] cursor-not-allowed'
-              : isUpgrade
-              ? 'bg-[var(--accent)] text-[var(--accent-text)] hover:bg-[var(--accent-light)]'
-              : 'bg-[var(--bg-card)] text-[var(--text-main)] border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)]';
-
+        {errorMessage && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{errorMessage}</div>
+        )}
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          {TIER_OPTIONS.map((tier) => {
+            const isCurrent = tier.code === normalizedTier;
+            const isProcessing = pendingTier === tier.code;
+            const buttonDisabled = isCurrent || Boolean(pendingTier);
             return (
               <div
-                key={plan.id}
-                className={`flex h-full flex-col rounded-2xl border p-6 shadow-lg ${
-                  isCurrentPlan ? 'border-[var(--accent)] bg-[var(--accent-bg-subtle)]/30' : 'border-[var(--border-subtle)]'
+                key={tier.code}
+                className={`flex h-full flex-col justify-between rounded-2xl border p-6 shadow-lg transition ${
+                  isCurrent
+                    ? 'border-[var(--accent)] bg-[var(--accent-bg-subtle)]/40'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-subtle)]/40'
                 }`}
               >
-                <div className="mb-4 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold uppercase tracking-widest text-[var(--text-muted)]">Plan</p>
-                    {isCurrentPlan && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-playfair text-2xl font-bold text-[var(--text-main)]">{tier.name}</h3>
+                    {isCurrent && (
                       <span className="rounded-full bg-[var(--accent-bg-subtle)] px-3 py-0.5 text-xs font-semibold text-[var(--accent-dark)]">
-                        Your current plan
-                      </span>
-                    )}
-                    {plan.badgeLabel && (
-                      <span className="rounded-full bg-amber-200/70 px-3 py-0.5 text-xs font-bold text-amber-900">
-                        {plan.badgeLabel}
+                        Current
                       </span>
                     )}
                   </div>
-                  <h3 className="font-playfair text-2xl font-bold text-[var(--text-main)]">{plan.name}</h3>
-                  <p className="text-lg font-semibold text-[var(--text-main)]">{plan.priceLabel}</p>
-                  {plan.description && <p className="text-sm text-[var(--text-muted)]">{plan.description}</p>}
+                  {tier.description && <p className="text-sm text-[var(--text-muted)]">{tier.description}</p>}
                 </div>
-                <ul className="flex flex-1 flex-col gap-4">
-                  {plan.benefits.map((benefit) => (
-                    <li key={`${plan.id}-${benefit.key}-${benefit.label}`} className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--text-main)]">{benefit.label}</p>
-                        {benefit.detail && <p className="text-xs text-[var(--text-muted)]">{benefit.detail}</p>}
-                      </div>
-                      {benefit.quotaLabel && (
-                        <span className="text-xs font-medium text-[var(--text-muted)]">{benefit.quotaLabel}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
                 <button
                   type="button"
                   disabled={buttonDisabled}
-                  onClick={() => handleChangePlan(plan.id)}
-                  className={`mt-6 w-full rounded-xl py-3 text-center text-sm font-bold transition-colors ${buttonClasses}`}
+                  onClick={() => handleSelect(tier.code)}
+                  className={`mt-6 w-full rounded-xl px-6 py-3 text-center text-sm font-bold transition ${
+                    buttonDisabled
+                      ? 'cursor-not-allowed bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+                      : 'bg-[var(--accent)] text-[var(--accent-text)] hover:bg-[var(--accent-light)]'
+                  }`}
                 >
-                  {isProcessingTier ? 'Opening checkout…' : actionLabel}
+                  {isCurrent ? 'Current Plan' : isProcessing ? 'Opening checkout…' : 'Select'}
                 </button>
               </div>
             );
