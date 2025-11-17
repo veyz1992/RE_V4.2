@@ -1,3 +1,5 @@
+import type { MembershipTier as PlanConfigMembershipTier } from './plans';
+
 export type MembershipTier = 'founding' | 'bronze' | 'silver' | 'gold';
 
 export type PlanBenefits = {
@@ -73,6 +75,64 @@ export const PLAN_BENEFITS: Record<MembershipTier, PlanBenefits> = {
     includesPrioritySupport: false,
   },
 };
+
+type PaidPlanConfigTier = Exclude<PlanConfigMembershipTier, 'free'>;
+
+export interface MembershipPlanDefinition {
+  tier: MembershipTier;
+  label: string;
+  description: string;
+  defaultPriceCents: number;
+  billingCycle: 'monthly';
+  isAvailable: boolean;
+  stripePriceEnvKey?: string | null;
+  checkoutTier: PaidPlanConfigTier;
+}
+
+const monthly = 'monthly' as const;
+
+export const MEMBERSHIP_PLANS: MembershipPlanDefinition[] = [
+  {
+    tier: 'founding',
+    label: 'Founding Member',
+    description: 'Lifetime pricing, concierge onboarding, and every Gold-tier benefit.',
+    defaultPriceCents: 22900,
+    billingCycle: monthly,
+    isAvailable: true,
+    stripePriceEnvKey: 'STRIPE_PRICE_FOUNDING_MEMBER',
+    checkoutTier: 'founding-member',
+  },
+  {
+    tier: 'bronze',
+    label: 'Bronze',
+    description: 'Verified badge, profile page, and essential visibility in the network.',
+    defaultPriceCents: 15900,
+    billingCycle: monthly,
+    isAvailable: false,
+    stripePriceEnvKey: null,
+    checkoutTier: 'bronze',
+  },
+  {
+    tier: 'silver',
+    label: 'Silver',
+    description: 'Bronze benefits plus featured placement, SEO content, and compliance support.',
+    defaultPriceCents: 29700,
+    billingCycle: monthly,
+    isAvailable: false,
+    stripePriceEnvKey: null,
+    checkoutTier: 'silver',
+  },
+  {
+    tier: 'gold',
+    label: 'Gold',
+    description: 'Maximum visibility, spotlight articles, and priority strategic support.',
+    defaultPriceCents: 49700,
+    billingCycle: monthly,
+    isAvailable: false,
+    stripePriceEnvKey: null,
+    checkoutTier: 'gold',
+  },
+];
 
 export const DEFAULT_MEMBERSHIP_TIER: MembershipTier = 'bronze';
 

@@ -25,6 +25,7 @@ import { startCheckout } from '@/lib/checkout';
 import { normalizeWebsiteUrl, isLikelyValidWebsite } from '@/lib/urlHelpers';
 import { REQUEST_TYPE_SEO_BLOG, type SeoBlogPeriod } from '@/config/benefits';
 import {
+    MEMBERSHIP_PLANS,
     PLAN_BENEFITS,
     normalizeMembershipTier as normalizeLegacyMembershipTier,
     type MembershipTier as LegacyMembershipTier,
@@ -4357,6 +4358,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
     const [isSeoRequestModalOpen, setSeoRequestModalOpen] = useState(false);
     const [isSubmittingSeoRequest, setIsSubmittingSeoRequest] = useState(false);
     const [isPlanModalOpen, setPlanModalOpen] = useState(false);
+    const [pendingPlanTier, setPendingPlanTier] = useState<PaidPlanTier | null>(null);
     const { profile, membership, subscription, isLoading: isPlanLoading, error: planError } = useCurrentPlanData();
     const SEO_BLOG_BENEFIT_TITLE = 'SEO Blog Posts';
 
@@ -4646,6 +4648,18 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
     };
 
     const billingLine = subscriptionLine();
+
+    const formatMembershipPlanPrice = (priceCents: number): string => {
+        if (!priceCents || priceCents <= 0) {
+            return '$0';
+        }
+        const amount = priceCents / 100;
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+        }).format(amount);
+    };
 
     const PlanSkeleton = () => (
         <div className="mt-2 space-y-3 w-full animate-pulse">
@@ -4996,6 +5010,21 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
         [currentUser?.email, hasActiveSubscription, profile, resolveBenefitAssessmentId, session?.user],
     );
 
+    const handlePlanCardSelect = useCallback(
+        async (targetTier: PaidPlanTier) => {
+            setPendingPlanTier(targetTier);
+            try {
+                await handlePlanCheckout(targetTier);
+            } catch (error) {
+                console.error('[MemberBenefits] Failed to start checkout from plan card', error);
+                showToast('Unable to start checkout right now. Please try again.', 'error');
+            } finally {
+                setPendingPlanTier(null);
+            }
+        },
+        [handlePlanCheckout, showToast],
+    );
+
     return (
         <div className="animate-fade-in space-y-8">
             <div>
@@ -5028,6 +5057,81 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                     <div className="flex gap-3 self-end md:self-center">
                         <button onClick={() => showToast('Coming soon', 'success')} className="py-2.5 px-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">View Invoice</button>
                         <button onClick={() => setPlanModalOpen(true)} className="py-2.5 px-5 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)]">Manage Plan</button>
+                    </div>
+                </div>
+            </Card>
+
+            <Card>
+                <div className="space-y-6">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Membership tiers</h2>
+                            <p className="text-sm text-[var(--text-muted)]">Preview each plan and see which upgrades are opening soon.</p>
+                        </div>
+                        <span className="text-sm font-semibold text-[var(--text-muted)]">Billed monthly</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        {MEMBERSHIP_PLANS.map((plan) => {
+                            const isCurrentPlan = plan.checkoutTier === planManagementTier;
+                            const isPendingPlan = pendingPlanTier === plan.checkoutTier;
+                            const billingSuffix = plan.billingCycle === 'monthly' ? '/mo' : `/${plan.billingCycle}`;
+                            const planCardClasses = plan.isAvailable
+                                ? 'border-[var(--border-subtle)] bg-[var(--bg-card)]'
+                                : 'border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)]';
+
+                            return (
+                                <div key={plan.tier} className={`flex flex-col justify-between rounded-2xl border p-6 shadow-md ${planCardClasses}`}>
+                                    <div className="space-y-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{plan.label}</h3>
+                                                <p className="mt-1 text-sm text-[var(--text-muted)]">{plan.description}</p>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-2">
+                                                {isCurrentPlan && (
+                                                    <span className="rounded-full bg-[var(--accent-bg-subtle)] px-3 py-0.5 text-xs font-semibold text-[var(--accent-dark)]">
+                                                        Current
+                                                    </span>
+                                                )}
+                                                {!plan.isAvailable && (
+                                                    <span className="rounded-full bg-[var(--bg-subtle)] px-3 py-0.5 text-xs font-semibold text-[var(--text-muted)]">
+                                                        Coming soon
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <p className="text-3xl font-bold text-[var(--text-main)]">
+                                            {formatMembershipPlanPrice(plan.defaultPriceCents)}
+                                            <span className="ml-1 text-base font-semibold text-[var(--text-muted)]">{billingSuffix}</span>
+                                        </p>
+                                    </div>
+                                    <div className="mt-6">
+                                        {plan.isAvailable ? (
+                                            <button
+                                                type="button"
+                                                disabled={isCurrentPlan || Boolean(pendingPlanTier)}
+                                                onClick={() => {
+                                                    if (!isCurrentPlan) {
+                                                        void handlePlanCardSelect(plan.checkoutTier);
+                                                    }
+                                                }}
+                                                className={`w-full rounded-xl px-6 py-3 text-center text-sm font-bold transition ${
+                                                    isCurrentPlan || Boolean(pendingPlanTier)
+                                                        ? 'cursor-not-allowed bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+                                                        : 'bg-[var(--accent)] text-[var(--accent-text)] hover:bg-[var(--accent-light)]'
+                                                }`}
+                                            >
+                                                {isCurrentPlan ? 'Current plan' : isPendingPlan ? 'Connecting…' : 'Apply now'}
+                                            </button>
+                                        ) : (
+                                            <div className="w-full rounded-xl border border-dashed border-[var(--border-subtle)] px-6 py-3 text-center text-sm font-semibold text-[var(--text-muted)]">
+                                                Coming soon
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             </Card>
