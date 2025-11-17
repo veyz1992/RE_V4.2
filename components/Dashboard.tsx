@@ -5149,25 +5149,51 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
             ) : (
                 <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {normalizedBenefits.map((benefit, index) => {
-                            if (benefit.title === SEO_BLOG_BENEFIT_TITLE) {
-                                return (
-                                    <SeoBlogBenefitCard
-                                        key={`${benefit.title}-${index}`}
-                                        benefit={benefit}
-                                        usage={seoUsageDetails}
-                                        onRequest={handleSeoRequestClick}
-                                        canRequest={Boolean(profileId && hasSeoQuota && !hasReachedSeoLimit)}
-                                        disabledMessage={seoRequestDisabledMessage}
-                                    />
-                                );
-                            }
+                        {MEMBERSHIP_PLANS.map((plan) => {
+                            const formatPlanPrice = (priceCents: number, billingCycle: 'monthly'): string => {
+                                const amount = priceCents / 100;
+                                const formatted = new Intl.NumberFormat('en-US', {
+                                    style: 'currency',
+                                    currency: 'USD',
+                                    minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+                                }).format(amount);
+                                return `${formatted} / ${billingCycle === 'monthly' ? 'month' : billingCycle}`;
+                            };
+
+                            const handlePlanAction = () => {
+                                if (plan.isAvailable) {
+                                    void handlePlanCardSelect(plan.checkoutTier);
+                                }
+                            };
+
                             return (
-                                <BenefitCard
-                                    key={`${benefit.title}-${index}`}
-                                    benefit={benefit}
-                                    onClick={() => setSelectedBenefit(benefit)}
-                                />
+                                <Card 
+                                    key={plan.tier}
+                                    className="flex flex-col justify-between h-full"
+                                >
+                                    <div>
+                                        <h3 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-2">
+                                            {plan.label}
+                                        </h3>
+                                        <p className="text-lg font-semibold text-[var(--accent-dark)] mb-3">
+                                            {formatPlanPrice(plan.defaultPriceCents, plan.billingCycle)}
+                                        </p>
+                                        <p className="text-[var(--text-muted)] mb-4">
+                                            {plan.description}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={handlePlanAction}
+                                        disabled={!plan.isAvailable}
+                                        className={`w-full py-3 px-6 rounded-xl font-bold text-center transition-colors ${
+                                            plan.isAvailable 
+                                                ? 'bg-[var(--accent)] text-[var(--accent-text)] hover:bg-[var(--accent-light)]'
+                                                : 'bg-[var(--bg-subtle)] text-[var(--text-muted)] cursor-not-allowed'
+                                        }`}
+                                    >
+                                        {plan.isAvailable ? (hasActiveSubscription ? 'Apply' : 'Start membership') : 'Coming soon'}
+                                    </button>
+                                </Card>
                             );
                         })}
                     </div>
@@ -5715,32 +5741,40 @@ const communityEvents = [
 
 const communityResources = [
     {
-        title: "Start Here: Onboarding Post",
-        description: "New to the group? Introduce yourself and get the lay of the land.",
+        title: "Onboarding Post",
+        description: "New to the group? Start here to introduce yourself and get oriented.",
         icon: StarIcon,
-        link: "#"
+        link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
     },
     {
-        title: "Monthly Wins Thread",
+        title: "Monthly Wins",
         description: "Share your recent victories, big or small. Let's celebrate together.",
         icon: TrophyIcon,
-        link: "#"
+        link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
     },
     {
-        title: "Website & SEO Review Thread",
+        title: "Website & SEO Review",
         description: "Get feedback on your site from the community and our team.",
         icon: MagnifyingGlassIcon,
-        link: "#"
+        link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
     },
     {
-        title: "Hiring & Operations Thread",
+        title: "Hiring & Operations",
         description: "Discuss challenges and solutions for finding and managing great people.",
         icon: BriefcaseIcon,
-        link: "#"
+        link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
+    },
+    {
+        title: "Templates & Scripts",
+        description: "Access proven templates, scripts, and resources shared by successful members.",
+        icon: DocumentTextIcon,
+        link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
     }
 ];
 
 const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
+    // Hide events section until real event integration exists
+    const showEvents = false;
     const { currentUser } = useAuth();
     const guidelinesRef = useRef<HTMLDivElement>(null);
     const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
@@ -5753,27 +5787,22 @@ const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
 
     const communityHighlights = [
         {
-            title: "Case study: How XYZ Restoration added $40k/mo with SEO + reviews.",
-            snippet: "John from XYZ breaks down the exact steps he took to dominate local search results, from optimizing his Google Business Profile to implementing a simple, effective review generation system.",
-            link: "#"
+            title: "Marketing Success Stories",
+            snippet: "Members share their wins with SEO, reviews, and lead generation strategies that actually work.",
+            link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
         },
         {
-            title: "Discussion: Should you niche into water only or stay full service?",
-            snippet: "A lively debate on the pros and cons of specializing vs. being a one-stop-shop. See what other successful owners are doing and why.",
-            link: "#"
-        },
-        {
-            title: "Win: Member landed a $15k fire job from a website badge visitor.",
-            snippet: "Sarah shares how a homeowner found her through the Restoration Expertise network and specifically mentioned the verification badge as the deciding factor.",
-            link: "#"
+            title: "Business Strategy Discussions", 
+            snippet: "Deep conversations about pricing, operations, and growing your restoration business.",
+            link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
         }
     ];
 
     const whyJoinBenefits = [
-        "Real talk from other owners, not theory.",
-        "Feedback on your website, offers and systems.",
-        "First access to new tools, templates and calls.",
-        "Priority answers from the Restoration Expertise team."
+        "Real talk from other owners",
+        "Feedback on your website and offers", 
+        "Templates and scripts shared by members",
+        "Priority input from the Restoration Expertise team"
     ];
 
     return (
@@ -5792,24 +5821,26 @@ const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                             Ask questions, share best practices, and learn from other verified restoration companies in our private, members-only group.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <a href="https://facebook.com/groups/restorationexpertise" target="_blank" rel="noopener noreferrer" className="py-3 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)] text-center">
+                            {/* TODO: Replace with actual Facebook group URL */}
+                            <a href="https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" target="_blank" rel="noopener noreferrer" className="py-3 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)] text-center">
                                 Join Private Facebook Group
                             </a>
-                            <button onClick={handleScrollToGuidelines} className="py-3 px-6 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold text-[var(--text-main)] shadow-sm hover:bg-[var(--bg-subtle)]">
-                                Community Guidelines
-                            </button>
                         </div>
                     </div>
                     <div className="lg:col-span-1 bg-[var(--accent-bg-subtle)] p-8 flex flex-col justify-center">
-                        <h3 className="font-semibold text-[var(--text-main)] mb-4">Community Stats</h3>
+                        <h3 className="font-semibold text-[var(--text-main)] mb-4">What You'll Find</h3>
                         <div className="space-y-3">
-                            <div className="flex items-center gap-3">
-                                <UsersIcon className="w-6 h-6 text-[var(--accent-dark)]" />
-                                <p className="text-[var(--text-main)]"><span className="font-bold text-xl">134</span> members</p>
+                            <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-[var(--accent-dark)] rounded-full mt-2 flex-shrink-0"></div>
+                                <p className="text-[var(--text-main)]">Verified restoration owners</p>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <ChatBubbleOvalLeftEllipsisIcon className="w-6 h-6 text-[var(--accent-dark)]" />
-                                <p className="text-[var(--text-main)]"><span className="font-bold text-xl">18</span> posts, <span className="font-bold text-xl">42</span> comments this week</p>
+                            <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-[var(--accent-dark)] rounded-full mt-2 flex-shrink-0"></div>
+                                <p className="text-[var(--text-main)]">Active discussions every week</p>
+                            </div>
+                            <div className="flex items-start gap-3">
+                                <div className="w-2 h-2 bg-[var(--accent-dark)] rounded-full mt-2 flex-shrink-0"></div>
+                                <p className="text-[var(--text-main)]">Direct access to the Restoration Expertise team</p>
                             </div>
                         </div>
                     </div>
@@ -5880,8 +5911,9 @@ const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 </Card>
             </div>
 
-            {/* Upcoming Events Card */}
-            <Card>
+            {/* Upcoming Events Card - Hidden until real event integration exists */}
+            {showEvents && (
+                <Card>
                 <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Upcoming Calls & Events</h2>
                 <div className="space-y-4">
                     {communityEvents.map((event, index) => (
@@ -5899,7 +5931,8 @@ const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                         </div>
                     ))}
                 </div>
-            </Card>
+                </Card>
+            )}
 
             {/* Resources Card */}
             <Card>
