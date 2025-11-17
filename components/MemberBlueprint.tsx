@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { KeyIcon, CheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, Cog6ToothIcon, ClockIcon, XMarkIcon } from './icons';
 import { BLUEPRINT_STEPS, BlueprintStep, StepStatus } from '../lib/mockData';
+import { useBlueprintAccess } from '../src/hooks/useBlueprintAccess';
+import { useAuth } from '../src/context/AuthContext';
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
@@ -261,6 +263,8 @@ const MobileStepDrawer: React.FC<{
 };
 
 const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
+    const { user } = useAuth();
+    const { hasBlueprintAccess, isLoading } = useBlueprintAccess(user?.id || null);
     const isMobile = useIsMobile();
     const [steps, setSteps] = useState<BlueprintStep[]>(BLUEPRINT_STEPS);
     const [selectedStepId, setSelectedStepId] = useState<number | null>(null);
@@ -291,6 +295,46 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
     const selectedStep = useMemo(() => steps.find(s => s.id === selectedStepId) || null, [steps, selectedStepId]);
     const isMobileDrawerOpen = isMobile && selectedStepId !== null;
 
+    // Show loading state while checking access
+    if (isLoading) {
+        return (
+            <div className="animate-fade-in p-8 flex items-center justify-center">
+                <div className="text-lg text-[var(--text-muted)]">Loading...</div>
+            </div>
+        );
+    }
+
+    // Show access wall if user doesn't have blueprint access
+    if (!hasBlueprintAccess) {
+        return (
+            <div className="animate-fade-in p-8">
+                <div className="max-w-2xl mx-auto text-center">
+                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)] mb-6">
+                        99 Steps Blueprint is locked
+                    </h1>
+                    <p className="text-lg text-[var(--text-muted)] mb-8">
+                        This roadmap is included with Founding and Gold memberships or can be purchased separately.
+                    </p>
+                    <div className="space-y-4 sm:space-y-0 sm:space-x-4 sm:flex sm:justify-center">
+                        <button
+                            onClick={() => onNavigate('billing')}
+                            className="w-full sm:w-auto px-6 py-3 bg-[var(--accent)] text-white rounded-lg font-semibold hover:bg-[var(--accent-hover)] transition-colors duration-200"
+                        >
+                            View membership plans
+                        </button>
+                        <button
+                            onClick={() => onNavigate('overview')}
+                            className="w-full sm:w-auto px-6 py-3 border border-[var(--border-subtle)] text-[var(--text-main)] rounded-lg font-semibold hover:bg-[var(--bg-card)] transition-colors duration-200"
+                        >
+                            Back to dashboard
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Render the full Blueprint UI when user has access
     return (
         <div className="animate-fade-in">
             <div className="mb-6">

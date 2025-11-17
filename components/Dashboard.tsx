@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { HomeIcon, ListBulletIcon, UserCircleIcon, ArrowRightOnRectangleIcon, PencilSquareIcon, TrophyIcon, DocumentTextIcon, CheckCircleIcon, CreditCardIcon, UsersIcon, Cog6ToothIcon, ClockIcon, ExclamationTriangleIcon, EyeIcon, CalendarDaysIcon, PlusCircleIcon, StarIcon, NewspaperIcon, ArrowDownTrayIcon, ArrowTrendingUpIcon, ShieldCheckIcon, MagnifyingGlassIcon, ClipboardIcon, LightBulbIcon, XMarkIcon, UploadIcon, TrashIcon, ChevronDownIcon, ChartBarIcon, ChatBubbleOvalLeftEllipsisIcon, CheckIcon, BriefcaseIcon, KeyIcon, ClipboardDocumentCheckIcon } from './icons';
 import { useAuth } from '@/context/AuthContext';
+import { useBlueprintAccess } from '@/hooks';
 import {
     Benefit,
     MemberServiceRequest,
@@ -5744,37 +5745,39 @@ const communityResources = [
         title: "Onboarding Post",
         description: "New to the group? Start here to introduce yourself and get oriented.",
         icon: StarIcon,
-        link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
+        link: "https://www.facebook.com/groups/restorationexpertise" // TODO: Individual post URLs can be plugged in later if needed
     },
     {
         title: "Monthly Wins",
         description: "Share your recent victories, big or small. Let's celebrate together.",
         icon: TrophyIcon,
-        link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
+        link: "https://www.facebook.com/groups/restorationexpertise" // TODO: Individual post URLs can be plugged in later if needed
     },
     {
         title: "Website & SEO Review",
         description: "Get feedback on your site from the community and our team.",
         icon: MagnifyingGlassIcon,
-        link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
+        link: "https://www.facebook.com/groups/restorationexpertise" // TODO: Individual post URLs can be plugged in later if needed
     },
     {
         title: "Hiring & Operations",
         description: "Discuss challenges and solutions for finding and managing great people.",
         icon: BriefcaseIcon,
-        link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
+        link: "https://www.facebook.com/groups/restorationexpertise" // TODO: Individual post URLs can be plugged in later if needed
     },
     {
         title: "Templates & Scripts",
         description: "Access proven templates, scripts, and resources shared by successful members.",
         icon: DocumentTextIcon,
-        link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
+        link: "https://www.facebook.com/groups/restorationexpertise" // TODO: Individual post URLs can be plugged in later if needed
     }
 ];
 
 const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
     // Hide events section until real event integration exists
     const showEvents = false;
+    // Hide community resources section until there are real, persistent threads to link to
+    const showCommunityResources = false;
     const { currentUser } = useAuth();
     const guidelinesRef = useRef<HTMLDivElement>(null);
     const [isGuidelinesOpen, setIsGuidelinesOpen] = useState(false);
@@ -5789,12 +5792,12 @@ const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
         {
             title: "Marketing Success Stories",
             snippet: "Members share their wins with SEO, reviews, and lead generation strategies that actually work.",
-            link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
+            link: "https://www.facebook.com/groups/restorationexpertise" // TODO: Individual post URLs can be plugged in later if needed
         },
         {
             title: "Business Strategy Discussions", 
             snippet: "Deep conversations about pricing, operations, and growing your restoration business.",
-            link: "https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" // TODO: Replace with actual post URL
+            link: "https://www.facebook.com/groups/restorationexpertise" // TODO: Individual post URLs can be plugged in later if needed
         }
     ];
 
@@ -5821,8 +5824,7 @@ const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                             Ask questions, share best practices, and learn from other verified restoration companies in our private, members-only group.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-4">
-                            {/* TODO: Replace with actual Facebook group URL */}
-                            <a href="https://www.facebook.com/groups/RESTORATION_EXPERTISE_GROUP" target="_blank" rel="noopener noreferrer" className="py-3 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)] text-center">
+                            <a href="https://www.facebook.com/groups/restorationexpertise" target="_blank" rel="noopener noreferrer" className="py-3 px-6 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-md hover:bg-[var(--accent-light)] text-center">
                                 Join Private Facebook Group
                             </a>
                         </div>
@@ -5934,27 +5936,29 @@ const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 </Card>
             )}
 
-            {/* Resources Card */}
-            <Card>
-                <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Community Resources</h2>
-                <div className="space-y-4">
-                    {communityResources.map((resource, index) => {
-                        const Icon = resource.icon;
-                        return (
-                            <a href={resource.link} key={index} target="_blank" rel="noopener noreferrer" className="flex items-start gap-4 p-4 rounded-lg hover:bg-[var(--bg-subtle)] border border-transparent hover:border-[var(--border-subtle)] transition-colors group">
-                                <div className="bg-gold/10 text-gold-dark p-3 rounded-full mt-1">
-                                    <Icon className="w-6 h-6" />
-                                </div>
-                                <div>
-                                    <h3 className="font-semibold text-lg text-[var(--text-main)]">{resource.title}</h3>
-                                    <p className="text-sm text-[var(--text-muted)]">{resource.description}</p>
-                                    <span className="mt-2 inline-block font-semibold text-gold-dark text-sm group-hover:underline">Open in group →</span>
-                                </div>
-                            </a>
-                        );
-                    })}
-                </div>
-            </Card>
+            {/* Resources Card - Hidden until there are real, persistent threads to link to */}
+            {showCommunityResources && (
+                <Card>
+                    <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Community Resources</h2>
+                    <div className="space-y-4">
+                        {communityResources.map((resource, index) => {
+                            const Icon = resource.icon;
+                            return (
+                                <a href={resource.link} key={index} target="_blank" rel="noopener noreferrer" className="flex items-start gap-4 p-4 rounded-lg hover:bg-[var(--bg-subtle)] border border-transparent hover:border-[var(--border-subtle)] transition-colors group">
+                                    <div className="bg-gold/10 text-gold-dark p-3 rounded-full mt-1">
+                                        <Icon className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-semibold text-lg text-[var(--text-main)]">{resource.title}</h3>
+                                        <p className="text-sm text-[var(--text-muted)]">{resource.description}</p>
+                                        <span className="mt-2 inline-block font-semibold text-gold-dark text-sm group-hover:underline">Open in group →</span>
+                                    </div>
+                                </a>
+                            );
+                        })}
+                    </div>
+                </Card>
+            )}
             
             {currentUser?.plan?.name === 'Bronze' && (
                 <div className="mt-8 p-6 bg-gradient-to-r from-charcoal to-charcoal-dark text-white rounded-2xl shadow-lg flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -6329,6 +6333,7 @@ const viewTitles: Record<MemberView, string> = {
 
 const MemberDashboard: React.FC = () => {
     const { currentUser, logout, session } = useAuth();
+    const { hasBlueprintAccess } = useBlueprintAccess(session?.user?.id ?? null);
     const [activeView, setActiveView] = useState<MemberView>('overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
@@ -6762,7 +6767,9 @@ const MemberDashboard: React.FC = () => {
             <SidebarLink icon={<StarIcon className="w-6 h-6" />} label="Benefits" isActive={activeView === 'benefits'} onClick={() => handleViewChange('benefits')} />
             <SidebarLink icon={<CreditCardIcon className="w-6 h-6" />} label="Billing" isActive={activeView === 'billing'} onClick={() => handleViewChange('billing')} />
             <SidebarLink icon={<UsersIcon className="w-6 h-6" />} label="Community" isActive={activeView === 'community'} onClick={() => handleViewChange('community')} />
-            <SidebarLink icon={<ClipboardDocumentCheckIcon className="w-6 h-6" />} label="99 Steps Blueprint" isActive={activeView === 'blueprint'} onClick={() => handleViewChange('blueprint')} />
+            {hasBlueprintAccess && (
+                <SidebarLink icon={<ClipboardDocumentCheckIcon className="w-6 h-6" />} label="99 Steps Blueprint" isActive={activeView === 'blueprint'} onClick={() => handleViewChange('blueprint')} />
+            )}
             <SidebarLink icon={<Cog6ToothIcon className="w-6 h-6" />} label="Settings" isActive={activeView === 'settings'} onClick={() => handleViewChange('settings')} />
         </>
     );
