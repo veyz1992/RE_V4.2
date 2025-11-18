@@ -63,6 +63,8 @@ interface BlueprintDataState {
     completionPercent: number;
     masteryLevel: string;
   };
+  previousStepStatuses: Map<string, StepStatus>;
+  isInitialLoad: boolean;
 }
 
 // Derive status from checklist state (needed for RPC call)
@@ -107,7 +109,7 @@ const triggerStepCompletionAnimation = (stepId: string) => {
     stepElement.classList.add('step-completing');
     setTimeout(() => {
       stepElement.classList.remove('step-completing');
-    }, 500);
+    }, 300);
   }
 };
 
@@ -115,10 +117,36 @@ const triggerStepCompletionAnimation = (stepId: string) => {
 const triggerSectionCompletionAnimation = (sectionId: string) => {
   const sectionElement = document.querySelector(`[data-section-id="${sectionId}"]`);
   if (sectionElement) {
-    sectionElement.classList.add('section-completing');
-    setTimeout(() => {
-      sectionElement.classList.remove('section-completing');
-    }, 1200);
+    // Animate the section header
+    const sectionHeader = sectionElement.querySelector('button');
+    if (sectionHeader) {
+      sectionHeader.classList.add('section-completing');
+      setTimeout(() => {
+        sectionHeader.classList.remove('section-completing');
+      }, 600);
+    }
+
+    // Add completion badge
+    const sectionTitle = sectionElement.querySelector('h3');
+    if (sectionTitle && !sectionTitle.querySelector('.section-complete-badge')) {
+      const badge = document.createElement('span');
+      badge.className = 'section-complete-badge ml-2 px-2 py-1 text-xs font-bold bg-green-500 text-white rounded-full opacity-0';
+      badge.textContent = 'Section completed!';
+      sectionTitle.appendChild(badge);
+      
+      // Animate badge in
+      setTimeout(() => {
+        badge.classList.remove('opacity-0');
+        badge.classList.add('animate-fade-in');
+      }, 200);
+      
+      // Remove badge after delay
+      setTimeout(() => {
+        if (badge.parentNode) {
+          badge.remove();
+        }
+      }, 3000);
+    }
   }
 };
 
@@ -138,6 +166,8 @@ export const useBlueprintData = () => {
       completionPercent: 0,
       masteryLevel: 'Getting Organized',
     },
+    previousStepStatuses: new Map(),
+    isInitialLoad: true,
   });
 
   // Load sections, steps, and progress data
@@ -210,12 +240,12 @@ export const useBlueprintData = () => {
                 checklistState[index] || false
               );
 
-              // Use status from database (set by trigger), default to 'not_started'
-              const dbStatus = progress?.status || 'not_started';
+              // Derive status from checklist state - this is the single source of truth
+              const derivedStatus = deriveStatusFromChecklist(normalizedChecklistState);
 
               return {
                 ...step,
-                status: dbStatus,
+                status: derivedStatus,
                 checklistState: normalizedChecklistState,
               } as StepWithProgress;
             });
@@ -238,11 +268,21 @@ export const useBlueprintData = () => {
         const globalStats = calculateStats(sectionsWithStats);
 
         if (isMounted) {
+          // Create a map of step statuses for initial load
+          const initialStepStatuses = new Map<string, StepStatus>();
+          sectionsWithStats.forEach(section => {
+            section.steps.forEach(step => {
+              initialStepStatuses.set(step.id, step.status);
+            });
+          });
+
           setState(prev => ({
             ...prev,
             loading: false,
             sections: sectionsWithStats,
             globalStats,
+            previousStepStatuses: initialStepStatuses,
+            isInitialLoad: false, // Mark that initial load is complete
             // Auto-select first section if none selected
             selectedSectionId: prev.selectedSectionId || (sectionsWithStats[0]?.id || null),
           }));
@@ -315,44 +355,55 @@ export const useBlueprintData = () => {
         // Recalculate global statistics
         const globalStats = calculateStats(updatedSections);
 
+        // Update previous step statuses map
+        const updatedStepStatuses = new Map(prev.previousStepStatuses);
+        updatedStepStatuses.set(stepId, newStatus);
+
         return {
           ...prev,
           sections: updatedSections,
           globalStats,
+          previousStepStatuses: updatedStepStatuses,
         };
       });
 
-      // Call the new RPC function with proper parameter names
-      const { error } = await supabase.rpc('save_blueprint_progress', {
-        p_profile_id: session.user.id,
-        p_step_id: stepId,
-        p_checklist_state: newChecklistState,
-        p_status: newStatus
-      });
+      // Upsert to blueprint_progress table
+      const { error } = await supabase
+        .from('blueprint_progress')
+        .upsert({
+          profile_id: session.user.id,
+          step_id: stepId,
+          checklist_state: newChecklistState,
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+        });
 
       if (error) {
         throw error;
       }
 
-      // Trigger step completion animation if step became completed
-      if (prevStatus !== 'completed' && newStatus === 'completed') {
+      // Trigger step completion animation only if step transitioned to completed (not on initial load)
+      if (!state.isInitialLoad && (prevStatus === 'not_started' || prevStatus === 'in_progress') && newStatus === 'completed') {
         triggerStepCompletionAnimation(stepId);
       }
 
       // Check for section completion and trigger animation
-      const updatedSection = state.sections.find(s => s.steps.some(step => step.id === stepId));
-      if (updatedSection) {
-        const wasCompleted = updatedSection.completedSteps === updatedSection.totalSteps - 1 && prevStatus !== 'completed';
-        const isNowCompleted = updatedSection.steps.every(step => 
-          step.id === stepId ? newStatus === 'completed' : step.status === 'completed'
-        );
-        
-        if (wasCompleted && isNowCompleted && !state.completedSectionAnimations.has(updatedSection.id)) {
-          triggerSectionCompletionAnimation(updatedSection.id);
-          setState(prev => ({
-            ...prev,
-            completedSectionAnimations: new Set([...prev.completedSectionAnimations, updatedSection.id])
-          }));
+      if (!state.isInitialLoad) {
+        const currentSection = state.sections.find(s => s.steps.some(step => step.id === stepId));
+        if (currentSection) {
+          // Check if this step completion makes the entire section complete
+          const wasLastIncompleteStep = prevStatus !== 'completed' && newStatus === 'completed';
+          const allOtherStepsComplete = currentSection.steps
+            .filter(step => step.id !== stepId)
+            .every(step => step.status === 'completed');
+          
+          if (wasLastIncompleteStep && allOtherStepsComplete && !state.completedSectionAnimations.has(currentSection.id)) {
+            triggerSectionCompletionAnimation(currentSection.id);
+            setState(prev => ({
+              ...prev,
+              completedSectionAnimations: new Set([...prev.completedSectionAnimations, currentSection.id])
+            }));
+          }
         }
       }
 

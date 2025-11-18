@@ -541,29 +541,83 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
             />
             
             <style jsx>{`
+                /* Step completion animation - subtle scale and glow */
                 .step-completing {
-                    animation: stepComplete 0.5s ease-out;
+                    animation: stepComplete 0.3s ease-out;
                 }
                 
                 @keyframes stepComplete {
-                    0% { transform: scale(1); opacity: 1; }
-                    30% { transform: scale(1.03); opacity: 0.95; background-color: rgba(34, 197, 94, 0.15); }
-                    60% { transform: scale(1.01); opacity: 0.98; background-color: rgba(34, 197, 94, 0.08); }
-                    100% { transform: scale(1); opacity: 1; background-color: transparent; }
+                    0% { 
+                        transform: scale(1); 
+                        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+                    }
+                    50% { 
+                        transform: scale(1.02); 
+                        box-shadow: 0 4px 12px 0 rgba(34, 197, 94, 0.2);
+                        background-color: rgba(34, 197, 94, 0.05);
+                    }
+                    100% { 
+                        transform: scale(1); 
+                        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+                        background-color: transparent;
+                    }
                 }
                 
+                /* Section completion animation - elegant glow and underline */
                 .section-completing {
-                    animation: sectionComplete 1.2s ease-out;
+                    animation: sectionComplete 0.6s ease-out;
+                    position: relative;
                 }
                 
                 @keyframes sectionComplete {
-                    0% { transform: scale(1); box-shadow: 0 0 0 0px rgba(34, 197, 94, 0); }
-                    20% { transform: scale(1.005); box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.3); }
-                    40% { transform: scale(1.002); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.2); }
-                    70% { transform: scale(1.001); box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1); }
-                    100% { transform: scale(1); box-shadow: 0 0 0 0px rgba(34, 197, 94, 0); }
+                    0% { 
+                        background-color: transparent;
+                    }
+                    25% { 
+                        background-color: rgba(34, 197, 94, 0.08);
+                    }
+                    50% {
+                        background-color: rgba(34, 197, 94, 0.12);
+                    }
+                    100% { 
+                        background-color: rgba(34, 197, 94, 0.05);
+                    }
                 }
                 
+                .section-completing::after {
+                    content: '';
+                    position: absolute;
+                    bottom: 0;
+                    left: 0;
+                    width: 0;
+                    height: 2px;
+                    background: linear-gradient(90deg, rgba(34, 197, 94, 0.8), rgba(34, 197, 94, 0.4));
+                    animation: underlineGrow 0.8s ease-out;
+                }
+                
+                @keyframes underlineGrow {
+                    0% { width: 0; opacity: 0; }
+                    50% { opacity: 1; }
+                    100% { width: 100%; opacity: 0; }
+                }
+                
+                /* Completion badge fade in */
+                .animate-fade-in {
+                    animation: fadeIn 0.4s ease-out;
+                }
+                
+                @keyframes fadeIn {
+                    0% { 
+                        opacity: 0; 
+                        transform: translateY(-10px) scale(0.9); 
+                    }
+                    100% { 
+                        opacity: 1; 
+                        transform: translateY(0) scale(1); 
+                    }
+                }
+                
+                /* Existing animations */
                 .completed-check-icon {
                     animation: checkIconScale 0.3s ease-out;
                 }
@@ -572,15 +626,6 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                     0% { transform: scale(0); opacity: 0; }
                     50% { transform: scale(1.2); opacity: 0.8; }
                     100% { transform: scale(1); opacity: 1; }
-                }
-                
-                .animate-fade-in {
-                    animation: fadeIn 0.3s ease-out;
-                }
-                
-                @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
                 }
                 
                 .animate-slide-up-drawer {
