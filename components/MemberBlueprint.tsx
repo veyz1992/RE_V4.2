@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { KeyIcon, CheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, Cog6ToothIcon, ClockIcon, XMarkIcon } from './icons';
-import { BLUEPRINT_STEPS, BlueprintStep, StepStatus } from '../lib/mockData';
-import { useBlueprintAccess } from '../src/hooks';
+import { useBlueprintAccess, useBlueprintProgress } from '../src/hooks';
+import type { StepWithProgress, StepStatus } from '../src/hooks/useBlueprintProgress';
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
@@ -72,74 +72,70 @@ const BlueprintHeader: React.FC<{ completedCount: number }> = ({ completedCount 
 };
 
 const BlueprintStepList: React.FC<{
-    groupedSteps: Record<string, Record<string, BlueprintStep[]>>;
-    steps: BlueprintStep[];
-    selectedStepId: number | null;
-    onSelectStep: (id: number) => void;
-}> = ({ groupedSteps, steps, selectedStepId, onSelectStep }) => {
-    const [openLevels, setOpenLevels] = useState<Record<string, boolean>>({ 'Foundation': true });
+    stepsByCategory: { foundation: StepWithProgress[]; acceleration: StepWithProgress[]; empire_legacy: StepWithProgress[] };
+    selectedStepId: string | null;
+    onSelectStep: (id: string) => void;
+}> = ({ stepsByCategory, selectedStepId, onSelectStep }) => {
+    const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({ 'foundation': true });
 
-    const toggleLevel = (level: string) => {
-        setOpenLevels(prev => ({...prev, [level]: !prev[level]}));
+    const toggleCategory = (category: string) => {
+        setOpenCategories(prev => ({...prev, [category]: !prev[category]}));
     };
 
     const statusColors: Record<StepStatus, string> = {
-        'not_started': 'bg-gray-200 text-gray-dark',
-        'in_progress': 'bg-info/20 text-blue-800',
-        'completed': 'bg-success/20 text-green-800',
+        'not_started': 'bg-gray-200 text-gray-600',
+        'in_progress': 'bg-blue-100 text-blue-800',
+        'completed': 'bg-green-100 text-green-800',
     };
 
-    const effortColors: Record<BlueprintStep['effort'], string> = {
-        'Quick win': 'border-gold text-gold-dark',
-        'Deep work': 'border-charcoal text-charcoal',
+    const categoryLabels = {
+        foundation: 'Foundation',
+        acceleration: 'Acceleration',
+        empire_legacy: 'Empire Legacy',
     };
 
     return (
         <div className="space-y-6">
-            {Object.entries(groupedSteps).map(([level, chapters]) => {
-                const levelSteps = steps.filter(s => s.level === level);
-                const completedInLevel = levelSteps.filter(s => s.status === 'completed').length;
-                const levelProgress = levelSteps.length > 0 ? (completedInLevel / levelSteps.length) * 100 : 0;
+            {Object.entries(stepsByCategory).map(([category, categorySteps]) => {
+                const completedInCategory = categorySteps.filter(s => s.status === 'completed').length;
+                const categoryProgress = categorySteps.length > 0 ? (completedInCategory / categorySteps.length) * 100 : 0;
 
                 return (
-                    <Card key={level} className="p-0 overflow-hidden">
-                        <button onClick={() => toggleLevel(level)} className="w-full p-4 flex justify-between items-center text-left">
+                    <Card key={category} className="p-0 overflow-hidden">
+                        <button onClick={() => toggleCategory(category)} className="w-full p-4 flex justify-between items-center text-left">
                             <div>
-                                <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{level}</h3>
-                                <p className="text-sm text-[var(--text-muted)]">{completedInLevel} of {levelSteps.length} steps completed</p>
+                                <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{categoryLabels[category as keyof typeof categoryLabels]}</h3>
+                                <p className="text-sm text-[var(--text-muted)]">{completedInCategory} of {categorySteps.length} steps completed</p>
                             </div>
-                            <ChevronDownIcon className={`w-6 h-6 text-[var(--text-muted)] transition-transform ${openLevels[level] ? 'rotate-180' : ''}`} />
+                            <ChevronDownIcon className={`w-6 h-6 text-[var(--text-muted)] transition-transform ${openCategories[category] ? 'rotate-180' : ''}`} />
                         </button>
-                        {openLevels[level] && (
+                        {openCategories[category] && (
                             <div className="px-4 pb-4 animate-fade-in">
                                 <div className="w-full bg-gray-200 rounded-full h-1.5 mb-4">
-                                    <div className="bg-[var(--accent)] h-1.5 rounded-full" style={{ width: `${levelProgress}%` }}></div>
+                                    <div className="bg-[var(--accent)] h-1.5 rounded-full" style={{ width: `${categoryProgress}%` }}></div>
                                 </div>
-                                {Object.entries(chapters).map(([chapter, chapterSteps]) => (
-                                    <div key={chapter} className="mb-4">
-                                        <h4 className="font-bold text-sm uppercase text-[var(--text-muted)] tracking-wider pb-1 mb-2 border-b border-[var(--border-subtle)]">{chapter}</h4>
-                                        <div className="space-y-2">
-                                            {chapterSteps.map(step => (
-                                                <div
-                                                    key={step.id}
-                                                    onClick={() => onSelectStep(step.id)}
-                                                    className={`p-3 rounded-lg cursor-pointer transition-all duration-200 flex items-start gap-3 ${selectedStepId === step.id ? 'bg-[var(--accent-bg-subtle)] shadow-inner' : 'hover:bg-[var(--bg-subtle)]'}`}
-                                                >
-                                                    <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center font-bold text-xs mt-0.5 ${step.status === 'completed' ? 'bg-[var(--accent)] text-[var(--accent-text)]' : 'bg-gray-200 text-gray-dark'}`}>
-                                                        {step.status === 'completed' ? <CheckIcon className="w-4 h-4"/> : step.id}
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-semibold text-[var(--text-main)] leading-tight">{step.title}</p>
-                                                        <div className="flex items-center gap-2 mt-1">
-                                                             <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${statusColors[step.status]}`}>{step.status.replace('_', ' ')}</span>
-                                                             <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${effortColors[step.effort]}`}>{step.effort}</span>
-                                                        </div>
-                                                    </div>
+                                <div className="space-y-2">
+                                    {categorySteps.map((step, index) => (
+                                        <div
+                                            key={step.id}
+                                            onClick={() => onSelectStep(step.id)}
+                                            className={`p-3 rounded-lg cursor-pointer transition-all duration-200 flex items-start gap-3 ${selectedStepId === step.id ? 'bg-[var(--accent-bg-subtle)] shadow-inner' : 'hover:bg-[var(--bg-subtle)]'}`}
+                                        >
+                                            <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center font-bold text-xs mt-0.5 ${step.status === 'completed' ? 'bg-[var(--accent)] text-white' : 'bg-gray-200 text-gray-600'}`}>
+                                                {step.status === 'completed' ? <CheckIcon className="w-4 h-4"/> : index + 1}
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="font-semibold text-[var(--text-main)] leading-tight">{step.title}</p>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                     <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${statusColors[step.status]}`}>{step.status.replace('_', ' ')}</span>
                                                 </div>
-                                            ))}
+                                                {step.note && (
+                                                    <p className="text-xs text-[var(--text-muted)] mt-1 italic">Note: {step.note}</p>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </Card>
@@ -150,17 +146,16 @@ const BlueprintStepList: React.FC<{
 };
 
 const BlueprintStepDetail: React.FC<{
-    step: BlueprintStep | null;
-    onUpdateStep: (stepId: number, newStatus: StepStatus) => void;
-}> = ({ step, onUpdateStep }) => {
+    step: StepWithProgress | null;
+    onUpdateStep: (stepId: string, newStatus: StepStatus) => void;
+    onUpdateNote: (stepId: string, note: string) => void;
+}> = ({ step, onUpdateStep, onUpdateNote }) => {
     const [note, setNote] = useState('');
-    const [checklist, setChecklist] = useState<Record<string, boolean>>({});
+    const [isUpdatingNote, setIsUpdatingNote] = useState(false);
 
     useEffect(() => {
         if(step) {
-            setNote(''); // Reset notes for demo
-            const initialChecklist = step.details.checklist.reduce((acc, item) => ({...acc, [item.text]: false}), {});
-            setChecklist(initialChecklist);
+            setNote(step.note || '');
         }
     }, [step]);
     
@@ -178,16 +173,31 @@ const BlueprintStepDetail: React.FC<{
     
     const statusOptions: StepStatus[] = ['not_started', 'in_progress', 'completed'];
 
+    const handleSaveNote = async () => {
+        if (!step) return;
+        setIsUpdatingNote(true);
+        try {
+            await onUpdateNote(step.id, note);
+        } catch (error) {
+            console.error('Failed to save note:', error);
+        } finally {
+            setIsUpdatingNote(false);
+        }
+    };
+
     return (
         <Card>
-            <p className="text-sm font-bold text-[var(--accent-dark)]">{step.level} / {step.chapter}</p>
-            <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)] mt-1">Step {step.id}: {step.title}</h2>
+            <p className="text-sm font-bold text-[var(--accent-dark)]">{step.category}</p>
+            <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)] mt-1">{step.title}</h2>
+            {step.description && (
+                <p className="text-[var(--text-muted)] mt-2">{step.description}</p>
+            )}
             
             <div className="mt-6">
                 <p className="text-sm font-semibold text-[var(--text-muted)] mb-2">Set status:</p>
                 <div className="flex bg-[var(--bg-subtle)] p-1 rounded-lg">
                     {statusOptions.map(s => (
-                        <button key={s} onClick={() => onUpdateStep(step.id, s)} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${step.status === s ? 'bg-[var(--accent)] text-[var(--accent-text)] shadow-sm' : 'text-[var(--text-muted)] hover:bg-white/50'}`}>
+                        <button key={s} onClick={() => onUpdateStep(step.id, s)} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${step.status === s ? 'bg-[var(--accent)] text-white shadow-sm' : 'text-[var(--text-muted)] hover:bg-white/50'}`}>
                             {s.replace('_', ' ')}
                         </button>
                     ))}
@@ -195,27 +205,22 @@ const BlueprintStepDetail: React.FC<{
             </div>
 
             <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
-                <h4 className="font-bold text-[var(--text-main)] mb-2">Why this matters</h4>
-                <p className="text-[var(--text-muted)] text-sm">{step.details.why}</p>
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
-                <h4 className="font-bold text-[var(--text-main)] mb-2">Checklist</h4>
-                <div className="space-y-2">
-                    {step.details.checklist.map(item => (
-                         <label key={item.text} className="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--bg-subtle)]">
-                            <input type="checkbox" checked={checklist[item.text] || false} onChange={e => setChecklist({...checklist, [item.text]: e.target.checked})} className="h-5 w-5 rounded border-gray-300 text-[var(--accent)] focus:ring-[var(--accent)]"/>
-                            <span className={`text-sm ${checklist[item.text] ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text-main)]'}`}>{item.text}</span>
-                        </label>
-                    ))}
-                </div>
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <h4 className="font-bold text-[var(--text-main)] mb-2">My notes for this step</h4>
-                <textarea value={note} onChange={e => setNote(e.target.value)} rows={4} className="w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)]" placeholder="Add any personal notes, reminders, or links here..."></textarea>
+                <textarea 
+                    value={note} 
+                    onChange={e => setNote(e.target.value)} 
+                    rows={4} 
+                    className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)] resize-none" 
+                    placeholder="Add any personal notes, reminders, or links here..."
+                ></textarea>
                 <div className="text-right mt-2">
-                    <button className="py-2 px-4 bg-[var(--accent)] text-[var(--accent-text)] font-bold text-sm rounded-lg shadow-sm">Save Note</button>
+                    <button 
+                        onClick={handleSaveNote}
+                        disabled={isUpdatingNote}
+                        className="py-2 px-4 bg-[var(--accent)] text-white font-bold text-sm rounded-lg shadow-sm hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50"
+                    >
+                        {isUpdatingNote ? 'Saving...' : 'Save Note'}
+                    </button>
                 </div>
             </div>
         </Card>
@@ -263,26 +268,27 @@ const MobileStepDrawer: React.FC<{
 
 const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
     const { hasBlueprintAccess, loading, error } = useBlueprintAccess();
+    const { stepsByCategory, progress, loading: progressLoading, setStatus, setNote } = useBlueprintProgress();
     const isMobile = useIsMobile();
-    const [steps, setSteps] = useState<BlueprintStep[]>(BLUEPRINT_STEPS);
-    const [selectedStepId, setSelectedStepId] = useState<number | null>(null);
+    const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 
-    const completedCount = useMemo(() => steps.filter(s => s.status === 'completed').length, [steps]);
+    const allSteps = useMemo(() => [
+        ...stepsByCategory.foundation,
+        ...stepsByCategory.acceleration,
+        ...stepsByCategory.empire_legacy,
+    ], [stepsByCategory]);
 
-    const groupedSteps = useMemo(() => {
-        return steps.reduce((acc, step) => {
-            if (!acc[step.level]) acc[step.level] = {};
-            if (!acc[step.level][step.chapter]) acc[step.level][step.chapter] = [];
-            acc[step.level][step.chapter].push(step);
-            return acc;
-        }, {} as Record<string, Record<string, BlueprintStep[]>>);
-    }, [steps]);
+    const completedCount = useMemo(() => allSteps.filter(s => s.status === 'completed').length, [allSteps]);
 
-    const handleUpdateStep = (stepId: number, newStatus: StepStatus) => {
-        setSteps(prev => prev.map(s => s.id === stepId ? { ...s, status: newStatus } : s));
+    const handleUpdateStep = async (stepId: string, newStatus: StepStatus) => {
+        await setStatus(stepId, newStatus);
     };
 
-    const handleSelectStep = (id: number) => {
+    const handleUpdateNote = async (stepId: string, noteText: string) => {
+        await setNote(stepId, noteText);
+    };
+
+    const handleSelectStep = (id: string) => {
         setSelectedStepId(id);
     };
 
@@ -290,16 +296,18 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
         setSelectedStepId(null);
     };
 
-    const selectedStep = useMemo(() => steps.find(s => s.id === selectedStepId) || null, [steps, selectedStepId]);
+    const selectedStep = useMemo(() => allSteps.find(s => s.id === selectedStepId) || null, [allSteps, selectedStepId]);
     const isMobileDrawerOpen = isMobile && selectedStepId !== null;
 
-    // Show loading state while checking access
-    if (loading) {
+    // Show loading state while checking access or loading progress
+    if (loading || progressLoading) {
         return (
             <div className="animate-fade-in p-8 flex items-center justify-center min-h-[400px]">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)] mx-auto mb-4"></div>
-                    <div className="text-lg text-[var(--text-muted)]">Checking your access...</div>
+                    <div className="text-lg text-[var(--text-muted)]">
+                        {loading ? 'Checking your access...' : 'Loading your progress...'}
+                    </div>
                 </div>
             </div>
         );
@@ -347,8 +355,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
             {isMobile ? (
                 <>
                     <BlueprintStepList 
-                        groupedSteps={groupedSteps} 
-                        steps={steps}
+                        stepsByCategory={stepsByCategory}
                         selectedStepId={selectedStepId}
                         onSelectStep={handleSelectStep}
                     />
@@ -356,7 +363,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                         <BlueprintHeader completedCount={completedCount} />
                     </div>
                     <MobileStepDrawer isOpen={isMobileDrawerOpen} onClose={handleCloseDrawer}>
-                        <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} />
+                        <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} onUpdateNote={handleUpdateNote} />
                     </MobileStepDrawer>
                 </>
             ) : (
@@ -365,14 +372,13 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start mt-8">
                         <div className="lg:col-span-1">
                             <BlueprintStepList 
-                                groupedSteps={groupedSteps} 
-                                steps={steps}
+                                stepsByCategory={stepsByCategory}
                                 selectedStepId={selectedStepId}
                                 onSelectStep={handleSelectStep}
                             />
                         </div>
                         <div className="lg:col-span-2 sticky top-8">
-                            <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} />
+                            <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} onUpdateNote={handleUpdateNote} />
                         </div>
                     </div>
                 </>
