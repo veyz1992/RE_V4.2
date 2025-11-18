@@ -2,10 +2,13 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 
+type AccessState = 'loading' | 'allowed' | 'denied' | 'error';
+
 interface BlueprintAccessResult {
   hasBlueprintAccess: boolean;
   loading: boolean;
   error?: string;
+  accessState: AccessState;
 }
 
 export const useBlueprintAccess = (): BlueprintAccessResult => {
@@ -14,6 +17,7 @@ export const useBlueprintAccess = (): BlueprintAccessResult => {
     hasBlueprintAccess: false,
     loading: false,
     error: undefined,
+    accessState: 'loading',
   });
 
   useEffect(() => {
@@ -23,12 +27,13 @@ export const useBlueprintAccess = (): BlueprintAccessResult => {
         hasBlueprintAccess: false,
         loading: false,
         error: undefined,
+        accessState: 'denied',
       });
       return;
     }
 
     let isMounted = true;
-    setState(prev => ({ ...prev, loading: true, error: undefined }));
+    setState(prev => ({ ...prev, loading: true, error: undefined, accessState: 'loading' }));
 
     const checkBlueprintAccess = async () => {
       try {
@@ -48,6 +53,7 @@ export const useBlueprintAccess = (): BlueprintAccessResult => {
             hasBlueprintAccess: hasAccess || false,
             loading: false,
             error: undefined,
+            accessState: hasAccess ? 'allowed' : 'denied',
           });
         }
 
@@ -58,6 +64,7 @@ export const useBlueprintAccess = (): BlueprintAccessResult => {
             hasBlueprintAccess: false,
             loading: false,
             error: 'Failed to check access',
+            accessState: 'error',
           });
         }
       }

@@ -3,6 +3,7 @@ import { KeyIcon, CheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, XMarkI
 import { useBlueprintAccess } from '../src/hooks';
 import { useBlueprintData } from '../src/hooks/useBlueprintData';
 import type { StepWithProgress, SectionWithStats, StepStatus } from '../src/hooks/useBlueprintData';
+import BlueprintUpgradePrompt from './BlueprintUpgradePrompt';
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
@@ -341,7 +342,7 @@ const MobileStepDrawer: React.FC<{
 };
 
 const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
-    const { hasBlueprintAccess, loading: accessLoading } = useBlueprintAccess();
+    const { hasBlueprintAccess, loading: accessLoading, accessState, error: accessError } = useBlueprintAccess();
     const { 
         sections, 
         globalStats,
@@ -416,8 +417,8 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
 
     const isMobileDrawerOpen = isMobile && !!selectedStepId;
 
-    // Show loading state while checking access
-    if (accessLoading) {
+    // Handle access state based on the AccessState type
+    if (accessState === 'loading') {
         return (
             <div className="animate-fade-in p-8 flex items-center justify-center min-h-[400px]">
                 <div className="text-center">
@@ -428,30 +429,31 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
         );
     }
 
-    // Show access wall if user doesn't have blueprint access
-    if (!hasBlueprintAccess) {
+    if (accessState === 'denied') {
+        return <BlueprintUpgradePrompt onUpgrade={() => onNavigate('billing')} />;
+    }
+
+    if (accessState === 'error') {
         return (
             <div className="animate-fade-in p-8">
                 <div className="max-w-2xl mx-auto text-center">
-                    <KeyIcon className="w-16 h-16 mx-auto text-[var(--text-muted)] mb-6" />
-                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)] mb-4">
-                        Blueprint locked for this account
-                    </h1>
-                    <p className="text-lg text-[var(--text-muted)] mb-8">
-                        The 99 Steps Blueprint is included only for active Founding Members or higher tiers.
+                    <div className="text-red-500 mb-4 text-4xl">⚠️</div>
+                    <h2 className="text-2xl font-bold text-[var(--text-main)] mb-2">Unable to check access</h2>
+                    <p className="text-[var(--text-muted)] mb-6">
+                        {accessError || 'There was a problem verifying your blueprint access. Please try refreshing the page.'}
                     </p>
-                    <div className="flex justify-center">
-                        <button
-                            onClick={() => onNavigate('billing')}
-                            className="px-6 py-3 bg-[var(--accent)] text-white rounded-lg font-semibold hover:bg-[var(--accent-hover)] transition-colors duration-200"
-                        >
-                            View membership options
-                        </button>
-                    </div>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="px-6 py-3 bg-[var(--accent)] text-white rounded-lg font-semibold hover:bg-[var(--accent-hover)] transition-colors duration-200"
+                    >
+                        Retry
+                    </button>
                 </div>
             </div>
         );
     }
+
+    // Only continue if accessState === 'allowed'
 
     // Show loading state if data is loading
     if (loading) {
