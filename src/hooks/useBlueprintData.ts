@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { updateBlueprintProgress, type BlueprintStatus } from '../lib/updateBlueprintProgress';
 
 export type StepStatus = 'not_started' | 'in_progress' | 'completed';
 
@@ -69,7 +68,7 @@ interface BlueprintDataState {
 }
 
 // Derive status from checklist state (needed for RPC call)
-function deriveStatus(values: boolean[]): BlueprintStatus {
+function deriveStatus(values: boolean[]): StepStatus {
   const anyTrue = values.some(Boolean);
   const allTrue = values.length > 0 && values.every(Boolean);
 
@@ -309,7 +308,7 @@ export const useBlueprintData = () => {
     };
   }, [session?.user?.id]);
 
-  const updateChecklist = async (stepId: string, newChecklistState: boolean[]) => {
+  const updateChecklist = async (stepId: string, nextChecklist: boolean[]) => {
     if (!session?.user?.id) {
       console.warn('No user session available');
       return;
@@ -329,8 +328,12 @@ export const useBlueprintData = () => {
     const prevStatus = currentStep.status;
     const prevChecklistState = [...currentStep.checklistState];
     
-    // Derive the new status from the new checklist state
-    const newStatus = deriveStatus(newChecklistState);
+    // Compute nextStatus using the exact logic specified
+    const checkedCount = nextChecklist.filter(Boolean).length;
+    let nextStatus: 'not_started' | 'in_progress' | 'completed';
+    if (checkedCount === 0) nextStatus = 'not_started';
+    else if (checkedCount === nextChecklist.length) nextStatus = 'completed';
+    else nextStatus = 'in_progress';
 
     try {
       // Optimistic update of local state (so the checkbox feels instant)
@@ -338,7 +341,7 @@ export const useBlueprintData = () => {
         const updatedSections = prev.sections.map(section => {
           const updatedSteps = section.steps.map(step => 
             step.id === stepId 
-              ? { ...step, checklistState: newChecklistState, status: newStatus }
+              ? { ...step, checklistState: nextChecklist, status: nextStatus }
               : step
           );
 
@@ -361,7 +364,7 @@ export const useBlueprintData = () => {
 
         // Update previous step statuses map
         const updatedStepStatuses = new Map(prev.previousStepStatuses);
-        updatedStepStatuses.set(stepId, newStatus);
+        updatedStepStatuses.set(stepId, nextStatus);
 
         return {
           ...prev,
@@ -371,16 +374,20 @@ export const useBlueprintData = () => {
         };
       });
 
-      // Call the helper function which will upsert to the existing row
-      await updateBlueprintProgress({
-        profileId: session.user.id,
-        stepId: stepId,
-        checklistState: newChecklistState,
-        status: newStatus,
+      // Call the RPC function instead of direct database operations
+      const { error } = await supabase.rpc('save_blueprint_progress', {
+        p_profile_id: session.user.id,
+        p_step_id: stepId,
+        p_checklist_state: nextChecklist,
+        p_status: nextStatus,
       });
 
+      if (error) {
+        throw error;
+      }
+
       // Trigger step completion animation only if step transitioned to completed (not on initial load)
-      if (!state.isInitialLoad && (prevStatus === 'not_started' || prevStatus === 'in_progress') && newStatus === 'completed') {
+      if (!state.isInitialLoad && (prevStatus === 'not_started' || prevStatus === 'in_progress') && nextStatus === 'completed') {
         triggerStepCompletionAnimation(stepId);
       }
 
@@ -389,7 +396,7 @@ export const useBlueprintData = () => {
         const currentSection = state.sections.find(s => s.steps.some(step => step.id === stepId));
         if (currentSection) {
           // Check if this step completion makes the entire section complete
-          const wasLastIncompleteStep = prevStatus !== 'completed' && newStatus === 'completed';
+          const wasLastIncompleteStep = prevStatus !== 'completed' && nextStatus === 'completed';
           const allOtherStepsComplete = currentSection.steps
             .filter(step => step.id !== stepId)
             .every(step => step.status === 'completed');
@@ -407,7 +414,7 @@ export const useBlueprintData = () => {
     } catch (error) {
       console.error('Failed to update checklist:', error);
       
-      // Roll back the optimistic state to the previous values on error
+      // Revert the optimistic state to the previous values on error
       setState(prev => {
         const revertedSections = prev.sections.map(section => {
           const revertedSteps = section.steps.map(step => 
