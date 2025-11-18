@@ -37,11 +37,12 @@ import { normalizePlanTier, type MembershipTier as PlanConfigMembershipTier } fr
 import type { PostgrestError } from '@supabase/supabase-js';
 
 // --- Reusable Components ---
-const SidebarLink: React.FC<{ icon: React.ReactNode; label: string; isActive: boolean; onClick: () => void; attention?: boolean }> = ({ icon, label, isActive, onClick, attention }) => (
-    <button onClick={onClick} className={`flex items-center w-full px-4 py-3 rounded-lg text-left transition-colors duration-200 relative ${isActive ? 'bg-[var(--accent-bg-subtle)] text-[var(--accent-dark)] font-bold' : 'text-[var(--text-muted)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-main)]'}`}>
+const SidebarLink: React.FC<{ icon: React.ReactNode; label: string; isActive: boolean; onClick: () => void; attention?: boolean; locked?: boolean }> = ({ icon, label, isActive, onClick, attention, locked }) => (
+    <button onClick={onClick} className={`flex items-center w-full px-4 py-3 rounded-lg text-left transition-colors duration-200 relative ${isActive ? 'bg-[var(--accent-bg-subtle)] text-[var(--accent-dark)] font-bold' : locked ? 'text-[var(--text-muted)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-main)] opacity-60' : 'text-[var(--text-muted)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-main)]'}`}>
         {isActive && <div className="absolute left-0 top-0 h-full w-1 bg-[var(--accent)] rounded-r-full"></div>}
         <div className={`ml-2 ${isActive ? 'text-[var(--accent-dark)]' : ''}`}>{icon}</div>
         <span className="ml-3">{label}</span>
+        {locked && <KeyIcon className="w-4 h-4 ml-2 text-[var(--text-muted)]" />}
         {attention && <span className="absolute right-4 top-1/2 -translate-y-1/2 w-2 h-2 bg-error rounded-full animate-pulse"></span>}
     </button>
 );
@@ -6333,7 +6334,7 @@ const viewTitles: Record<MemberView, string> = {
 
 const MemberDashboard: React.FC = () => {
     const { currentUser, logout, session } = useAuth();
-    const { hasBlueprintAccess } = useBlueprintAccess(session?.user?.id ?? null);
+    const { hasBlueprintAccess, loading: blueprintLoading } = useBlueprintAccess();
     const [activeView, setActiveView] = useState<MemberView>('overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
@@ -6767,9 +6768,7 @@ const MemberDashboard: React.FC = () => {
             <SidebarLink icon={<StarIcon className="w-6 h-6" />} label="Benefits" isActive={activeView === 'benefits'} onClick={() => handleViewChange('benefits')} />
             <SidebarLink icon={<CreditCardIcon className="w-6 h-6" />} label="Billing" isActive={activeView === 'billing'} onClick={() => handleViewChange('billing')} />
             <SidebarLink icon={<UsersIcon className="w-6 h-6" />} label="Community" isActive={activeView === 'community'} onClick={() => handleViewChange('community')} />
-            {hasBlueprintAccess && (
-                <SidebarLink icon={<ClipboardDocumentCheckIcon className="w-6 h-6" />} label="99 Steps Blueprint" isActive={activeView === 'blueprint'} onClick={() => handleViewChange('blueprint')} />
-            )}
+            <SidebarLink icon={<ClipboardDocumentCheckIcon className="w-6 h-6" />} label="99 Steps Blueprint" isActive={activeView === 'blueprint'} onClick={() => handleViewChange('blueprint')} locked={!blueprintLoading && !hasBlueprintAccess} />
             <SidebarLink icon={<Cog6ToothIcon className="w-6 h-6" />} label="Settings" isActive={activeView === 'settings'} onClick={() => handleViewChange('settings')} />
         </>
     );

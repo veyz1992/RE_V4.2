@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { KeyIcon, CheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, Cog6ToothIcon, ClockIcon, XMarkIcon } from './icons';
 import { BLUEPRINT_STEPS, BlueprintStep, StepStatus } from '../lib/mockData';
-import { useBlueprintAccess } from '../src/hooks/useBlueprintAccess';
-import { useAuth } from '../src/context/AuthContext';
+import { useBlueprintAccess } from '../src/hooks';
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
@@ -263,8 +262,7 @@ const MobileStepDrawer: React.FC<{
 };
 
 const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
-    const { user } = useAuth();
-    const { hasBlueprintAccess, isLoading } = useBlueprintAccess(user?.id || null);
+    const { hasBlueprintAccess, loading, error } = useBlueprintAccess();
     const isMobile = useIsMobile();
     const [steps, setSteps] = useState<BlueprintStep[]>(BLUEPRINT_STEPS);
     const [selectedStepId, setSelectedStepId] = useState<number | null>(null);
@@ -296,37 +294,41 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
     const isMobileDrawerOpen = isMobile && selectedStepId !== null;
 
     // Show loading state while checking access
-    if (isLoading) {
+    if (loading) {
         return (
-            <div className="animate-fade-in p-8 flex items-center justify-center">
-                <div className="text-lg text-[var(--text-muted)]">Loading...</div>
+            <div className="animate-fade-in p-8 flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)] mx-auto mb-4"></div>
+                    <div className="text-lg text-[var(--text-muted)]">Checking your access...</div>
+                </div>
             </div>
         );
     }
 
     // Show access wall if user doesn't have blueprint access
-    if (!hasBlueprintAccess) {
+    if (!loading && !hasBlueprintAccess) {
         return (
             <div className="animate-fade-in p-8">
                 <div className="max-w-2xl mx-auto text-center">
-                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)] mb-6">
-                        99 Steps Blueprint is locked
+                    <KeyIcon className="w-16 h-16 mx-auto text-[var(--text-muted)] mb-6" />
+                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)] mb-4">
+                        Unlock the 99 Steps Blueprint
                     </h1>
                     <p className="text-lg text-[var(--text-muted)] mb-8">
-                        This roadmap is included with Founding and Gold memberships or can be purchased separately.
+                        This roadmap is included in Founding Member and Gold memberships or as a standalone 99 Steps Blueprint add-on.
                     </p>
                     <div className="space-y-4 sm:space-y-0 sm:space-x-4 sm:flex sm:justify-center">
                         <button
                             onClick={() => onNavigate('billing')}
                             className="w-full sm:w-auto px-6 py-3 bg-[var(--accent)] text-white rounded-lg font-semibold hover:bg-[var(--accent-hover)] transition-colors duration-200"
                         >
-                            View membership plans
+                            Upgrade membership
                         </button>
                         <button
-                            onClick={() => onNavigate('overview')}
+                            onClick={() => onNavigate('my-requests')}
                             className="w-full sm:w-auto px-6 py-3 border border-[var(--border-subtle)] text-[var(--text-main)] rounded-lg font-semibold hover:bg-[var(--bg-card)] transition-colors duration-200"
                         >
-                            Back to dashboard
+                            Contact support
                         </button>
                     </div>
                 </div>
