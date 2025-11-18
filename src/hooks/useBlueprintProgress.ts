@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { updateBlueprintProgress, type BlueprintStatus } from '../lib/updateBlueprintProgress';
 // Note: This hook is deprecated in favor of useBlueprintData for the data-driven system
 
 export type StepStatus = 'not_started' | 'in_progress' | 'completed';
@@ -155,18 +156,11 @@ export const useBlueprintProgress = () => {
       });
 
       // Update database
-      const { error } = await supabase
-        .from('blueprint_progress')
-        .upsert({
-          profile_id: session.user.id,
-          step_id: stepId,
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) {
-        throw error;
-      }
+      await updateBlueprintProgress({
+        profileId: session.user.id,
+        stepId: stepId,
+        status: newStatus as BlueprintStatus,
+      });
     } catch (error) {
       console.error('Failed to update step status:', error);
       // TODO: Consider reverting optimistic update on error
@@ -203,18 +197,11 @@ export const useBlueprintProgress = () => {
       });
 
       // Update database
-      const { error } = await supabase
-        .from('blueprint_progress')
-        .upsert({
-          profile_id: session.user.id,
-          step_id: stepId,
-          note: noteText,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) {
-        throw error;
-      }
+      await updateBlueprintProgress({
+        profileId: session.user.id,
+        stepId: stepId,
+        note: noteText,
+      });
     } catch (error) {
       console.error('Failed to update step note:', error);
       // TODO: Consider reverting optimistic update on error
@@ -251,18 +238,11 @@ export const useBlueprintProgress = () => {
       });
 
       // Update database
-      const { error } = await supabase
-        .from('blueprint_progress')
-        .upsert({
-          profile_id: session.user.id,
-          step_id: stepId,
-          checklist_data: checklistData,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) {
-        throw error;
-      }
+      await updateBlueprintProgress({
+        profileId: session.user.id,
+        stepId: stepId,
+        checklistData: checklistData,
+      });
     } catch (error) {
       console.error('Failed to update checklist data:', error);
       // TODO: Consider reverting optimistic update on error

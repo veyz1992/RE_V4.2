@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { updateBlueprintProgress, type BlueprintStatus } from '../lib/updateBlueprintProgress';
 
 export type StepStatus = 'not_started' | 'in_progress' | 'completed';
 
@@ -68,15 +69,17 @@ interface BlueprintDataState {
 }
 
 // Derive status from checklist state (needed for RPC call)
-const deriveStatusFromChecklist = (checklistState: boolean[]): StepStatus => {
-  if (checklistState.length === 0 || checklistState.every(item => !item)) {
-    return 'not_started';
-  }
-  if (checklistState.every(item => item)) {
-    return 'completed';
-  }
+function deriveStatus(values: boolean[]): BlueprintStatus {
+  const anyTrue = values.some(Boolean);
+  const allTrue = values.length > 0 && values.every(Boolean);
+
+  if (!anyTrue) return 'not_started';
+  if (allTrue) return 'completed';
   return 'in_progress';
-};
+}
+
+// Legacy alias for backward compatibility
+const deriveStatusFromChecklist = deriveStatus;
 
 // Calculate mastery level from completion percentage
 const getMasteryLevel = (completionPercent: number): string => {
@@ -312,7 +315,7 @@ export const useBlueprintData = () => {
       return;
     }
 
-    // Store previous state for rollback and animation detection
+    // Find the current step
     const currentStep = state.sections
       .flatMap(s => s.steps)
       .find(s => s.id === stepId);
@@ -322,14 +325,15 @@ export const useBlueprintData = () => {
       return;
     }
 
+    // Store previous state for rollback and animation detection
     const prevStatus = currentStep.status;
     const prevChecklistState = [...currentStep.checklistState];
     
-    // Derive the new status from checklist state
-    const newStatus = deriveStatusFromChecklist(newChecklistState);
+    // Derive the new status from the new checklist state
+    const newStatus = deriveStatus(newChecklistState);
 
     try {
-      // Optimistically update local state with recomputed statistics
+      // Optimistic update of local state (so the checkbox feels instant)
       setState(prev => {
         const updatedSections = prev.sections.map(section => {
           const updatedSteps = section.steps.map(step => 
@@ -367,20 +371,13 @@ export const useBlueprintData = () => {
         };
       });
 
-      // Upsert to blueprint_progress table
-      const { error } = await supabase
-        .from('blueprint_progress')
-        .upsert({
-          profile_id: session.user.id,
-          step_id: stepId,
-          checklist_state: newChecklistState,
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) {
-        throw error;
-      }
+      // Call the helper function which will upsert to the existing row
+      await updateBlueprintProgress({
+        profileId: session.user.id,
+        stepId: stepId,
+        checklistState: newChecklistState,
+        status: newStatus,
+      });
 
       // Trigger step completion animation only if step transitioned to completed (not on initial load)
       if (!state.isInitialLoad && (prevStatus === 'not_started' || prevStatus === 'in_progress') && newStatus === 'completed') {
@@ -410,7 +407,7 @@ export const useBlueprintData = () => {
     } catch (error) {
       console.error('Failed to update checklist:', error);
       
-      // Revert optimistic update on error to prevent UI inconsistencies
+      // Roll back the optimistic state to the previous values on error
       setState(prev => {
         const revertedSections = prev.sections.map(section => {
           const revertedSteps = section.steps.map(step => 

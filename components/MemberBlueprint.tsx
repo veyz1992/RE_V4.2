@@ -213,9 +213,15 @@ const BlueprintStepDetail: React.FC<{
     }
     
     const handleChecklistChange = (index: number, checked: boolean) => {
-        const newChecklistState = [...step.checklistState];
-        newChecklistState[index] = checked;
-        onUpdateChecklist(step.id, newChecklistState);
+        // Take the current checklist_state array for that step
+        // If null/undefined, initialize an array of false with the same length as the step's checklist
+        const currentChecklistState = step.checklistState || Array(step.checklist.length).fill(false);
+        
+        // Toggle the clicked index to compute nextChecklistState
+        const nextChecklistState = [...currentChecklistState];
+        nextChecklistState[index] = checked;
+        
+        onUpdateChecklist(step.id, nextChecklistState);
     };
 
     const statusOptions: StepStatus[] = ['not_started', 'in_progress', 'completed'];
@@ -275,12 +281,12 @@ const BlueprintStepDetail: React.FC<{
                             >
                                 <input 
                                     type="checkbox" 
-                                    checked={step.checklistState[index] || false} 
+                                    checked={(step.checklistState || Array(step.checklist.length).fill(false))[index] || false} 
                                     onChange={e => handleChecklistChange(index, e.target.checked)}
                                     className="h-4 w-4 rounded border-gray-300 text-[var(--accent)] focus:ring-[var(--accent)] transition-all duration-150"
                                 />
                                 <span className={`text-sm transition-all duration-150 ${
-                                    step.checklistState[index] 
+                                    (step.checklistState || Array(step.checklist.length).fill(false))[index] 
                                         ? 'line-through text-[var(--text-muted)]' 
                                         : 'text-[var(--text-main)]'
                                 }`}>
