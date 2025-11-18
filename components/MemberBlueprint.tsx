@@ -1,9 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { KeyIcon, CheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, Cog6ToothIcon, ClockIcon, XMarkIcon } from './icons';
-import { useBlueprintAccess, useBlueprintProgress, useBlueprintSteps } from '../src/hooks';
-import type { StepWithProgress, StepStatus } from '../src/hooks/useBlueprintProgress';
-import type { BlueprintStep } from '../src/data/blueprintSteps';
-import { deriveStatusFromChecklist, getCheckedCount, isFirstStepCompletion, isSectionComplete } from '../src/utils/blueprintHelpers';
+import { KeyIcon, CheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, XMarkIcon } from './icons';
+import { useBlueprintAccess } from '../src/hooks';
+import { useBlueprintData } from '../src/hooks/useBlueprintData';
+import type { StepWithProgress, SectionWithSteps, StepStatus } from '../src/hooks/useBlueprintData';
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
@@ -27,108 +26,47 @@ const Card: React.FC<{ children: React.ReactNode, className?: string, onClick?: 
     </div>
 );
 
-const ConfettiEffect: React.FC<{ isVisible: boolean }> = ({ isVisible }) => {
-    useEffect(() => {
-        if (!isVisible || typeof window === 'undefined') return;
 
-        // Create safe confetti particles
-        const colors = ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4'];
-        const particles: HTMLElement[] = [];
-
-        for (let i = 0; i < 50; i++) {
-            const particle = document.createElement('div');
-            particle.className = 'confetti-particle';
-            particle.style.cssText = `
-                position: fixed;
-                width: 8px;
-                height: 8px;
-                background: ${colors[Math.floor(Math.random() * colors.length)]};
-                border-radius: 50%;
-                pointer-events: none;
-                z-index: 9999;
-                left: ${Math.random() * window.innerWidth}px;
-                top: -10px;
-                animation: confetti-fall ${2 + Math.random() * 2}s linear forwards;
-            `;
-            
-            document.body.appendChild(particle);
-            particles.push(particle);
-        }
-
-        // Add CSS animation if not already present
-        if (!document.getElementById('confetti-styles')) {
-            const style = document.createElement('style');
-            style.id = 'confetti-styles';
-            style.textContent = `
-                @keyframes confetti-fall {
-                    to {
-                        transform: translateY(100vh) rotate(720deg);
-                        opacity: 0;
-                    }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
-        // Clean up particles after animation
-        const cleanup = setTimeout(() => {
-            particles.forEach(particle => {
-                if (particle.parentNode) {
-                    particle.parentNode.removeChild(particle);
-                }
-            });
-        }, 4000);
-
-        return () => {
-            clearTimeout(cleanup);
-            particles.forEach(particle => {
-                if (particle.parentNode) {
-                    particle.parentNode.removeChild(particle);
-                }
-            });
-        };
-    }, [isVisible]);
-
-    return null;
-};
-
-const CelebrationToast: React.FC<{ message: string; isVisible: boolean; onClose: () => void; showConfetti?: boolean }> = ({ message, isVisible, onClose, showConfetti = false }) => {
+// Celebration Toast Component
+const CelebrationToast: React.FC<{ message: string; isVisible: boolean; onClose: () => void }> = ({ message, isVisible, onClose }) => {
     useEffect(() => {
         if (isVisible) {
-            const timer = setTimeout(onClose, 4000); // Slightly longer for confetti
+            const timer = setTimeout(onClose, 3000);
             return () => clearTimeout(timer);
         }
     }, [isVisible, onClose]);
 
     return (
-        <>
-            {showConfetti && <ConfettiEffect isVisible={isVisible} />}
-            <div className={`fixed bottom-6 right-6 z-50 transform transition-all duration-300 ease-out ${
-                isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
-            }`}>
-                <div className="bg-[var(--accent)] text-white px-6 py-3 rounded-lg shadow-lg max-w-sm">
-                    <div className="flex items-center gap-3">
-                        <div className="w-6 h-6 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                            <CheckIcon className="w-4 h-4" />
-                        </div>
-                        <span className="font-semibold">{message}</span>
+        <div className={`fixed bottom-6 right-6 z-50 transform transition-all duration-300 ease-out ${
+            isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
+        }`}>
+            <div className="bg-[var(--accent)] text-white px-6 py-3 rounded-lg shadow-lg max-w-sm">
+                <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                        <CheckIcon className="w-4 h-4" />
                     </div>
+                    <span className="font-semibold">{message}</span>
                 </div>
             </div>
-        </>
+        </div>
     );
 };
 
-const TOTAL_STEPS = 99; // The blueprint is always out of 99 steps
-
 // --- Sub-components for Blueprint ---
 
-const BlueprintHeader: React.FC<{ completedCount: number; totalSteps?: number; progress?: number }> = ({ 
-    completedCount, 
-    totalSteps = TOTAL_STEPS, 
-    progress 
-}) => {
-    const percentage = progress !== undefined ? progress : Math.round((completedCount / totalSteps) * 100);
+const BlueprintHeader: React.FC<{ sections: SectionWithSteps[] }> = ({ sections }) => {
+    const { completedCount, totalSteps, percentage } = useMemo(() => {
+        const allSteps = sections.flatMap(section => section.steps);
+        const completed = allSteps.filter(step => step.status === 'completed').length;
+        const total = allSteps.length;
+        const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+        
+        return {
+            completedCount: completed,
+            totalSteps: total,
+            percentage: pct
+        };
+    }, [sections]);
     const [displayPercentage, setDisplayPercentage] = useState(0);
 
     useEffect(() => {
@@ -166,15 +104,25 @@ const BlueprintHeader: React.FC<{ completedCount: number; totalSteps?: number; p
     );
 };
 
-const BlueprintStepList: React.FC<{
-    stepsByCategory: { foundation: StepWithProgress[]; acceleration: StepWithProgress[]; empire_legacy: StepWithProgress[] };
+const BlueprintSectionsList: React.FC<{
+    sections: SectionWithSteps[];
+    selectedSectionId: string | null;
     selectedStepId: string | null;
-    onSelectStep: (id: string) => void;
-}> = ({ stepsByCategory, selectedStepId, onSelectStep }) => {
-    const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({ 'foundation': true });
+    onSelectSection: (sectionId: string) => void;
+    onSelectStep: (stepId: string) => void;
+}> = ({ sections, selectedSectionId, selectedStepId, onSelectSection, onSelectStep }) => {
+    const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-    const toggleCategory = (category: string) => {
-        setOpenCategories(prev => ({...prev, [category]: !prev[category]}));
+    // Auto-open the selected section
+    useEffect(() => {
+        if (selectedSectionId && !openSections[selectedSectionId]) {
+            setOpenSections(prev => ({ ...prev, [selectedSectionId]: true }));
+        }
+    }, [selectedSectionId, openSections]);
+
+    const toggleSection = (sectionId: string) => {
+        setOpenSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
+        onSelectSection(sectionId);
     };
 
     const statusColors: Record<StepStatus, string> = {
@@ -183,53 +131,81 @@ const BlueprintStepList: React.FC<{
         'completed': 'bg-green-100 text-green-800',
     };
 
-    const categoryLabels = {
-        foundation: 'Foundation',
-        acceleration: 'Acceleration',
-        empire_legacy: 'Empire Legacy',
-    };
-
     return (
         <div className="space-y-6">
-            {Object.entries(stepsByCategory).map(([category, categorySteps]) => {
-                const completedInCategory = categorySteps.filter(s => s.status === 'completed').length;
-                const categoryProgress = categorySteps.length > 0 ? (completedInCategory / categorySteps.length) * 100 : 0;
+            {sections.map(section => {
+                const completedInSection = section.steps.filter(s => s.status === 'completed').length;
+                const sectionProgress = section.steps.length > 0 ? (completedInSection / section.steps.length) * 100 : 0;
+                const isSelected = section.id === selectedSectionId;
+                const isOpen = openSections[section.id];
+                const isFullyCompleted = completedInSection === section.steps.length && section.steps.length > 0;
 
                 return (
-                    <Card key={category} className="p-0 overflow-hidden">
-                        <button onClick={() => toggleCategory(category)} className="w-full p-4 flex justify-between items-center text-left">
+                    <Card 
+                        key={section.id} 
+                        className={`p-0 overflow-hidden transition-all duration-300 ${isFullyCompleted ? 'ring-2 ring-green-200 bg-gradient-to-r from-green-50 to-transparent' : ''}`}
+                    >
+                        <button 
+                            onClick={() => toggleSection(section.id)} 
+                            className="w-full p-4 flex justify-between items-center text-left hover:bg-[var(--bg-subtle)] transition-colors"
+                        >
                             <div>
-                                <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{categoryLabels[category as keyof typeof categoryLabels]}</h3>
-                                <p className="text-sm text-[var(--text-muted)]">{completedInCategory} of {categorySteps.length} steps completed</p>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{section.name}</h3>
+                                    {isFullyCompleted && (
+                                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                                            <CheckIcon className="w-4 h-4 text-white" />
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-sm text-[var(--text-muted)]">{completedInSection} of {section.steps.length} steps completed</p>
+                                {section.description && (
+                                    <p className="text-sm text-[var(--text-muted)] mt-1">{section.description}</p>
+                                )}
                             </div>
-                            <ChevronDownIcon className={`w-6 h-6 text-[var(--text-muted)] transition-transform ${openCategories[category] ? 'rotate-180' : ''}`} />
+                            <ChevronDownIcon className={`w-6 h-6 text-[var(--text-muted)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                         </button>
-                        {openCategories[category] && (
+                        
+                        {isOpen && (
                             <div className="px-4 pb-4 animate-fade-in">
                                 <div className="w-full bg-gray-200 rounded-full h-1.5 mb-4">
-                                    <div className="bg-[var(--accent)] h-1.5 rounded-full" style={{ width: `${categoryProgress}%` }}></div>
+                                    <div 
+                                        className="bg-[var(--accent)] h-1.5 rounded-full transition-all duration-500" 
+                                        style={{ width: `${sectionProgress}%` }}
+                                    ></div>
                                 </div>
                                 <div className="space-y-2">
-                                    {categorySteps.map((step, index) => (
-                                        <div
-                                            key={step.id}
-                                            onClick={() => onSelectStep(step.id)}
-                                            className={`p-3 rounded-lg cursor-pointer transition-all duration-200 flex items-start gap-3 ${selectedStepId === step.id ? 'bg-[var(--accent-bg-subtle)] shadow-inner' : 'hover:bg-[var(--bg-subtle)]'} ${step.status === 'completed' ? 'bg-gradient-to-r from-yellow-50 to-transparent' : ''}`}
-                                        >
-                                            <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center font-bold text-xs mt-0.5 transition-all duration-200 ${step.status === 'completed' ? 'bg-[var(--accent)] text-white scale-100' : 'bg-gray-200 text-gray-600'}`}>
-                                                {step.status === 'completed' ? <CheckIcon className="w-4 h-4 animate-pulse"/> : index + 1}
-                                            </div>
-                                            <div className="flex-1">
-                                                <p className="font-semibold text-[var(--text-main)] leading-tight">{step.title}</p>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                     <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${statusColors[step.status]}`}>{step.status.replace('_', ' ')}</span>
+                                    {section.steps.map(step => {
+                                        const isStepSelected = step.id === selectedStepId;
+                                        
+                                        return (
+                                            <div
+                                                key={step.id}
+                                                onClick={() => onSelectStep(step.id)}
+                                                className={`p-3 rounded-lg cursor-pointer transition-all duration-200 flex items-start gap-3 ${
+                                                    isStepSelected 
+                                                        ? 'bg-[var(--accent-bg-subtle)] shadow-inner' 
+                                                        : 'hover:bg-[var(--bg-subtle)]'
+                                                } ${step.status === 'completed' ? 'bg-gradient-to-r from-yellow-50 to-transparent step-completed' : ''}`}
+                                            >
+                                                <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center font-bold text-xs mt-0.5 transition-all duration-300 ${
+                                                    step.status === 'completed' 
+                                                        ? 'bg-[var(--accent)] text-white scale-105' 
+                                                        : 'bg-gray-200 text-gray-600'
+                                                }`}>
+                                                    {step.status === 'completed' ? <CheckIcon className="w-4 h-4"/> : step.step_number}
                                                 </div>
-                                                {step.note && (
-                                                    <p className="text-xs text-[var(--text-muted)] mt-1 italic">Note: {step.note}</p>
-                                                )}
+                                                <div className="flex-1">
+                                                    <p className="font-semibold text-[var(--text-main)] leading-tight">{step.title}</p>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${statusColors[step.status]}`}>
+                                                            {step.status.replace('_', ' ')}
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -241,51 +217,9 @@ const BlueprintStepList: React.FC<{
 };
 
 const BlueprintStepDetail: React.FC<{
-    step: (StepWithProgress & BlueprintStep) | null;
-    onUpdateStep: (stepId: string, newStatus: StepStatus) => void;
-    onUpdateNote: (stepId: string, note: string) => void;
-    onUpdateChecklistData: (stepId: string, checklistData: Record<string, boolean>) => void;
-}> = ({ step, onUpdateStep, onUpdateNote, onUpdateChecklistData }) => {
-    const [note, setNote] = useState('');
-    const [isUpdatingNote, setIsUpdatingNote] = useState(false);
-    const [localChecklist, setLocalChecklist] = useState<Record<string, boolean>>({});
-
-    useEffect(() => {
-        if(step) {
-            setNote(step.note || '');
-            // Initialize checklist state from persisted data
-            if (step.checklist) {
-                const initialChecklist = step.checklist.reduce((acc, item) => ({
-                    ...acc,
-                    [item]: (step.checklist_data && step.checklist_data[item]) || false
-                }), {});
-                setLocalChecklist(initialChecklist);
-            }
-        }
-    }, [step]);
-
-    const handleChecklistChange = async (item: string, checked: boolean) => {
-        if (!step) return;
-
-        // Update local checklist state
-        const newChecklistState = { ...localChecklist, [item]: checked };
-        setLocalChecklist(newChecklistState);
-
-        // Save checklist data to database
-        await onUpdateChecklistData(step.id, newChecklistState);
-
-        // If step has checklist, derive status from checklist completion
-        if (step.checklist && step.checklist.length > 0) {
-            const checkedCount = getCheckedCount(newChecklistState);
-            const newStatus = deriveStatusFromChecklist(checkedCount, step.checklist.length);
-            
-            // Only update status if it actually changes
-            if (newStatus !== step.status) {
-                await onUpdateStep(step.id, newStatus);
-            }
-        }
-    };
-    
+    step: StepWithProgress | null;
+    onUpdateChecklist: (stepId: string, checklistState: boolean[]) => void;
+}> = ({ step, onUpdateChecklist }) => {
     if (!step) {
         return (
             <Card className="flex items-center justify-center min-h-[400px]">
@@ -298,60 +232,55 @@ const BlueprintStepDetail: React.FC<{
         );
     }
     
-    const statusOptions: StepStatus[] = ['not_started', 'in_progress', 'completed'];
+    const handleChecklistChange = (index: number, checked: boolean) => {
+        const newChecklistState = [...step.checklistState];
+        newChecklistState[index] = checked;
+        onUpdateChecklist(step.id, newChecklistState);
+    };
 
-    const handleSaveNote = async () => {
-        if (!step) return;
-        setIsUpdatingNote(true);
-        try {
-            await onUpdateNote(step.id, note);
-        } catch (error) {
-            console.error('Failed to save note:', error);
-        } finally {
-            setIsUpdatingNote(false);
-        }
+    const statusOptions: StepStatus[] = ['not_started', 'in_progress', 'completed'];
+    const statusColors: Record<StepStatus, string> = {
+        'not_started': 'bg-gray-100 text-gray-700',
+        'in_progress': 'bg-blue-100 text-blue-800',
+        'completed': 'bg-green-100 text-green-800',
     };
 
     return (
         <Card>
             <div className="flex items-center gap-2 mb-2">
-                {step.section && (
-                    <span className="text-sm font-bold text-[var(--accent-dark)]">{step.section}</span>
-                )}
-                <span className="text-sm font-bold text-[var(--text-muted)] capitalize">{step.category}</span>
+                <span className="text-sm font-bold text-[var(--accent-dark)]">Step {step.step_number}</span>
             </div>
             <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)] mt-1">{step.title}</h2>
+            
             {step.description && (
                 <p className="text-[var(--text-muted)] mt-2">{step.description}</p>
             )}
             
             <div className="mt-6">
                 <p className="text-sm font-semibold text-[var(--text-muted)] mb-2">
-                    {step.checklist && step.checklist.length > 0 ? 'Status (determined by checklist):' : 'Set status:'}
+                    Status (determined by checklist):
                 </p>
                 <div className="flex bg-[var(--bg-subtle)] p-1 rounded-lg">
                     {statusOptions.map(s => (
-                        <button 
+                        <div 
                             key={s} 
-                            onClick={step.checklist && step.checklist.length > 0 ? undefined : () => onUpdateStep(step.id, s)}
-                            disabled={step.checklist && step.checklist.length > 0}
-                            className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${step.status === s ? 'bg-[var(--accent)] text-white shadow-sm' : 'text-[var(--text-muted)]'} ${step.checklist && step.checklist.length > 0 ? 'cursor-not-allowed opacity-75' : 'hover:bg-white/50 cursor-pointer'}`}
+                            className={`flex-1 py-2 text-sm font-bold rounded-md transition-all cursor-not-allowed opacity-75 text-center ${
+                                step.status === s ? statusColors[s] + ' shadow-sm' : 'text-[var(--text-muted)]'
+                            }`}
                         >
                             {s.replace('_', ' ')}
-                        </button>
+                        </div>
                     ))}
                 </div>
-                {step.checklist && step.checklist.length > 0 && (
-                    <p className="text-xs text-[var(--text-muted)] mt-2 italic">
-                        Status is automatically updated based on checklist completion
-                    </p>
-                )}
+                <p className="text-xs text-[var(--text-muted)] mt-2 italic">
+                    Status is automatically updated based on checklist completion
+                </p>
             </div>
 
-            {step.why && (
+            {step.why_it_matters && (
                 <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                     <h4 className="font-bold text-[var(--text-main)] mb-2">Why this matters</h4>
-                    <p className="text-[var(--text-muted)] text-sm">{step.why}</p>
+                    <p className="text-[var(--text-muted)] text-sm">{step.why_it_matters}</p>
                 </div>
             )}
 
@@ -359,15 +288,22 @@ const BlueprintStepDetail: React.FC<{
                 <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                     <h4 className="font-bold text-[var(--text-main)] mb-2">Checklist</h4>
                     <div className="space-y-2">
-                        {step.checklist.map(item => (
-                            <label key={item} className="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--bg-subtle)] cursor-pointer transition-all duration-150">
+                        {step.checklist.map((item, index) => (
+                            <label 
+                                key={index} 
+                                className="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--bg-subtle)] cursor-pointer transition-all duration-150"
+                            >
                                 <input 
                                     type="checkbox" 
-                                    checked={localChecklist[item] || false} 
-                                    onChange={e => handleChecklistChange(item, e.target.checked)}
+                                    checked={step.checklistState[index] || false} 
+                                    onChange={e => handleChecklistChange(index, e.target.checked)}
                                     className="h-4 w-4 rounded border-gray-300 text-[var(--accent)] focus:ring-[var(--accent)] transition-all duration-150"
                                 />
-                                <span className={`text-sm transition-all duration-150 ${localChecklist[item] ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text-main)]'}`}>
+                                <span className={`text-sm transition-all duration-150 ${
+                                    step.checklistState[index] 
+                                        ? 'line-through text-[var(--text-muted)]' 
+                                        : 'text-[var(--text-main)]'
+                                }`}>
                                     {item}
                                 </span>
                             </label>
@@ -375,26 +311,6 @@ const BlueprintStepDetail: React.FC<{
                     </div>
                 </div>
             )}
-
-            <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
-                <h4 className="font-bold text-[var(--text-main)] mb-2">My notes for this step</h4>
-                <textarea 
-                    value={note} 
-                    onChange={e => setNote(e.target.value)} 
-                    rows={4} 
-                    className="w-full p-3 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)] focus:ring-[var(--accent)] focus:border-[var(--accent)] resize-none" 
-                    placeholder="Add any personal notes, reminders, or links here..."
-                ></textarea>
-                <div className="text-right mt-2">
-                    <button 
-                        onClick={handleSaveNote}
-                        disabled={isUpdatingNote}
-                        className="py-2 px-4 bg-[var(--accent)] text-white font-bold text-sm rounded-lg shadow-sm hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50"
-                    >
-                        {isUpdatingNote ? 'Saving...' : 'Save Note'}
-                    </button>
-                </div>
-            </div>
         </Card>
     );
 };
@@ -440,129 +356,68 @@ const MobileStepDrawer: React.FC<{
 
 const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
     const { hasBlueprintAccess, loading: accessLoading } = useBlueprintAccess();
-    const { allSteps: blueprintSteps, stepsByCategory: staticSteps, totalSteps, getStepById } = useBlueprintSteps();
-    const { stepsByCategory, progress, loading: progressLoading, setStatus, setNote, setChecklistData } = useBlueprintProgress();
+    const { 
+        sections, 
+        selectedSectionId, 
+        selectedStepId, 
+        selectedSection,
+        selectedStep,
+        loading, 
+        error,
+        updateChecklist,
+        setSelectedSection,
+        setSelectedStep
+    } = useBlueprintData();
+    
     const isMobile = useIsMobile();
-    const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+    
+    // Celebration state
     const [celebrationMessage, setCelebrationMessage] = useState<string>('');
     const [showCelebration, setShowCelebration] = useState(false);
-    const [showConfetti, setShowConfetti] = useState(false);
-    const prevCompletedCountRef = useRef<number>(0);
-    const prevSectionCompletionRef = useRef<Record<string, boolean>>({ foundation: false, acceleration: false, empire_legacy: false });
     const celebrationTriggeredRef = useRef<Set<string>>(new Set());
-
-    const completedCount = useMemo(() => {
-        const allProgressSteps = [
-            ...stepsByCategory.foundation,
-            ...stepsByCategory.acceleration,
-            ...stepsByCategory.empire_legacy,
-        ];
-        return allProgressSteps.filter(s => s.status === 'completed').length;
-    }, [stepsByCategory]);
 
     // Track section completion for celebrations
     const sectionCompletion = useMemo(() => {
-        return {
-            foundation: stepsByCategory.foundation.length > 0 && stepsByCategory.foundation.every(s => s.status === 'completed'),
-            acceleration: stepsByCategory.acceleration.length > 0 && stepsByCategory.acceleration.every(s => s.status === 'completed'),
-            empire_legacy: stepsByCategory.empire_legacy.length > 0 && stepsByCategory.empire_legacy.every(s => s.status === 'completed'),
-        };
-    }, [stepsByCategory]);
+        return sections.reduce((acc, section) => {
+            acc[section.id] = section.steps.length > 0 && section.steps.every(s => s.status === 'completed');
+            return acc;
+        }, {} as Record<string, boolean>);
+    }, [sections]);
 
-    // Handle celebrations for milestones
+    // Monitor section completions for celebrations
+    const prevSectionCompletionRef = useRef<Record<string, boolean>>({});
+    
     useEffect(() => {
-        if (progressLoading) return;
-
-        const prevCount = prevCompletedCountRef.current;
-        const currentCount = completedCount;
+        if (loading) return;
         
-        // Check for first step completion
-        if (isFirstStepCompletion(prevCount, currentCount) && !celebrationTriggeredRef.current.has('first_step')) {
-            setCelebrationMessage('🎉 Great start! You completed your first step!');
-            setShowCelebration(true);
-            setShowConfetti(false);
-            celebrationTriggeredRef.current.add('first_step');
-        }
-        // Check for section completion
-        else {
-            const prevSections = prevSectionCompletionRef.current;
-            const sections = ['foundation', 'acceleration', 'empire_legacy'] as const;
-            
-            for (const section of sections) {
-                if (!prevSections[section] && sectionCompletion[section] && !celebrationTriggeredRef.current.has(section)) {
-                    const sectionLabels = { foundation: 'Foundation', acceleration: 'Acceleration', empire_legacy: 'Empire Legacy' };
-                    setCelebrationMessage(`🏆 Amazing! You completed ${sectionLabels[section]}!`);
-                    setShowCelebration(true);
-                    setShowConfetti(true); // Show confetti for section completion
-                    celebrationTriggeredRef.current.add(section);
-                    break;
-                }
+        const prevCompletion = prevSectionCompletionRef.current;
+        
+        // Check for newly completed sections
+        sections.forEach(section => {
+            if (!prevCompletion[section.id] && sectionCompletion[section.id] && !celebrationTriggeredRef.current.has(section.id)) {
+                setCelebrationMessage(`🏆 Amazing! You completed ${section.name}!`);
+                setShowCelebration(true);
+                celebrationTriggeredRef.current.add(section.id);
             }
-        }
+        });
         
-        prevCompletedCountRef.current = currentCount;
         prevSectionCompletionRef.current = sectionCompletion;
-    }, [completedCount, sectionCompletion, progressLoading]);
-
-    const handleUpdateStep = async (stepId: string, newStatus: StepStatus) => {
-        // Track previous state for celebrations
-        const prevCount = completedCount;
-        const allSteps = [...stepsByCategory.foundation, ...stepsByCategory.acceleration, ...stepsByCategory.empire_legacy];
-        const stepCategory = allSteps.find(s => s.id === stepId)?.category;
-        
-        await setStatus(stepId, newStatus);
-        
-        // Check for section completion after status update
-        if (newStatus === 'completed' && stepCategory) {
-            const categorySteps = stepsByCategory[stepCategory as keyof typeof stepsByCategory];
-            if (isSectionComplete(categorySteps, stepId, newStatus)) {
-                // Section completion celebration will be handled by useEffect
-            }
-        }
-    };
+    }, [sectionCompletion, sections, loading]);
 
     const handleCloseCelebration = () => {
         setShowCelebration(false);
-        setShowConfetti(false);
         setCelebrationMessage('');
     };
 
-    const handleUpdateNote = async (stepId: string, noteText: string) => {
-        await setNote(stepId, noteText);
-    };
-
-    const handleUpdateChecklistData = async (stepId: string, checklistData: Record<string, boolean>) => {
-        await setChecklistData(stepId, checklistData);
-    };
-
-    const handleSelectStep = (id: string) => {
-        setSelectedStepId(id);
+    const handleSelectStep = (stepId: string) => {
+        setSelectedStep(stepId);
     };
 
     const handleCloseDrawer = () => {
-        setSelectedStepId(null);
+        setSelectedStep('');
     };
 
-    // Get selected step with progress data merged with static data
-    const selectedStep = useMemo(() => {
-        if (!selectedStepId) return null;
-        
-        const progressStep = [...stepsByCategory.foundation, ...stepsByCategory.acceleration, ...stepsByCategory.empire_legacy]
-            .find(s => s.id === selectedStepId);
-        const staticStep = getStepById(selectedStepId);
-        
-        if (progressStep && staticStep) {
-            return {
-                ...staticStep,
-                status: progressStep.status,
-                note: progressStep.note,
-                checklist_data: progressStep.checklist_data,
-            };
-        }
-        return null;
-    }, [selectedStepId, stepsByCategory, getStepById]);
-
-    const isMobileDrawerOpen = isMobile && selectedStepId !== null;
+    const isMobileDrawerOpen = isMobile && !!selectedStepId;
 
     // Show loading state while checking access
     if (accessLoading) {
@@ -607,13 +462,39 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
         );
     }
 
-    // Show loading state if progress is loading
-    if (progressLoading) {
+    // Show loading state if data is loading
+    if (loading) {
         return (
             <div className="animate-fade-in p-8 flex items-center justify-center min-h-[400px]">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)] mx-auto mb-4"></div>
-                    <div className="text-lg text-[var(--text-muted)]">Loading your progress...</div>
+                    <div className="text-lg text-[var(--text-muted)]">Loading your blueprint...</div>
+                </div>
+            </div>
+        );
+    }
+
+    // Show error state
+    if (error) {
+        return (
+            <div className="animate-fade-in p-8">
+                <div className="max-w-2xl mx-auto text-center">
+                    <div className="text-red-500 mb-4">⚠️</div>
+                    <h2 className="text-2xl font-bold text-[var(--text-main)] mb-2">Unable to load blueprint</h2>
+                    <p className="text-[var(--text-muted)]">{error}</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Show empty state if no sections
+    if (sections.length === 0) {
+        return (
+            <div className="animate-fade-in p-8">
+                <div className="max-w-2xl mx-auto text-center">
+                    <ClipboardDocumentCheckIcon className="w-16 h-16 mx-auto text-gray-300 mb-6" />
+                    <h2 className="text-2xl font-bold text-[var(--text-main)] mb-2">Blueprint not yet available</h2>
+                    <p className="text-[var(--text-muted)]">The 99 Steps Blueprint is being prepared for you. Check back soon!</p>
                 </div>
             </div>
         );
@@ -628,31 +509,41 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
             </div>
             {isMobile ? (
                 <>
-                    <BlueprintStepList 
-                        stepsByCategory={stepsByCategory}
+                    <BlueprintSectionsList 
+                        sections={sections}
+                        selectedSectionId={selectedSectionId}
                         selectedStepId={selectedStepId}
+                        onSelectSection={setSelectedSection}
                         onSelectStep={handleSelectStep}
                     />
                     <div className="mt-8">
-                        <BlueprintHeader completedCount={completedCount} totalSteps={totalSteps} progress={progress} />
+                        <BlueprintHeader sections={sections} />
                     </div>
                     <MobileStepDrawer isOpen={isMobileDrawerOpen} onClose={handleCloseDrawer}>
-                        <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} onUpdateNote={handleUpdateNote} onUpdateChecklistData={handleUpdateChecklistData} />
+                        <BlueprintStepDetail 
+                            step={selectedStep} 
+                            onUpdateChecklist={updateChecklist} 
+                        />
                     </MobileStepDrawer>
                 </>
             ) : (
                 <>
-                    <BlueprintHeader completedCount={completedCount} totalSteps={totalSteps} progress={progress} />
+                    <BlueprintHeader sections={sections} />
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start mt-8">
                         <div className="lg:col-span-1">
-                            <BlueprintStepList 
-                                stepsByCategory={stepsByCategory}
+                            <BlueprintSectionsList 
+                                sections={sections}
+                                selectedSectionId={selectedSectionId}
                                 selectedStepId={selectedStepId}
+                                onSelectSection={setSelectedSection}
                                 onSelectStep={handleSelectStep}
                             />
                         </div>
                         <div className="lg:col-span-2 sticky top-8">
-                            <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} onUpdateNote={handleUpdateNote} onUpdateChecklistData={handleUpdateChecklistData} />
+                            <BlueprintStepDetail 
+                                step={selectedStep} 
+                                onUpdateChecklist={updateChecklist} 
+                            />
                         </div>
                     </div>
                 </>
@@ -662,8 +553,37 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 message={celebrationMessage}
                 isVisible={showCelebration}
                 onClose={handleCloseCelebration}
-                showConfetti={showConfetti}
             />
+            
+            <style jsx>{`
+                .step-completed {
+                    animation: stepComplete 0.6s ease-out;
+                }
+                
+                @keyframes stepComplete {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.02); background-color: rgba(34, 197, 94, 0.1); }
+                    100% { transform: scale(1); }
+                }
+                
+                .animate-fade-in {
+                    animation: fadeIn 0.3s ease-out;
+                }
+                
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                
+                .animate-slide-up-drawer {
+                    animation: slideUpDrawer 0.3s ease-out;
+                }
+                
+                @keyframes slideUpDrawer {
+                    from { transform: translateY(100%); }
+                    to { transform: translateY(0); }
+                }
+            `}</style>
         </div>
     );
 };

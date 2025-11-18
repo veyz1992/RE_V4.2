@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { BLUEPRINT_STEPS, getBlueprintStepsByCategory } from '../data/blueprintSteps';
+// Note: This hook is deprecated in favor of useBlueprintData for the data-driven system
 
 export type StepStatus = 'not_started' | 'in_progress' | 'completed';
 
@@ -46,12 +46,11 @@ export const useBlueprintProgress = () => {
   // Load progress data from database
   useEffect(() => {
     if (!session?.user?.id) {
-      // No user session, initialize with default steps
-      const categorizedSteps = getBlueprintStepsByCategory();
+      // No user session, return empty state for data-driven system
       const defaultSteps = {
-        foundation: categorizedSteps.foundation.map(step => ({ ...step, status: 'not_started' as StepStatus, note: '', checklist_data: {} })),
-        acceleration: categorizedSteps.acceleration.map(step => ({ ...step, status: 'not_started' as StepStatus, note: '', checklist_data: {} })),
-        empire_legacy: categorizedSteps.empire_legacy.map(step => ({ ...step, status: 'not_started' as StepStatus, note: '', checklist_data: {} })),
+        foundation: [],
+        acceleration: [],
+        empire_legacy: [],
       };
       
       setState({
@@ -83,25 +82,11 @@ export const useBlueprintProgress = () => {
           progressMap.set(row.step_id, row as ProgressRow);
         });
 
-        // Merge static steps with progress data
-        const mergedSteps = BLUEPRINT_STEPS.map(step => {
-          const progressRow = progressMap.get(step.id);
-          return {
-            ...step,
-            status: progressRow?.status || 'not_started',
-            note: progressRow?.note || '',
-            checklist_data: progressRow?.checklist_data || {},
-          } as StepWithProgress;
-        });
-
-        // Group by category
-        const foundation = mergedSteps.filter(step => step.category === 'foundation');
-        const acceleration = mergedSteps.filter(step => step.category === 'acceleration');
-        const empire_legacy = mergedSteps.filter(step => step.category === 'empire_legacy');
-
-        // Calculate overall progress
-        const completedSteps = mergedSteps.filter(step => step.status === 'completed').length;
-        const progressPercentage = Math.round((completedSteps / mergedSteps.length) * 100);
+        // Return empty state - use useBlueprintData for the data-driven system
+        const foundation: StepWithProgress[] = [];
+        const acceleration: StepWithProgress[] = [];
+        const empire_legacy: StepWithProgress[] = [];
+        const progressPercentage = 0;
 
         if (isMounted) {
           setState({

@@ -1,26 +1,10 @@
-import { useMemo } from 'react';
-import { BLUEPRINT_STEPS, getBlueprintStepsByCategory } from '../data/blueprintSteps';
-
+// This hook is deprecated - use useBlueprintData for the data-driven system
 export const useBlueprintSteps = () => {
-  const stepsByCategory = useMemo(() => getBlueprintStepsByCategory(), []);
-  
-  const allSteps = useMemo(() => BLUEPRINT_STEPS, []);
-  
-  const getStepById = useMemo(() => {
-    return (stepId: string) => allSteps.find(step => step.id === stepId);
-  }, [allSteps]);
-  
-  const getCategorySteps = useMemo(() => {
-    return (category: 'foundation' | 'acceleration' | 'empire_legacy') => {
-      return allSteps.filter(step => step.category === category);
-    };
-  }, [allSteps]);
-  
   return {
-    allSteps,
-    stepsByCategory,
-    getStepById,
-    getCategorySteps,
-    totalSteps: allSteps.length,
+    allSteps: [],
+    stepsByCategory: { foundation: [], acceleration: [], empire_legacy: [] },
+    getStepById: () => null,
+    getCategorySteps: () => [],
+    totalSteps: 0,
   };
 };
