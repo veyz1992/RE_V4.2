@@ -8,22 +8,6 @@ interface BlueprintAccessResult {
   error?: string;
 }
 
-interface ProfileRow {
-  id: string;
-  membership_tier?: string | null;
-}
-
-interface SubscriptionRow {
-  id: string;
-  tier?: string | null;
-  status?: string | null;
-  profile_id?: string | null;
-}
-
-const ACTIVE_SUBSCRIPTION_STATUSES = ['active', 'trialing'];
-const BLUEPRINT_ELIGIBLE_TIERS = ['founding', 'gold'];
-const BLUEPRINT_ADDON_TIER = 'blueprint_addon';
-
 export const useBlueprintAccess = (): BlueprintAccessResult => {
   const { session } = useAuth();
   const [state, setState] = useState<BlueprintAccessResult>({
@@ -50,65 +34,18 @@ export const useBlueprintAccess = (): BlueprintAccessResult => {
       try {
         const userId = session.user.id;
 
-        // First, get the user's profile to check membership_tier
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('id, membership_tier')
-          .eq('id', userId)
-          .single();
+        // Call the has_blueprint_access RPC function
+        const { data: hasAccess, error: rpcError } = await supabase.rpc('has_blueprint_access', {
+          p_profile_id: userId
+        });
 
-        if (profileError && profileError.code !== 'PGRST116') {
-          throw profileError;
+        if (rpcError) {
+          throw rpcError;
         }
-
-        const profile = profileData as ProfileRow | null;
-
-        // If no profile found, user doesn't have access
-        if (!profile) {
-          if (isMounted) {
-            setState({
-              hasBlueprintAccess: false,
-              loading: false,
-              error: undefined,
-            });
-          }
-          return;
-        }
-
-        // Check if user has access through membership tier
-        const membershipTier = profile.membership_tier?.toLowerCase().trim();
-        const hasAccessViaTier = membershipTier && BLUEPRINT_ELIGIBLE_TIERS.includes(membershipTier);
-
-        if (hasAccessViaTier) {
-          if (isMounted) {
-            setState({
-              hasBlueprintAccess: true,
-              loading: false,
-              error: undefined,
-            });
-          }
-          return;
-        }
-
-        // Check if user has access through blueprint addon subscription
-        const { data: subscriptionData, error: subscriptionError } = await supabase
-          .from('subscriptions')
-          .select('id, tier, status, profile_id')
-          .eq('profile_id', profile.id)
-          .in('status', ACTIVE_SUBSCRIPTION_STATUSES);
-
-        if (subscriptionError) {
-          throw subscriptionError;
-        }
-
-        const subscriptions = subscriptionData as SubscriptionRow[] || [];
-        const hasBlueprintAddon = subscriptions.some(
-          sub => sub.tier === BLUEPRINT_ADDON_TIER
-        );
 
         if (isMounted) {
           setState({
-            hasBlueprintAccess: hasBlueprintAddon,
+            hasBlueprintAccess: hasAccess || false,
             loading: false,
             error: undefined,
           });

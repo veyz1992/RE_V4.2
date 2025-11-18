@@ -429,23 +429,17 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 <div className="max-w-2xl mx-auto text-center">
                     <KeyIcon className="w-16 h-16 mx-auto text-[var(--text-muted)] mb-6" />
                     <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)] mb-4">
-                        Unlock the 99 Steps Blueprint
+                        Blueprint locked for this account
                     </h1>
                     <p className="text-lg text-[var(--text-muted)] mb-8">
-                        This comprehensive roadmap is included in Founding Member and Gold memberships or available as a standalone 99 Steps Blueprint add-on.
+                        The 99 Steps Blueprint is included only for active Founding Members or higher tiers.
                     </p>
-                    <div className="space-y-4 sm:space-y-0 sm:space-x-4 sm:flex sm:justify-center">
+                    <div className="flex justify-center">
                         <button
                             onClick={() => onNavigate('billing')}
-                            className="w-full sm:w-auto px-6 py-3 bg-[var(--accent)] text-white rounded-lg font-semibold hover:bg-[var(--accent-hover)] transition-colors duration-200"
+                            className="px-6 py-3 bg-[var(--accent)] text-white rounded-lg font-semibold hover:bg-[var(--accent-hover)] transition-colors duration-200"
                         >
                             View membership options
-                        </button>
-                        <button
-                            onClick={() => onNavigate('my-requests')}
-                            className="w-full sm:w-auto px-6 py-3 border border-[var(--border-subtle)] text-[var(--text-main)] rounded-lg font-semibold hover:bg-[var(--bg-card)] transition-colors duration-200"
-                        >
-                            Contact support
                         </button>
                     </div>
                 </div>
