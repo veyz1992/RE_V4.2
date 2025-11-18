@@ -27,27 +27,95 @@ const Card: React.FC<{ children: React.ReactNode, className?: string, onClick?: 
     </div>
 );
 
-const CelebrationToast: React.FC<{ message: string; isVisible: boolean; onClose: () => void }> = ({ message, isVisible, onClose }) => {
+const ConfettiEffect: React.FC<{ isVisible: boolean }> = ({ isVisible }) => {
+    useEffect(() => {
+        if (!isVisible || typeof window === 'undefined') return;
+
+        // Create safe confetti particles
+        const colors = ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4'];
+        const particles: HTMLElement[] = [];
+
+        for (let i = 0; i < 50; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'confetti-particle';
+            particle.style.cssText = `
+                position: fixed;
+                width: 8px;
+                height: 8px;
+                background: ${colors[Math.floor(Math.random() * colors.length)]};
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 9999;
+                left: ${Math.random() * window.innerWidth}px;
+                top: -10px;
+                animation: confetti-fall ${2 + Math.random() * 2}s linear forwards;
+            `;
+            
+            document.body.appendChild(particle);
+            particles.push(particle);
+        }
+
+        // Add CSS animation if not already present
+        if (!document.getElementById('confetti-styles')) {
+            const style = document.createElement('style');
+            style.id = 'confetti-styles';
+            style.textContent = `
+                @keyframes confetti-fall {
+                    to {
+                        transform: translateY(100vh) rotate(720deg);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Clean up particles after animation
+        const cleanup = setTimeout(() => {
+            particles.forEach(particle => {
+                if (particle.parentNode) {
+                    particle.parentNode.removeChild(particle);
+                }
+            });
+        }, 4000);
+
+        return () => {
+            clearTimeout(cleanup);
+            particles.forEach(particle => {
+                if (particle.parentNode) {
+                    particle.parentNode.removeChild(particle);
+                }
+            });
+        };
+    }, [isVisible]);
+
+    return null;
+};
+
+const CelebrationToast: React.FC<{ message: string; isVisible: boolean; onClose: () => void; showConfetti?: boolean }> = ({ message, isVisible, onClose, showConfetti = false }) => {
     useEffect(() => {
         if (isVisible) {
-            const timer = setTimeout(onClose, 3000);
+            const timer = setTimeout(onClose, 4000); // Slightly longer for confetti
             return () => clearTimeout(timer);
         }
     }, [isVisible, onClose]);
 
     return (
-        <div className={`fixed bottom-6 right-6 z-50 transform transition-all duration-300 ease-out ${
-            isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
-        }`}>
-            <div className="bg-[var(--accent)] text-white px-6 py-3 rounded-lg shadow-lg max-w-sm">
-                <div className="flex items-center gap-3">
-                    <div className="w-6 h-6 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                        <CheckIcon className="w-4 h-4" />
+        <>
+            {showConfetti && <ConfettiEffect isVisible={isVisible} />}
+            <div className={`fixed bottom-6 right-6 z-50 transform transition-all duration-300 ease-out ${
+                isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
+            }`}>
+                <div className="bg-[var(--accent)] text-white px-6 py-3 rounded-lg shadow-lg max-w-sm">
+                    <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                            <CheckIcon className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold">{message}</span>
                     </div>
-                    <span className="font-semibold">{message}</span>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 
@@ -176,7 +244,8 @@ const BlueprintStepDetail: React.FC<{
     step: (StepWithProgress & BlueprintStep) | null;
     onUpdateStep: (stepId: string, newStatus: StepStatus) => void;
     onUpdateNote: (stepId: string, note: string) => void;
-}> = ({ step, onUpdateStep, onUpdateNote }) => {
+    onUpdateChecklistData: (stepId: string, checklistData: Record<string, boolean>) => void;
+}> = ({ step, onUpdateStep, onUpdateNote, onUpdateChecklistData }) => {
     const [note, setNote] = useState('');
     const [isUpdatingNote, setIsUpdatingNote] = useState(false);
     const [localChecklist, setLocalChecklist] = useState<Record<string, boolean>>({});
@@ -184,11 +253,11 @@ const BlueprintStepDetail: React.FC<{
     useEffect(() => {
         if(step) {
             setNote(step.note || '');
-            // Initialize checklist state
+            // Initialize checklist state from persisted data
             if (step.checklist) {
                 const initialChecklist = step.checklist.reduce((acc, item) => ({
                     ...acc,
-                    [item]: false
+                    [item]: (step.checklist_data && step.checklist_data[item]) || false
                 }), {});
                 setLocalChecklist(initialChecklist);
             }
@@ -202,12 +271,15 @@ const BlueprintStepDetail: React.FC<{
         const newChecklistState = { ...localChecklist, [item]: checked };
         setLocalChecklist(newChecklistState);
 
+        // Save checklist data to database
+        await onUpdateChecklistData(step.id, newChecklistState);
+
         // If step has checklist, derive status from checklist completion
         if (step.checklist && step.checklist.length > 0) {
             const checkedCount = getCheckedCount(newChecklistState);
             const newStatus = deriveStatusFromChecklist(checkedCount, step.checklist.length);
             
-            // Only update if status actually changes
+            // Only update status if it actually changes
             if (newStatus !== step.status) {
                 await onUpdateStep(step.id, newStatus);
             }
@@ -254,14 +326,26 @@ const BlueprintStepDetail: React.FC<{
             )}
             
             <div className="mt-6">
-                <p className="text-sm font-semibold text-[var(--text-muted)] mb-2">Set status:</p>
+                <p className="text-sm font-semibold text-[var(--text-muted)] mb-2">
+                    {step.checklist && step.checklist.length > 0 ? 'Status (determined by checklist):' : 'Set status:'}
+                </p>
                 <div className="flex bg-[var(--bg-subtle)] p-1 rounded-lg">
                     {statusOptions.map(s => (
-                        <button key={s} onClick={() => onUpdateStep(step.id, s)} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${step.status === s ? 'bg-[var(--accent)] text-white shadow-sm' : 'text-[var(--text-muted)] hover:bg-white/50'}`}>
+                        <button 
+                            key={s} 
+                            onClick={step.checklist && step.checklist.length > 0 ? undefined : () => onUpdateStep(step.id, s)}
+                            disabled={step.checklist && step.checklist.length > 0}
+                            className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${step.status === s ? 'bg-[var(--accent)] text-white shadow-sm' : 'text-[var(--text-muted)]'} ${step.checklist && step.checklist.length > 0 ? 'cursor-not-allowed opacity-75' : 'hover:bg-white/50 cursor-pointer'}`}
+                        >
                             {s.replace('_', ' ')}
                         </button>
                     ))}
                 </div>
+                {step.checklist && step.checklist.length > 0 && (
+                    <p className="text-xs text-[var(--text-muted)] mt-2 italic">
+                        Status is automatically updated based on checklist completion
+                    </p>
+                )}
             </div>
 
             {step.why && (
@@ -357,13 +441,15 @@ const MobileStepDrawer: React.FC<{
 const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
     const { hasBlueprintAccess, loading: accessLoading } = useBlueprintAccess();
     const { allSteps: blueprintSteps, stepsByCategory: staticSteps, totalSteps, getStepById } = useBlueprintSteps();
-    const { stepsByCategory, progress, loading: progressLoading, setStatus, setNote } = useBlueprintProgress();
+    const { stepsByCategory, progress, loading: progressLoading, setStatus, setNote, setChecklistData } = useBlueprintProgress();
     const isMobile = useIsMobile();
     const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
     const [celebrationMessage, setCelebrationMessage] = useState<string>('');
     const [showCelebration, setShowCelebration] = useState(false);
+    const [showConfetti, setShowConfetti] = useState(false);
     const prevCompletedCountRef = useRef<number>(0);
     const prevSectionCompletionRef = useRef<Record<string, boolean>>({ foundation: false, acceleration: false, empire_legacy: false });
+    const celebrationTriggeredRef = useRef<Set<string>>(new Set());
 
     const completedCount = useMemo(() => {
         const allProgressSteps = [
@@ -391,9 +477,11 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
         const currentCount = completedCount;
         
         // Check for first step completion
-        if (isFirstStepCompletion(prevCount, currentCount)) {
+        if (isFirstStepCompletion(prevCount, currentCount) && !celebrationTriggeredRef.current.has('first_step')) {
             setCelebrationMessage('🎉 Great start! You completed your first step!');
             setShowCelebration(true);
+            setShowConfetti(false);
+            celebrationTriggeredRef.current.add('first_step');
         }
         // Check for section completion
         else {
@@ -401,10 +489,12 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
             const sections = ['foundation', 'acceleration', 'empire_legacy'] as const;
             
             for (const section of sections) {
-                if (!prevSections[section] && sectionCompletion[section]) {
+                if (!prevSections[section] && sectionCompletion[section] && !celebrationTriggeredRef.current.has(section)) {
                     const sectionLabels = { foundation: 'Foundation', acceleration: 'Acceleration', empire_legacy: 'Empire Legacy' };
                     setCelebrationMessage(`🏆 Amazing! You completed ${sectionLabels[section]}!`);
                     setShowCelebration(true);
+                    setShowConfetti(true); // Show confetti for section completion
+                    celebrationTriggeredRef.current.add(section);
                     break;
                 }
             }
@@ -433,11 +523,16 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
 
     const handleCloseCelebration = () => {
         setShowCelebration(false);
+        setShowConfetti(false);
         setCelebrationMessage('');
     };
 
     const handleUpdateNote = async (stepId: string, noteText: string) => {
         await setNote(stepId, noteText);
+    };
+
+    const handleUpdateChecklistData = async (stepId: string, checklistData: Record<string, boolean>) => {
+        await setChecklistData(stepId, checklistData);
     };
 
     const handleSelectStep = (id: string) => {
@@ -461,6 +556,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 ...staticStep,
                 status: progressStep.status,
                 note: progressStep.note,
+                checklist_data: progressStep.checklist_data,
             };
         }
         return null;
@@ -541,7 +637,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                         <BlueprintHeader completedCount={completedCount} totalSteps={totalSteps} progress={progress} />
                     </div>
                     <MobileStepDrawer isOpen={isMobileDrawerOpen} onClose={handleCloseDrawer}>
-                        <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} onUpdateNote={handleUpdateNote} />
+                        <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} onUpdateNote={handleUpdateNote} onUpdateChecklistData={handleUpdateChecklistData} />
                     </MobileStepDrawer>
                 </>
             ) : (
@@ -556,7 +652,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                             />
                         </div>
                         <div className="lg:col-span-2 sticky top-8">
-                            <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} onUpdateNote={handleUpdateNote} />
+                            <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} onUpdateNote={handleUpdateNote} onUpdateChecklistData={handleUpdateChecklistData} />
                         </div>
                     </div>
                 </>
@@ -566,6 +662,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 message={celebrationMessage}
                 isVisible={showCelebration}
                 onClose={handleCloseCelebration}
+                showConfetti={showConfetti}
             />
         </div>
     );

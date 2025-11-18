@@ -12,6 +12,7 @@ export interface StepWithProgress {
   description?: string;
   status: StepStatus;
   note: string;
+  checklist_data?: Record<string, boolean>;
 }
 
 interface BlueprintProgressState {
@@ -29,6 +30,7 @@ interface ProgressRow {
   step_id: string;
   status: StepStatus;
   note: string | null;
+  checklist_data: Record<string, boolean> | null;
   profile_id: string;
 }
 
@@ -47,9 +49,9 @@ export const useBlueprintProgress = () => {
       // No user session, initialize with default steps
       const categorizedSteps = getBlueprintStepsByCategory();
       const defaultSteps = {
-        foundation: categorizedSteps.foundation.map(step => ({ ...step, status: 'not_started' as StepStatus, note: '' })),
-        acceleration: categorizedSteps.acceleration.map(step => ({ ...step, status: 'not_started' as StepStatus, note: '' })),
-        empire_legacy: categorizedSteps.empire_legacy.map(step => ({ ...step, status: 'not_started' as StepStatus, note: '' })),
+        foundation: categorizedSteps.foundation.map(step => ({ ...step, status: 'not_started' as StepStatus, note: '', checklist_data: {} })),
+        acceleration: categorizedSteps.acceleration.map(step => ({ ...step, status: 'not_started' as StepStatus, note: '', checklist_data: {} })),
+        empire_legacy: categorizedSteps.empire_legacy.map(step => ({ ...step, status: 'not_started' as StepStatus, note: '', checklist_data: {} })),
       };
       
       setState({
@@ -68,7 +70,7 @@ export const useBlueprintProgress = () => {
       try {
         const { data: progressData, error: progressError } = await supabase
           .from('blueprint_progress')
-          .select('step_id, status, note, profile_id')
+          .select('step_id, status, note, checklist_data, profile_id')
           .eq('profile_id', session.user.id);
 
         if (progressError) {
@@ -88,6 +90,7 @@ export const useBlueprintProgress = () => {
             ...step,
             status: progressRow?.status || 'not_started',
             note: progressRow?.note || '',
+            checklist_data: progressRow?.checklist_data || {},
           } as StepWithProgress;
         });
 
@@ -233,9 +236,58 @@ export const useBlueprintProgress = () => {
     }
   };
 
+  const setChecklistData = async (stepId: string, checklistData: Record<string, boolean>) => {
+    if (!session?.user?.id) {
+      console.warn('No user session available');
+      return;
+    }
+
+    try {
+      // Optimistically update local state
+      setState(prev => {
+        const updatedStepsByCategory = { ...prev.stepsByCategory };
+        
+        // Find and update the step in the appropriate category
+        for (const category of Object.keys(updatedStepsByCategory) as Array<keyof typeof updatedStepsByCategory>) {
+          const categorySteps = [...updatedStepsByCategory[category]];
+          const stepIndex = categorySteps.findIndex(step => step.id === stepId);
+          
+          if (stepIndex !== -1) {
+            categorySteps[stepIndex] = { ...categorySteps[stepIndex], checklist_data: checklistData };
+            updatedStepsByCategory[category] = categorySteps;
+            break;
+          }
+        }
+
+        return {
+          ...prev,
+          stepsByCategory: updatedStepsByCategory,
+        };
+      });
+
+      // Update database
+      const { error } = await supabase
+        .from('blueprint_progress')
+        .upsert({
+          profile_id: session.user.id,
+          step_id: stepId,
+          checklist_data: checklistData,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      console.error('Failed to update checklist data:', error);
+      // TODO: Consider reverting optimistic update on error
+    }
+  };
+
   return {
     ...state,
     setStatus,
     setNote,
+    setChecklistData,
   };
 };
