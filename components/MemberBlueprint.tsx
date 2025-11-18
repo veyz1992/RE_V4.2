@@ -142,7 +142,8 @@ const BlueprintSectionsList: React.FC<{
 
                 return (
                     <Card 
-                        key={section.id} 
+                        key={section.id}
+                        data-section-id={section.id}
                         className={`p-0 overflow-hidden transition-all duration-300 ${isFullyCompleted ? 'ring-2 ring-green-200 bg-gradient-to-r from-green-50 to-transparent' : ''}`}
                     >
                         <button 
@@ -181,12 +182,13 @@ const BlueprintSectionsList: React.FC<{
                                         return (
                                             <div
                                                 key={step.id}
+                                                data-step-id={step.id}
                                                 onClick={() => onSelectStep(step.id)}
                                                 className={`p-3 rounded-lg cursor-pointer transition-all duration-200 flex items-start gap-3 ${
                                                     isStepSelected 
                                                         ? 'bg-[var(--accent-bg-subtle)] shadow-inner' 
                                                         : 'hover:bg-[var(--bg-subtle)]'
-                                                } ${step.status === 'completed' ? 'bg-gradient-to-r from-yellow-50 to-transparent step-completed' : ''}`}
+                                                } ${step.status === 'completed' ? 'bg-gradient-to-r from-yellow-50 to-transparent' : ''}`}
                                             >
                                                 <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center font-bold text-xs mt-0.5 transition-all duration-300 ${
                                                     step.status === 'completed' 
@@ -384,7 +386,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
         }, {} as Record<string, boolean>);
     }, [sections]);
 
-    // Monitor section completions for celebrations
+    // Monitor section completions for celebrations and animations
     const prevSectionCompletionRef = useRef<Record<string, boolean>>({});
     
     useEffect(() => {
@@ -395,6 +397,16 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
         // Check for newly completed sections
         sections.forEach(section => {
             if (!prevCompletion[section.id] && sectionCompletion[section.id] && !celebrationTriggeredRef.current.has(section.id)) {
+                // Trigger section completion animation
+                const sectionElement = document.querySelector(`[data-section-id="${section.id}"]`);
+                if (sectionElement) {
+                    sectionElement.classList.add('section-completing');
+                    setTimeout(() => {
+                        sectionElement.classList.remove('section-completing');
+                    }, 1200);
+                }
+                
+                // Show celebration toast
                 setCelebrationMessage(`🏆 Amazing! You completed ${section.name}!`);
                 setShowCelebration(true);
                 celebrationTriggeredRef.current.add(section.id);
@@ -556,14 +568,27 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
             />
             
             <style jsx>{`
-                .step-completed {
+                .step-completing {
                     animation: stepComplete 0.6s ease-out;
                 }
                 
                 @keyframes stepComplete {
                     0% { transform: scale(1); }
+                    25% { transform: scale(1.05); background-color: rgba(34, 197, 94, 0.2); }
                     50% { transform: scale(1.02); background-color: rgba(34, 197, 94, 0.1); }
                     100% { transform: scale(1); }
+                }
+                
+                .section-completing {
+                    animation: sectionComplete 1.2s ease-out;
+                }
+                
+                @keyframes sectionComplete {
+                    0% { transform: scale(1); }
+                    15% { transform: scale(1.01); box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.3); }
+                    30% { transform: scale(1.005); box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2); }
+                    60% { transform: scale(1.002); box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1); }
+                    100% { transform: scale(1); box-shadow: none; }
                 }
                 
                 .animate-fade-in {

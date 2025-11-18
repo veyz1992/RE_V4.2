@@ -23,6 +23,16 @@ export interface BlueprintStep {
   sort_order: number;
 }
 
+export interface BlueprintProgress {
+  id?: string;
+  profile_id: string;
+  step_id: string;
+  status: StepStatus;
+  checklist_state: boolean[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface StepWithProgress extends BlueprintStep {
   status: StepStatus;
   checklistState: boolean[];
@@ -38,17 +48,20 @@ interface BlueprintDataState {
   selectedStepId: string | null;
   loading: boolean;
   error?: string;
+  completedStepAnimations: Set<string>;
 }
 
-// Derive status from checklist state
-const deriveStatusFromChecklist = (checklistState: boolean[]): StepStatus => {
-  if (checklistState.length === 0) return 'not_started';
-  
-  const checkedCount = checklistState.filter(Boolean).length;
-  
-  if (checkedCount === 0) return 'not_started';
-  if (checkedCount === checklistState.length) return 'completed';
-  return 'in_progress';
+// Note: Status is now handled by database trigger, not computed locally
+
+// Function to trigger step completion animation
+const triggerStepCompletionAnimation = (stepId: string) => {
+  const stepElement = document.querySelector(`[data-step-id="${stepId}"]`);
+  if (stepElement) {
+    stepElement.classList.add('step-completing');
+    setTimeout(() => {
+      stepElement.classList.remove('step-completing');
+    }, 600);
+  }
 };
 
 export const useBlueprintData = () => {
@@ -59,6 +72,7 @@ export const useBlueprintData = () => {
     selectedStepId: null,
     loading: false,
     error: undefined,
+    completedStepAnimations: new Set(),
   });
 
   // Load sections, steps, and progress data
@@ -131,14 +145,12 @@ export const useBlueprintData = () => {
                 checklistState[index] || false
               );
 
-              // Derive status from checklist if checklist exists, otherwise use stored status
-              const derivedStatus = checklist.length > 0 
-                ? deriveStatusFromChecklist(normalizedChecklistState)
-                : (progress?.status || 'not_started');
+              // Use status from database (set by trigger), default to 'not_started'
+              const dbStatus = progress?.status || 'not_started';
 
               return {
                 ...step,
-                status: derivedStatus,
+                status: dbStatus,
                 checklistState: normalizedChecklistState,
               } as StepWithProgress;
             });
@@ -184,16 +196,19 @@ export const useBlueprintData = () => {
     }
 
     try {
-      // Derive new status
-      const newStatus = deriveStatusFromChecklist(newChecklistState);
+      // Store previous status for animation detection
+      const currentStep = state.sections
+        .flatMap(s => s.steps)
+        .find(s => s.id === stepId);
+      const prevStatus = currentStep?.status;
 
-      // Optimistically update local state
+      // Optimistically update checklist state (but not status - DB will handle that)
       setState(prev => {
         const updatedSections = prev.sections.map(section => ({
           ...section,
           steps: section.steps.map(step => 
             step.id === stepId 
-              ? { ...step, checklistState: newChecklistState, status: newStatus }
+              ? { ...step, checklistState: newChecklistState }
               : step
           ),
         }));
@@ -204,13 +219,12 @@ export const useBlueprintData = () => {
         };
       });
 
-      // Upsert to database
+      // Upsert to database - only send checklist_state, let DB trigger handle status
       const { error } = await supabase
         .from('blueprint_progress')
         .upsert({
           profile_id: session.user.id,
           step_id: stepId,
-          status: newStatus,
           checklist_state: newChecklistState,
           updated_at: new Date().toISOString(),
         });
@@ -218,9 +232,64 @@ export const useBlueprintData = () => {
       if (error) {
         throw error;
       }
+
+      // Refetch the progress to get the updated status from DB trigger
+      const { data: updatedProgress, error: fetchError } = await supabase
+        .from('blueprint_progress')
+        .select('step_id, status, checklist_state')
+        .eq('profile_id', session.user.id)
+        .eq('step_id', stepId)
+        .single();
+
+      if (fetchError) {
+        console.warn('Failed to fetch updated progress:', fetchError);
+        return;
+      }
+
+      // Update local state with DB status and trigger animations
+      setState(prev => {
+        const updatedSections = prev.sections.map(section => ({
+          ...section,
+          steps: section.steps.map(step => 
+            step.id === stepId 
+              ? { 
+                  ...step, 
+                  status: updatedProgress.status,
+                  checklistState: updatedProgress.checklist_state || newChecklistState
+                }
+              : step
+          ),
+        }));
+
+        return {
+          ...prev,
+          sections: updatedSections,
+        };
+      });
+
+      // Trigger completion animation if step became completed
+      if (prevStatus !== 'completed' && updatedProgress.status === 'completed') {
+        triggerStepCompletionAnimation(stepId);
+      }
+
     } catch (error) {
       console.error('Failed to update checklist:', error);
-      // TODO: Consider reverting optimistic update on error
+      // Revert optimistic update on error
+      setState(prev => {
+        const updatedSections = prev.sections.map(section => ({
+          ...section,
+          steps: section.steps.map(step => 
+            step.id === stepId && currentStep
+              ? { ...step, checklistState: currentStep.checklistState }
+              : step
+          ),
+        }));
+
+        return {
+          ...prev,
+          sections: updatedSections,
+        };
+      });
     }
   };
 
@@ -252,5 +321,6 @@ export const useBlueprintData = () => {
     updateChecklist,
     setSelectedSection,
     setSelectedStep,
+    triggerStepCompletionAnimation,
   };
 };
