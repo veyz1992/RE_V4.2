@@ -51,7 +51,16 @@ interface BlueprintDataState {
   completedStepAnimations: Set<string>;
 }
 
-// Note: Status is now handled by database trigger, not computed locally
+// Derive status from checklist state (needed for RPC call)
+const deriveStatusFromChecklist = (checklistState: boolean[]): StepStatus => {
+  if (checklistState.length === 0 || checklistState.every(item => !item)) {
+    return 'not_started';
+  }
+  if (checklistState.every(item => item)) {
+    return 'completed';
+  }
+  return 'in_progress';
+};
 
 // Function to trigger step completion animation
 const triggerStepCompletionAnimation = (stepId: string) => {
@@ -195,20 +204,30 @@ export const useBlueprintData = () => {
       return;
     }
 
-    try {
-      // Store previous status for animation detection
-      const currentStep = state.sections
-        .flatMap(s => s.steps)
-        .find(s => s.id === stepId);
-      const prevStatus = currentStep?.status;
+    // Store previous state for rollback and animation detection
+    const currentStep = state.sections
+      .flatMap(s => s.steps)
+      .find(s => s.id === stepId);
+    
+    if (!currentStep) {
+      console.warn('Step not found:', stepId);
+      return;
+    }
 
-      // Optimistically update checklist state (but not status - DB will handle that)
+    const prevStatus = currentStep.status;
+    const prevChecklistState = [...currentStep.checklistState];
+    
+    // Derive the new status from checklist state
+    const newStatus = deriveStatusFromChecklist(newChecklistState);
+
+    try {
+      // Optimistically update local state
       setState(prev => {
         const updatedSections = prev.sections.map(section => ({
           ...section,
           steps: section.steps.map(step => 
             step.id === stepId 
-              ? { ...step, checklistState: newChecklistState }
+              ? { ...step, checklistState: newChecklistState, status: newStatus }
               : step
           ),
         }));
@@ -219,68 +238,33 @@ export const useBlueprintData = () => {
         };
       });
 
-      // Upsert to database - only send checklist_state, let DB trigger handle status
-      const { error } = await supabase
-        .from('blueprint_progress')
-        .upsert({
-          profile_id: session.user.id,
-          step_id: stepId,
-          checklist_state: newChecklistState,
-          updated_at: new Date().toISOString(),
-        });
+      // Call the new RPC function with proper parameter names
+      const { error } = await supabase.rpc('save_blueprint_progress', {
+        p_profile_id: session.user.id,
+        p_step_id: stepId,
+        p_checklist_state: newChecklistState,
+        p_status: newStatus
+      });
 
       if (error) {
         throw error;
       }
 
-      // Refetch the progress to get the updated status from DB trigger
-      const { data: updatedProgress, error: fetchError } = await supabase
-        .from('blueprint_progress')
-        .select('step_id, status, checklist_state')
-        .eq('profile_id', session.user.id)
-        .eq('step_id', stepId)
-        .single();
-
-      if (fetchError) {
-        console.warn('Failed to fetch updated progress:', fetchError);
-        return;
-      }
-
-      // Update local state with DB status and trigger animations
-      setState(prev => {
-        const updatedSections = prev.sections.map(section => ({
-          ...section,
-          steps: section.steps.map(step => 
-            step.id === stepId 
-              ? { 
-                  ...step, 
-                  status: updatedProgress.status,
-                  checklistState: updatedProgress.checklist_state || newChecklistState
-                }
-              : step
-          ),
-        }));
-
-        return {
-          ...prev,
-          sections: updatedSections,
-        };
-      });
-
       // Trigger completion animation if step became completed
-      if (prevStatus !== 'completed' && updatedProgress.status === 'completed') {
+      if (prevStatus !== 'completed' && newStatus === 'completed') {
         triggerStepCompletionAnimation(stepId);
       }
 
     } catch (error) {
       console.error('Failed to update checklist:', error);
-      // Revert optimistic update on error
+      
+      // Revert optimistic update on error to prevent UI inconsistencies
       setState(prev => {
         const updatedSections = prev.sections.map(section => ({
           ...section,
           steps: section.steps.map(step => 
-            step.id === stepId && currentStep
-              ? { ...step, checklistState: currentStep.checklistState }
+            step.id === stepId
+              ? { ...step, checklistState: prevChecklistState, status: prevStatus }
               : step
           ),
         }));
@@ -290,6 +274,9 @@ export const useBlueprintData = () => {
           sections: updatedSections,
         };
       });
+
+      // Show user-friendly error message without crashing the app
+      console.warn('Checklist update failed. Your changes have been reverted.');
     }
   };
 
