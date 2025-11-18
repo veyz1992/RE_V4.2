@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { KeyIcon, CheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, XMarkIcon } from './icons';
 import { useBlueprintAccess } from '../src/hooks';
 import { useBlueprintData } from '../src/hooks/useBlueprintData';
-import type { StepWithProgress, SectionWithSteps, StepStatus } from '../src/hooks/useBlueprintData';
+import type { StepWithProgress, SectionWithStats, StepStatus } from '../src/hooks/useBlueprintData';
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
@@ -54,44 +54,24 @@ const CelebrationToast: React.FC<{ message: string; isVisible: boolean; onClose:
 
 // --- Sub-components for Blueprint ---
 
-const BlueprintHeader: React.FC<{ sections: SectionWithSteps[] }> = ({ sections }) => {
-    const { completedCount, totalSteps, percentage } = useMemo(() => {
-        const allSteps = sections.flatMap(section => section.steps);
-        const completed = allSteps.filter(step => step.status === 'completed').length;
-        const total = allSteps.length;
-        const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-        
-        return {
-            completedCount: completed,
-            totalSteps: total,
-            percentage: pct
-        };
-    }, [sections]);
+const BlueprintHeader: React.FC<{ globalStats: { totalSteps: number; completedSteps: number; completionPercent: number; masteryLevel: string } }> = ({ globalStats }) => {
     const [displayPercentage, setDisplayPercentage] = useState(0);
 
     useEffect(() => {
-        const timeout = setTimeout(() => setDisplayPercentage(percentage), 100);
+        const timeout = setTimeout(() => setDisplayPercentage(globalStats.completionPercent), 100);
         return () => clearTimeout(timeout);
-    }, [percentage]);
-
-    const getMasteryTitle = () => {
-        if (percentage === 100) return "Blueprint Master";
-        if (percentage >= 75) return "Restoration Leader";
-        if (percentage >= 50) return "Trusted Operator";
-        if (percentage >= 25) return "Emerging Pro";
-        return "Getting Organized";
-    };
+    }, [globalStats.completionPercent]);
 
     return (
         <Card>
             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                 <div>
                     <h2 className="font-playfair text-xl font-bold text-[var(--text-main)]">Your Progress</h2>
-                    <p className="text-lg text-[var(--text-main)]"><span className="font-bold">{completedCount} of {totalSteps}</span> steps completed – {percentage}%</p>
+                    <p className="text-lg text-[var(--text-main)]"><span className="font-bold">{globalStats.completedSteps} of {globalStats.totalSteps}</span> steps completed – {globalStats.completionPercent}%</p>
                 </div>
                 <div className="text-right">
                     <p className="text-sm font-semibold text-[var(--text-muted)]">Mastery Level</p>
-                    <p className="font-bold text-lg text-[var(--accent-dark)]">{getMasteryTitle()}</p>
+                    <p className="font-bold text-lg text-[var(--accent-dark)]">{globalStats.masteryLevel}</p>
                 </div>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-4 mt-4">
@@ -105,7 +85,7 @@ const BlueprintHeader: React.FC<{ sections: SectionWithSteps[] }> = ({ sections 
 };
 
 const BlueprintSectionsList: React.FC<{
-    sections: SectionWithSteps[];
+    sections: SectionWithStats[];
     selectedSectionId: string | null;
     selectedStepId: string | null;
     onSelectSection: (sectionId: string) => void;
@@ -134,11 +114,9 @@ const BlueprintSectionsList: React.FC<{
     return (
         <div className="space-y-6">
             {sections.map(section => {
-                const completedInSection = section.steps.filter(s => s.status === 'completed').length;
-                const sectionProgress = section.steps.length > 0 ? (completedInSection / section.steps.length) * 100 : 0;
                 const isSelected = section.id === selectedSectionId;
                 const isOpen = openSections[section.id];
-                const isFullyCompleted = completedInSection === section.steps.length && section.steps.length > 0;
+                const isFullyCompleted = section.completionRate === 100 && section.totalSteps > 0;
 
                 return (
                     <Card 
@@ -159,7 +137,7 @@ const BlueprintSectionsList: React.FC<{
                                         </div>
                                     )}
                                 </div>
-                                <p className="text-sm text-[var(--text-muted)]">{completedInSection} of {section.steps.length} steps completed</p>
+                                <p className="text-sm text-[var(--text-muted)]">{section.completedSteps} of {section.totalSteps} steps completed</p>
                                 {section.description && (
                                     <p className="text-sm text-[var(--text-muted)] mt-1">{section.description}</p>
                                 )}
@@ -172,7 +150,7 @@ const BlueprintSectionsList: React.FC<{
                                 <div className="w-full bg-gray-200 rounded-full h-1.5 mb-4">
                                     <div 
                                         className="bg-[var(--accent)] h-1.5 rounded-full transition-all duration-500" 
-                                        style={{ width: `${sectionProgress}%` }}
+                                        style={{ width: `${section.completionRate}%` }}
                                     ></div>
                                 </div>
                                 <div className="space-y-2">
@@ -360,6 +338,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
     const { hasBlueprintAccess, loading: accessLoading } = useBlueprintAccess();
     const { 
         sections, 
+        globalStats,
         selectedSectionId, 
         selectedStepId, 
         selectedSection,
@@ -529,7 +508,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                         onSelectStep={handleSelectStep}
                     />
                     <div className="mt-8">
-                        <BlueprintHeader sections={sections} />
+                        <BlueprintHeader globalStats={globalStats} />
                     </div>
                     <MobileStepDrawer isOpen={isMobileDrawerOpen} onClose={handleCloseDrawer}>
                         <BlueprintStepDetail 
@@ -540,7 +519,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 </>
             ) : (
                 <>
-                    <BlueprintHeader sections={sections} />
+                    <BlueprintHeader globalStats={globalStats} />
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start mt-8">
                         <div className="lg:col-span-1">
                             <BlueprintSectionsList 
@@ -569,14 +548,14 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
             
             <style jsx>{`
                 .step-completing {
-                    animation: stepComplete 0.6s ease-out;
+                    animation: stepComplete 0.5s ease-out;
                 }
                 
                 @keyframes stepComplete {
-                    0% { transform: scale(1); }
-                    25% { transform: scale(1.05); background-color: rgba(34, 197, 94, 0.2); }
-                    50% { transform: scale(1.02); background-color: rgba(34, 197, 94, 0.1); }
-                    100% { transform: scale(1); }
+                    0% { transform: scale(1); opacity: 1; }
+                    30% { transform: scale(1.03); opacity: 0.95; background-color: rgba(34, 197, 94, 0.15); }
+                    60% { transform: scale(1.01); opacity: 0.98; background-color: rgba(34, 197, 94, 0.08); }
+                    100% { transform: scale(1); opacity: 1; background-color: transparent; }
                 }
                 
                 .section-completing {
@@ -584,11 +563,21 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 }
                 
                 @keyframes sectionComplete {
-                    0% { transform: scale(1); }
-                    15% { transform: scale(1.01); box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.3); }
-                    30% { transform: scale(1.005); box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2); }
-                    60% { transform: scale(1.002); box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1); }
-                    100% { transform: scale(1); box-shadow: none; }
+                    0% { transform: scale(1); box-shadow: 0 0 0 0px rgba(34, 197, 94, 0); }
+                    20% { transform: scale(1.005); box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.3); }
+                    40% { transform: scale(1.002); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.2); }
+                    70% { transform: scale(1.001); box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1); }
+                    100% { transform: scale(1); box-shadow: 0 0 0 0px rgba(34, 197, 94, 0); }
+                }
+                
+                .completed-check-icon {
+                    animation: checkIconScale 0.3s ease-out;
+                }
+                
+                @keyframes checkIconScale {
+                    0% { transform: scale(0); opacity: 0; }
+                    50% { transform: scale(1.2); opacity: 0.8; }
+                    100% { transform: scale(1); opacity: 1; }
                 }
                 
                 .animate-fade-in {

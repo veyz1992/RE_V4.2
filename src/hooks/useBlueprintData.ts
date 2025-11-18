@@ -38,17 +38,31 @@ export interface StepWithProgress extends BlueprintStep {
   checklistState: boolean[];
 }
 
+export interface SectionWithStats extends BlueprintSection {
+  steps: StepWithProgress[];
+  totalSteps: number;
+  completedSteps: number;
+  completionRate: number; // percentage 0-100
+}
+
 export interface SectionWithSteps extends BlueprintSection {
   steps: StepWithProgress[];
 }
 
 interface BlueprintDataState {
-  sections: SectionWithSteps[];
+  sections: SectionWithStats[];
   selectedSectionId: string | null;
   selectedStepId: string | null;
   loading: boolean;
   error?: string;
   completedStepAnimations: Set<string>;
+  completedSectionAnimations: Set<string>;
+  globalStats: {
+    totalSteps: number;
+    completedSteps: number;
+    completionPercent: number;
+    masteryLevel: string;
+  };
 }
 
 // Derive status from checklist state (needed for RPC call)
@@ -62,6 +76,30 @@ const deriveStatusFromChecklist = (checklistState: boolean[]): StepStatus => {
   return 'in_progress';
 };
 
+// Calculate mastery level from completion percentage
+const getMasteryLevel = (completionPercent: number): string => {
+  if (completionPercent === 100) return 'Restoration Elite';
+  if (completionPercent >= 75) return 'Dominating Your Market';
+  if (completionPercent >= 50) return 'Scaling Up';
+  if (completionPercent >= 25) return 'Building Momentum';
+  return 'Getting Organized';
+};
+
+// Calculate global and section stats
+const calculateStats = (sections: SectionWithStats[]) => {
+  const allSteps = sections.flatMap(section => section.steps);
+  const totalSteps = allSteps.length;
+  const completedSteps = allSteps.filter(step => step.status === 'completed').length;
+  const completionPercent = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  
+  return {
+    totalSteps,
+    completedSteps,
+    completionPercent,
+    masteryLevel: getMasteryLevel(completionPercent),
+  };
+};
+
 // Function to trigger step completion animation
 const triggerStepCompletionAnimation = (stepId: string) => {
   const stepElement = document.querySelector(`[data-step-id="${stepId}"]`);
@@ -69,7 +107,18 @@ const triggerStepCompletionAnimation = (stepId: string) => {
     stepElement.classList.add('step-completing');
     setTimeout(() => {
       stepElement.classList.remove('step-completing');
-    }, 600);
+    }, 500);
+  }
+};
+
+// Function to trigger section completion animation
+const triggerSectionCompletionAnimation = (sectionId: string) => {
+  const sectionElement = document.querySelector(`[data-section-id="${sectionId}"]`);
+  if (sectionElement) {
+    sectionElement.classList.add('section-completing');
+    setTimeout(() => {
+      sectionElement.classList.remove('section-completing');
+    }, 1200);
   }
 };
 
@@ -82,6 +131,13 @@ export const useBlueprintData = () => {
     loading: false,
     error: undefined,
     completedStepAnimations: new Set(),
+    completedSectionAnimations: new Set(),
+    globalStats: {
+      totalSteps: 0,
+      completedSteps: 0,
+      completionPercent: 0,
+      masteryLevel: 'Getting Organized',
+    },
   });
 
   // Load sections, steps, and progress data
@@ -140,8 +196,8 @@ export const useBlueprintData = () => {
           });
         });
 
-        // Merge data and organize by sections
-        const sectionsWithSteps: SectionWithSteps[] = (sectionsData || []).map(section => {
+        // Merge data and organize by sections with statistics
+        const sectionsWithStats: SectionWithStats[] = (sectionsData || []).map(section => {
           const sectionSteps = (stepsData || [])
             .filter(step => step.section_id === section.id)
             .map(step => {
@@ -164,19 +220,31 @@ export const useBlueprintData = () => {
               } as StepWithProgress;
             });
 
+          // Calculate section statistics
+          const totalSteps = sectionSteps.length;
+          const completedSteps = sectionSteps.filter(step => step.status === 'completed').length;
+          const completionRate = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+
           return {
             ...section,
             steps: sectionSteps,
+            totalSteps,
+            completedSteps,
+            completionRate,
           };
         });
+
+        // Calculate global statistics
+        const globalStats = calculateStats(sectionsWithStats);
 
         if (isMounted) {
           setState(prev => ({
             ...prev,
             loading: false,
-            sections: sectionsWithSteps,
+            sections: sectionsWithStats,
+            globalStats,
             // Auto-select first section if none selected
-            selectedSectionId: prev.selectedSectionId || (sectionsWithSteps[0]?.id || null),
+            selectedSectionId: prev.selectedSectionId || (sectionsWithStats[0]?.id || null),
           }));
         }
       } catch (error) {
@@ -221,20 +289,36 @@ export const useBlueprintData = () => {
     const newStatus = deriveStatusFromChecklist(newChecklistState);
 
     try {
-      // Optimistically update local state
+      // Optimistically update local state with recomputed statistics
       setState(prev => {
-        const updatedSections = prev.sections.map(section => ({
-          ...section,
-          steps: section.steps.map(step => 
+        const updatedSections = prev.sections.map(section => {
+          const updatedSteps = section.steps.map(step => 
             step.id === stepId 
               ? { ...step, checklistState: newChecklistState, status: newStatus }
               : step
-          ),
-        }));
+          );
+
+          // Recalculate section statistics
+          const totalSteps = updatedSteps.length;
+          const completedSteps = updatedSteps.filter(step => step.status === 'completed').length;
+          const completionRate = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+
+          return {
+            ...section,
+            steps: updatedSteps,
+            totalSteps,
+            completedSteps,
+            completionRate,
+          };
+        });
+
+        // Recalculate global statistics
+        const globalStats = calculateStats(updatedSections);
 
         return {
           ...prev,
           sections: updatedSections,
+          globalStats,
         };
       });
 
@@ -250,9 +334,26 @@ export const useBlueprintData = () => {
         throw error;
       }
 
-      // Trigger completion animation if step became completed
+      // Trigger step completion animation if step became completed
       if (prevStatus !== 'completed' && newStatus === 'completed') {
         triggerStepCompletionAnimation(stepId);
+      }
+
+      // Check for section completion and trigger animation
+      const updatedSection = state.sections.find(s => s.steps.some(step => step.id === stepId));
+      if (updatedSection) {
+        const wasCompleted = updatedSection.completedSteps === updatedSection.totalSteps - 1 && prevStatus !== 'completed';
+        const isNowCompleted = updatedSection.steps.every(step => 
+          step.id === stepId ? newStatus === 'completed' : step.status === 'completed'
+        );
+        
+        if (wasCompleted && isNowCompleted && !state.completedSectionAnimations.has(updatedSection.id)) {
+          triggerSectionCompletionAnimation(updatedSection.id);
+          setState(prev => ({
+            ...prev,
+            completedSectionAnimations: new Set([...prev.completedSectionAnimations, updatedSection.id])
+          }));
+        }
       }
 
     } catch (error) {
@@ -260,18 +361,34 @@ export const useBlueprintData = () => {
       
       // Revert optimistic update on error to prevent UI inconsistencies
       setState(prev => {
-        const updatedSections = prev.sections.map(section => ({
-          ...section,
-          steps: section.steps.map(step => 
+        const revertedSections = prev.sections.map(section => {
+          const revertedSteps = section.steps.map(step => 
             step.id === stepId
               ? { ...step, checklistState: prevChecklistState, status: prevStatus }
               : step
-          ),
-        }));
+          );
+
+          // Recalculate section statistics after revert
+          const totalSteps = revertedSteps.length;
+          const completedSteps = revertedSteps.filter(step => step.status === 'completed').length;
+          const completionRate = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+
+          return {
+            ...section,
+            steps: revertedSteps,
+            totalSteps,
+            completedSteps,
+            completionRate,
+          };
+        });
+
+        // Recalculate global statistics after revert
+        const globalStats = calculateStats(revertedSections);
 
         return {
           ...prev,
-          sections: updatedSections,
+          sections: revertedSections,
+          globalStats,
         };
       });
 
@@ -309,5 +426,6 @@ export const useBlueprintData = () => {
     setSelectedSection,
     setSelectedStep,
     triggerStepCompletionAnimation,
+    triggerSectionCompletionAnimation,
   };
 };
