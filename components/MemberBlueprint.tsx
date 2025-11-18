@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { KeyIcon, CheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, Cog6ToothIcon, ClockIcon, XMarkIcon } from './icons';
-import { useBlueprintAccess, useBlueprintProgress } from '../src/hooks';
+import { useBlueprintAccess, useBlueprintProgress, useBlueprintSteps } from '../src/hooks';
 import type { StepWithProgress, StepStatus } from '../src/hooks/useBlueprintProgress';
+import type { BlueprintStep } from '../src/data/blueprintSteps';
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
@@ -29,8 +30,12 @@ const TOTAL_STEPS = 99; // The blueprint is always out of 99 steps
 
 // --- Sub-components for Blueprint ---
 
-const BlueprintHeader: React.FC<{ completedCount: number }> = ({ completedCount }) => {
-    const percentage = Math.round((completedCount / TOTAL_STEPS) * 100);
+const BlueprintHeader: React.FC<{ completedCount: number; totalSteps?: number; progress?: number }> = ({ 
+    completedCount, 
+    totalSteps = TOTAL_STEPS, 
+    progress 
+}) => {
+    const percentage = progress !== undefined ? progress : Math.round((completedCount / totalSteps) * 100);
     const [displayPercentage, setDisplayPercentage] = useState(0);
 
     useEffect(() => {
@@ -51,7 +56,7 @@ const BlueprintHeader: React.FC<{ completedCount: number }> = ({ completedCount 
             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                 <div>
                     <h2 className="font-playfair text-xl font-bold text-[var(--text-main)]">Your Progress</h2>
-                    <p className="text-lg text-[var(--text-main)]"><span className="font-bold">{completedCount} of {TOTAL_STEPS}</span> steps completed – {percentage}%</p>
+                    <p className="text-lg text-[var(--text-main)]"><span className="font-bold">{completedCount} of {totalSteps}</span> steps completed – {percentage}%</p>
                 </div>
                 <div className="text-right">
                     <p className="text-sm font-semibold text-[var(--text-muted)]">Mastery Level</p>
@@ -63,9 +68,6 @@ const BlueprintHeader: React.FC<{ completedCount: number }> = ({ completedCount 
                     className="bg-[var(--accent)] h-4 rounded-full transition-all duration-1000 ease-out"
                     style={{ width: `${displayPercentage}%` }}
                 ></div>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                <p>This week: <span className="font-bold">3</span> steps completed (demo)</p>
             </div>
         </Card>
     );
@@ -146,16 +148,25 @@ const BlueprintStepList: React.FC<{
 };
 
 const BlueprintStepDetail: React.FC<{
-    step: StepWithProgress | null;
+    step: (StepWithProgress & BlueprintStep) | null;
     onUpdateStep: (stepId: string, newStatus: StepStatus) => void;
     onUpdateNote: (stepId: string, note: string) => void;
 }> = ({ step, onUpdateStep, onUpdateNote }) => {
     const [note, setNote] = useState('');
     const [isUpdatingNote, setIsUpdatingNote] = useState(false);
+    const [localChecklist, setLocalChecklist] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         if(step) {
             setNote(step.note || '');
+            // Initialize checklist state
+            if (step.checklist) {
+                const initialChecklist = step.checklist.reduce((acc, item) => ({
+                    ...acc,
+                    [item]: false
+                }), {});
+                setLocalChecklist(initialChecklist);
+            }
         }
     }, [step]);
     
@@ -187,7 +198,12 @@ const BlueprintStepDetail: React.FC<{
 
     return (
         <Card>
-            <p className="text-sm font-bold text-[var(--accent-dark)]">{step.category}</p>
+            <div className="flex items-center gap-2 mb-2">
+                {step.section && (
+                    <span className="text-sm font-bold text-[var(--accent-dark)]">{step.section}</span>
+                )}
+                <span className="text-sm font-bold text-[var(--text-muted)] capitalize">{step.category}</span>
+            </div>
             <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)] mt-1">{step.title}</h2>
             {step.description && (
                 <p className="text-[var(--text-muted)] mt-2">{step.description}</p>
@@ -203,6 +219,34 @@ const BlueprintStepDetail: React.FC<{
                     ))}
                 </div>
             </div>
+
+            {step.why && (
+                <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                    <h4 className="font-bold text-[var(--text-main)] mb-2">Why this matters</h4>
+                    <p className="text-[var(--text-muted)] text-sm">{step.why}</p>
+                </div>
+            )}
+
+            {step.checklist && step.checklist.length > 0 && (
+                <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                    <h4 className="font-bold text-[var(--text-main)] mb-2">Checklist</h4>
+                    <div className="space-y-2">
+                        {step.checklist.map(item => (
+                            <label key={item} className="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--bg-subtle)] cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={localChecklist[item] || false} 
+                                    onChange={e => setLocalChecklist(prev => ({ ...prev, [item]: e.target.checked }))}
+                                    className="h-4 w-4 rounded border-gray-300 text-[var(--accent)] focus:ring-[var(--accent)]"
+                                />
+                                <span className={`text-sm ${localChecklist[item] ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text-main)]'}`}>
+                                    {item}
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                 <h4 className="font-bold text-[var(--text-main)] mb-2">My notes for this step</h4>
@@ -267,18 +311,20 @@ const MobileStepDrawer: React.FC<{
 };
 
 const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = ({ onNavigate }) => {
-    const { hasBlueprintAccess, loading, error } = useBlueprintAccess();
+    const { hasBlueprintAccess, loading: accessLoading } = useBlueprintAccess();
+    const { allSteps: blueprintSteps, stepsByCategory: staticSteps, totalSteps, getStepById } = useBlueprintSteps();
     const { stepsByCategory, progress, loading: progressLoading, setStatus, setNote } = useBlueprintProgress();
     const isMobile = useIsMobile();
     const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 
-    const allSteps = useMemo(() => [
-        ...stepsByCategory.foundation,
-        ...stepsByCategory.acceleration,
-        ...stepsByCategory.empire_legacy,
-    ], [stepsByCategory]);
-
-    const completedCount = useMemo(() => allSteps.filter(s => s.status === 'completed').length, [allSteps]);
+    const completedCount = useMemo(() => {
+        const allProgressSteps = [
+            ...stepsByCategory.foundation,
+            ...stepsByCategory.acceleration,
+            ...stepsByCategory.empire_legacy,
+        ];
+        return allProgressSteps.filter(s => s.status === 'completed').length;
+    }, [stepsByCategory]);
 
     const handleUpdateStep = async (stepId: string, newStatus: StepStatus) => {
         await setStatus(stepId, newStatus);
@@ -296,25 +342,40 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
         setSelectedStepId(null);
     };
 
-    const selectedStep = useMemo(() => allSteps.find(s => s.id === selectedStepId) || null, [allSteps, selectedStepId]);
+    // Get selected step with progress data merged with static data
+    const selectedStep = useMemo(() => {
+        if (!selectedStepId) return null;
+        
+        const progressStep = [...stepsByCategory.foundation, ...stepsByCategory.acceleration, ...stepsByCategory.empire_legacy]
+            .find(s => s.id === selectedStepId);
+        const staticStep = getStepById(selectedStepId);
+        
+        if (progressStep && staticStep) {
+            return {
+                ...staticStep,
+                status: progressStep.status,
+                note: progressStep.note,
+            };
+        }
+        return null;
+    }, [selectedStepId, stepsByCategory, getStepById]);
+
     const isMobileDrawerOpen = isMobile && selectedStepId !== null;
 
-    // Show loading state while checking access or loading progress
-    if (loading || progressLoading) {
+    // Show loading state while checking access
+    if (accessLoading) {
         return (
             <div className="animate-fade-in p-8 flex items-center justify-center min-h-[400px]">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)] mx-auto mb-4"></div>
-                    <div className="text-lg text-[var(--text-muted)]">
-                        {loading ? 'Checking your access...' : 'Loading your progress...'}
-                    </div>
+                    <div className="text-lg text-[var(--text-muted)]">Checking your access...</div>
                 </div>
             </div>
         );
     }
 
     // Show access wall if user doesn't have blueprint access
-    if (!loading && !hasBlueprintAccess) {
+    if (!hasBlueprintAccess) {
         return (
             <div className="animate-fade-in p-8">
                 <div className="max-w-2xl mx-auto text-center">
@@ -323,14 +384,14 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                         Unlock the 99 Steps Blueprint
                     </h1>
                     <p className="text-lg text-[var(--text-muted)] mb-8">
-                        This roadmap is included in Founding Member and Gold memberships or as a standalone 99 Steps Blueprint add-on.
+                        This comprehensive roadmap is included in Founding Member and Gold memberships or available as a standalone 99 Steps Blueprint add-on.
                     </p>
                     <div className="space-y-4 sm:space-y-0 sm:space-x-4 sm:flex sm:justify-center">
                         <button
                             onClick={() => onNavigate('billing')}
                             className="w-full sm:w-auto px-6 py-3 bg-[var(--accent)] text-white rounded-lg font-semibold hover:bg-[var(--accent-hover)] transition-colors duration-200"
                         >
-                            Upgrade membership
+                            View membership options
                         </button>
                         <button
                             onClick={() => onNavigate('my-requests')}
@@ -344,6 +405,18 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
         );
     }
 
+    // Show loading state if progress is loading
+    if (progressLoading) {
+        return (
+            <div className="animate-fade-in p-8 flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)] mx-auto mb-4"></div>
+                    <div className="text-lg text-[var(--text-muted)]">Loading your progress...</div>
+                </div>
+            </div>
+        );
+    }
+
     // Render the full Blueprint UI when user has access
     return (
         <div className="animate-fade-in">
@@ -351,7 +424,6 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">99 Steps Blueprint</h1>
                 <p className="mt-2 text-lg text-[var(--text-muted)]">Your step-by-step roadmap to building a dominant restoration business.</p>
             </div>
-
             {isMobile ? (
                 <>
                     <BlueprintStepList 
@@ -360,7 +432,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                         onSelectStep={handleSelectStep}
                     />
                     <div className="mt-8">
-                        <BlueprintHeader completedCount={completedCount} />
+                        <BlueprintHeader completedCount={completedCount} totalSteps={totalSteps} progress={progress} />
                     </div>
                     <MobileStepDrawer isOpen={isMobileDrawerOpen} onClose={handleCloseDrawer}>
                         <BlueprintStepDetail step={selectedStep} onUpdateStep={handleUpdateStep} onUpdateNote={handleUpdateNote} />
@@ -368,7 +440,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 </>
             ) : (
                 <>
-                    <BlueprintHeader completedCount={completedCount} />
+                    <BlueprintHeader completedCount={completedCount} totalSteps={totalSteps} progress={progress} />
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start mt-8">
                         <div className="lg:col-span-1">
                             <BlueprintStepList 

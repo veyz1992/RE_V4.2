@@ -3,15 +3,56 @@ export interface BlueprintStep {
   category: 'foundation' | 'acceleration' | 'empire_legacy';
   title: string;
   description?: string;
+  why?: string;
+  checklist?: string[];
+  section?: string;
 }
 
 export const BLUEPRINT_STEPS: BlueprintStep[] = [
   // Foundation Steps (1-33)
-  { id: 'foundation_01', category: 'foundation', title: 'Foundation Step 1 Placeholder' },
-  { id: 'foundation_02', category: 'foundation', title: 'Foundation Step 2 Placeholder' },
-  { id: 'foundation_03', category: 'foundation', title: 'Foundation Step 3 Placeholder' },
-  { id: 'foundation_04', category: 'foundation', title: 'Foundation Step 4 Placeholder' },
-  { id: 'foundation_05', category: 'foundation', title: 'Foundation Step 5 Placeholder' },
+  { 
+    id: 'foundation_01', 
+    category: 'foundation', 
+    title: 'Define Your Business Vision',
+    description: 'Establish a clear, compelling vision for your restoration business',
+    section: 'Business Setup',
+    why: 'A clear vision guides every business decision and helps attract the right customers and team members.',
+    checklist: ['Write your mission statement', 'Define your core values', 'Set 3-year vision goals']
+  },
+  { 
+    id: 'foundation_02', 
+    category: 'foundation', 
+    title: 'Choose Your Business Structure',
+    description: 'Select the appropriate legal entity for your business',
+    section: 'Business Setup',
+    why: 'The right business structure protects your personal assets and provides tax benefits.',
+    checklist: ['Research LLC vs Corporation', 'Consult with accountant/lawyer', 'File formation documents']
+  },
+  { 
+    id: 'foundation_03', 
+    category: 'foundation', 
+    title: 'Obtain Business License & Permits',
+    description: 'Get all required licenses and permits to operate legally',
+    section: 'Compliance',
+    why: 'Operating without proper licenses can result in fines and legal issues.',
+    checklist: ['Research local requirements', 'Apply for business license', 'Obtain specialty permits']
+  },
+  { 
+    id: 'foundation_04', 
+    category: 'foundation', 
+    title: 'Set Up Business Banking',
+    description: 'Establish dedicated business financial accounts',
+    section: 'Finance',
+    why: 'Separate business and personal finances for better accounting and tax purposes.',
+    checklist: ['Open business checking account', 'Apply for business credit card', 'Set up accounting system']
+  },
+  { 
+    id: 'foundation_05', 
+    category: 'foundation', 
+    title: 'Foundation Step 5 Placeholder',
+    description: 'Placeholder for future content',
+    section: 'Operations'
+  },
   { id: 'foundation_06', category: 'foundation', title: 'Foundation Step 6 Placeholder' },
   { id: 'foundation_07', category: 'foundation', title: 'Foundation Step 7 Placeholder' },
   { id: 'foundation_08', category: 'foundation', title: 'Foundation Step 8 Placeholder' },
