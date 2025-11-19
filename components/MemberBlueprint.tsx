@@ -64,20 +64,26 @@ const BlueprintHeader: React.FC<{ globalStats: { totalSteps: number; completedSt
     }, [globalStats.completionPercent]);
 
     return (
-        <Card>
-            <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-                <div>
-                    <h2 className="font-playfair text-xl font-bold text-[var(--text-main)]">Your Progress</h2>
-                    <p className="text-lg text-[var(--text-main)]"><span className="font-bold">{globalStats.completedSteps} of {globalStats.totalSteps}</span> steps completed – {globalStats.completionPercent}%</p>
+        <Card className="sticky top-4 z-10">
+            <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
+                <div className="flex-1">
+                    <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-1">99 Steps Blueprint</h2>
+                    <p className="text-base text-[var(--text-main)]">
+                        <span className="font-bold text-[var(--accent)]">{globalStats.completedSteps}</span>
+                        <span className="text-[var(--text-muted)]"> of </span>
+                        <span className="font-bold">{globalStats.totalSteps}</span>
+                        <span className="text-[var(--text-muted)]"> steps completed • </span>
+                        <span className="font-bold text-[var(--accent)]">{globalStats.completionPercent}%</span>
+                    </p>
                 </div>
-                <div className="text-right">
-                    <p className="text-sm font-semibold text-[var(--text-muted)]">Mastery Level</p>
-                    <p className="font-bold text-lg text-[var(--accent-dark)]">{globalStats.masteryLevel}</p>
+                <div className="text-left lg:text-right">
+                    <p className="text-sm font-semibold text-[var(--text-muted)] mb-1">Mastery Level</p>
+                    <p className="font-bold text-xl text-[var(--accent)] font-playfair">{globalStats.masteryLevel}</p>
                 </div>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-4 mt-4">
+            <div className="w-full bg-[var(--bg-subtle)] rounded-full h-3 mt-4 shadow-inner">
                 <div 
-                    className="bg-[var(--accent)] h-4 rounded-full transition-all duration-300 ease-out"
+                    className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] h-3 rounded-full transition-all duration-500 ease-out shadow-sm"
                     style={{ width: `${displayPercentage}%` }}
                 ></div>
             </div>
@@ -138,38 +144,55 @@ const BlueprintSectionsList: React.FC<{
                     <Card 
                         key={section.id}
                         data-section-id={section.id}
-                        className={`p-0 overflow-hidden transition-all duration-300 ${isFullyCompleted ? 'ring-2 ring-green-200 bg-gradient-to-r from-green-50 to-transparent' : ''}`}
+                        className={`p-0 overflow-hidden transition-all duration-300 ${
+                            isSelected ? 'ring-2 ring-[var(--accent)] bg-[var(--accent-bg-subtle)]' : ''
+                        } ${isFullyCompleted ? 'ring-2 ring-green-200 bg-gradient-to-r from-green-50 to-transparent' : ''}`}
                     >
                         <button 
                             onClick={() => toggleSection(section.id)} 
-                            className="w-full p-4 flex justify-between items-center text-left hover:bg-[var(--bg-subtle)] transition-colors"
+                            className={`w-full p-5 flex justify-between items-center text-left transition-all duration-200 ${
+                                isOpen ? 'bg-[var(--bg-subtle)]' : 'hover:bg-[var(--bg-subtle)]'
+                            }`}
                         >
-                            <div>
-                                <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
                                     <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{section.name}</h3>
                                     {isFullyCompleted && (
-                                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-sm">
                                             <CheckIcon className="w-4 h-4 text-white" />
                                         </div>
                                     )}
                                 </div>
-                                <p className="text-sm text-[var(--text-muted)]">{section.completedSteps} of {section.totalSteps} steps completed</p>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className={`px-2 py-1 text-xs font-bold rounded-full ${
+                                        section.completionRate === 100 ? 'bg-green-100 text-green-800' :
+                                        section.completionRate > 0 ? 'bg-blue-100 text-blue-800' :
+                                        'bg-gray-100 text-gray-600'
+                                    }`}>
+                                        {section.completedSteps} of {section.totalSteps} completed
+                                    </span>
+                                    <span className="text-sm font-semibold text-[var(--accent)]">
+                                        {section.completionRate}%
+                                    </span>
+                                </div>
                                 {section.description && (
-                                    <p className="text-sm text-[var(--text-muted)] mt-1">{section.description}</p>
+                                    <p className="text-sm text-[var(--text-muted)] leading-relaxed">{section.description}</p>
                                 )}
                             </div>
-                            <ChevronDownIcon className={`w-6 h-6 text-[var(--text-muted)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                            <div className="flex items-center gap-3 ml-4">
+                                <ChevronDownIcon className={`w-6 h-6 text-[var(--text-muted)] transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+                            </div>
                         </button>
                         
                         {isOpen && (
-                            <div className="px-4 pb-4 animate-fade-in">
-                                <div className="w-full bg-gray-200 rounded-full h-1.5 mb-4">
+                            <div className="px-5 pb-5 animate-fade-in">
+                                <div className="w-full bg-[var(--bg-subtle)] rounded-full h-2 mb-6 shadow-inner">
                                     <div 
-                                        className="bg-[var(--accent)] h-1.5 rounded-full transition-all duration-500" 
+                                        className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] h-2 rounded-full transition-all duration-500 shadow-sm" 
                                         style={{ width: `${section.completionRate}%` }}
                                     ></div>
                                 </div>
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                     {section.steps.map(step => {
                                         const isStepSelected = step.id === selectedStepId;
                                         
@@ -178,25 +201,44 @@ const BlueprintSectionsList: React.FC<{
                                                 key={step.id}
                                                 data-step-id={step.id}
                                                 onClick={() => handleStepClick(step.id)}
-                                                className={`p-3 rounded-lg cursor-pointer transition-all duration-200 flex items-start gap-3 ${
+                                                className={`p-4 rounded-xl cursor-pointer transition-all duration-200 flex items-start gap-4 min-h-[80px] ${
                                                     isStepSelected 
-                                                        ? 'bg-[var(--accent-bg-subtle)] shadow-inner' 
-                                                        : 'hover:bg-[var(--bg-subtle)]'
-                                                } ${step.status === 'completed' ? 'bg-gradient-to-r from-yellow-50 to-transparent' : ''}`}
+                                                        ? 'bg-[var(--accent)] text-white shadow-lg scale-[1.02] transform' 
+                                                        : 'hover:bg-[var(--bg-subtle)] hover:shadow-md'
+                                                } ${step.status === 'completed' && !isStepSelected ? 'bg-gradient-to-r from-green-50 to-transparent border border-green-200' : ''}`}
                                             >
-                                                <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center font-bold text-xs mt-0.5 transition-all duration-300 ${
+                                                <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center font-bold text-sm mt-1 transition-all duration-300 ${
                                                     step.status === 'completed' 
-                                                        ? 'bg-[var(--accent)] text-white scale-105' 
-                                                        : 'bg-gray-200 text-gray-600'
+                                                        ? isStepSelected 
+                                                            ? 'bg-white text-[var(--accent)] scale-110 shadow-md' 
+                                                            : 'bg-green-500 text-white scale-105 shadow-sm'
+                                                        : isStepSelected
+                                                            ? 'bg-white text-[var(--accent)] scale-105'
+                                                            : 'bg-gray-200 text-gray-600'
                                                 }`}>
-                                                    {step.status === 'completed' ? <CheckIcon className="w-4 h-4"/> : step.step_number}
+                                                    {step.status === 'completed' ? <CheckIcon className="w-5 h-5"/> : step.step_number}
                                                 </div>
-                                                <div className="flex-1">
-                                                    <p className="font-semibold text-[var(--text-main)] leading-tight">{step.title}</p>
-                                                    <div className="flex items-center gap-2 mt-1">
-                                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${statusColors[step.status]}`}>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className={`font-semibold leading-tight text-base mb-2 ${
+                                                        isStepSelected ? 'text-white' : 'text-[var(--text-main)]'
+                                                    }`}>
+                                                        {step.title}
+                                                    </p>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${
+                                                            isStepSelected 
+                                                                ? 'bg-white bg-opacity-20 text-white'
+                                                                : statusColors[step.status]
+                                                        }`}>
                                                             {step.status.replace('_', ' ')}
                                                         </span>
+                                                        {step.checklist && step.checklist.length > 0 && (
+                                                            <span className={`text-xs font-medium ${
+                                                                isStepSelected ? 'text-white text-opacity-80' : 'text-[var(--text-muted)]'
+                                                            }`}>
+                                                                {(step.checklistState || []).filter(Boolean).length}/{step.checklist.length} tasks
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -259,51 +301,63 @@ const BlueprintStepDetail: React.FC<{
             )}
             
             <div className="mt-6">
-                <p className="text-sm font-semibold text-[var(--text-muted)] mb-2">
-                    Status (determined by checklist):
+                <p className="text-sm font-semibold text-[var(--text-muted)] mb-3">
+                    Status (automatically updated):
                 </p>
-                <div className="flex bg-[var(--bg-subtle)] p-1 rounded-lg">
+                <div className="flex bg-[var(--bg-subtle)] p-1.5 rounded-xl">
                     {statusOptions.map(s => (
                         <div 
                             key={s} 
-                            className={`flex-1 py-2 text-sm font-bold rounded-md transition-all cursor-not-allowed opacity-75 text-center ${
-                                step.status === s ? statusColors[s] + ' shadow-sm' : 'text-[var(--text-muted)]'
+                            className={`flex-1 py-3 px-2 text-sm font-bold rounded-lg transition-all text-center ${
+                                step.status === s ? statusColors[s] + ' shadow-md transform scale-105' : 'text-[var(--text-muted)] opacity-60'
                             }`}
                         >
                             {s.replace('_', ' ')}
                         </div>
                     ))}
                 </div>
-                <p className="text-xs text-[var(--text-muted)] mt-2 italic">
-                    Status is automatically updated based on checklist completion
+                <p className="text-xs text-[var(--text-muted)] mt-3 italic">
+                    ✨ Status updates automatically as you complete checklist items
                 </p>
             </div>
 
             {/* Checklist section - moved to be first after status */}
             {step.checklist && step.checklist.length > 0 && (
-                <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
-                    <h4 className="font-bold text-[var(--text-main)] mb-2">Checklist</h4>
-                    <div className="space-y-2">
-                        {step.checklist.map((item, index) => (
-                            <label 
-                                key={index} 
-                                className="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--bg-subtle)] cursor-pointer transition-all duration-150"
-                            >
-                                <input 
-                                    type="checkbox" 
-                                    checked={(step.checklistState || Array(step.checklist.length).fill(false))[index] || false} 
-                                    onChange={e => handleChecklistChange(index, e.target.checked)}
-                                    className="h-4 w-4 rounded border-gray-300 text-[var(--accent)] focus:ring-[var(--accent)] transition-all duration-150"
-                                />
-                                <span className={`text-sm transition-all duration-150 ${
-                                    (step.checklistState || Array(step.checklist.length).fill(false))[index] 
-                                        ? 'line-through text-[var(--text-muted)]' 
-                                        : 'text-[var(--text-main)]'
-                                }`}>
-                                    {item}
-                                </span>
-                            </label>
-                        ))}
+                <div className="mt-8 pt-6 border-t border-[var(--border-subtle)]">
+                    <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-bold text-[var(--text-main)] text-lg">Checklist</h4>
+                        <span className="text-sm text-[var(--text-muted)] font-medium">
+                            {(step.checklistState || []).filter(Boolean).length} of {step.checklist.length} completed
+                        </span>
+                    </div>
+                    <div className="space-y-3">
+                        {step.checklist.map((item, index) => {
+                            const isChecked = (step.checklistState || Array(step.checklist.length).fill(false))[index] || false;
+                            return (
+                                <label 
+                                    key={index} 
+                                    className={`flex items-start gap-4 p-4 rounded-xl cursor-pointer transition-all duration-200 ${
+                                        isChecked 
+                                            ? 'bg-green-50 hover:bg-green-100 border border-green-200' 
+                                            : 'hover:bg-[var(--bg-subtle)] border border-transparent'
+                                    }`}
+                                >
+                                    <input 
+                                        type="checkbox" 
+                                        checked={isChecked}
+                                        onChange={e => handleChecklistChange(index, e.target.checked)}
+                                        className="h-5 w-5 mt-0.5 rounded-md border-2 border-gray-300 text-[var(--accent)] focus:ring-[var(--accent)] focus:ring-2 transition-all duration-150 cursor-pointer"
+                                    />
+                                    <span className={`text-base leading-relaxed transition-all duration-200 ${
+                                        isChecked 
+                                            ? 'line-through text-[var(--text-muted)] opacity-80' 
+                                            : 'text-[var(--text-main)]'
+                                    }`}>
+                                        {item}
+                                    </span>
+                                </label>
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -338,19 +392,28 @@ const MobileStepDrawer: React.FC<{
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col items-end" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 flex flex-col" role="dialog" aria-modal="true">
             {/* Overlay */}
-            <div className="absolute inset-0 bg-[var(--bg-overlay)] animate-fade-in" onClick={onClose}></div>
+            <div className="absolute inset-0 bg-black bg-opacity-50 animate-fade-in" onClick={onClose}></div>
 
             {/* Drawer Content */}
-            <div className="relative w-full bg-[var(--bg-main)] rounded-t-2xl shadow-2xl h-[85vh] flex flex-col animate-slide-up-drawer">
-                <div className="shrink-0 p-4 border-b border-[var(--border-subtle)] bg-[var(--bg-card)] rounded-t-2xl">
-                    <div className="w-12 h-1.5 bg-[var(--border-subtle)] rounded-full mx-auto mb-2"></div>
-                    <button onClick={onClose} className="absolute top-3 right-3 p-1 text-[var(--text-muted)] hover:text-[var(--text-main)]">
-                        <XMarkIcon className="w-7 h-7" />
-                    </button>
+            <div className="relative w-full bg-[var(--bg-main)] rounded-t-3xl shadow-2xl h-[90vh] mt-auto flex flex-col animate-slide-up-drawer">
+                {/* Handle and Header */}
+                <div className="shrink-0 p-6 border-b border-[var(--border-subtle)] bg-[var(--bg-card)] rounded-t-3xl">
+                    <div className="w-12 h-1.5 bg-[var(--border-subtle)] rounded-full mx-auto mb-4"></div>
+                    <div className="flex items-center justify-between">
+                        <h3 className="font-playfair text-lg font-bold text-[var(--text-main)]">Step Details</h3>
+                        <button 
+                            onClick={onClose} 
+                            className="p-2 rounded-full text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-subtle)] transition-colors"
+                        >
+                            <XMarkIcon className="w-6 h-6" />
+                        </button>
+                    </div>
                 </div>
-                <div className="flex-grow overflow-y-auto p-4">
+
+                {/* Scrollable Content */}
+                <div className="flex-grow overflow-y-auto p-6 overscroll-contain">
                     {children}
                 </div>
             </div>
@@ -512,35 +575,45 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
 
     // Render the full Blueprint UI when user has access
     return (
-        <div className="animate-fade-in">
-            <div className="mb-6">
-                <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">99 Steps Blueprint</h1>
-                <p className="mt-2 text-lg text-[var(--text-muted)]">Your step-by-step roadmap to building a dominant restoration business.</p>
+        <div className="animate-fade-in pb-8">
+            {/* Page Title - Only show on mobile, desktop uses header component title */}
+            <div className="mb-6 lg:hidden">
+                <h1 className="font-playfair text-3xl font-bold text-[var(--text-main)]">99 Steps Blueprint</h1>
+                <p className="mt-2 text-base text-[var(--text-muted)]">Your step-by-step roadmap to building a dominant restoration business.</p>
             </div>
+
             {isMobile ? (
-                <>
-                    <BlueprintSectionsList 
-                        sections={sections}
-                        selectedSectionId={selectedSectionId}
-                        selectedStepId={selectedStepId}
-                        onSelectSection={setSelectedSection}
-                        onSelectStep={handleSelectStep}
-                    />
-                    <div className="mt-8">
-                        <BlueprintHeader globalStats={globalStats} />
+                <div className="space-y-6">
+                    {/* Mobile Progress Header */}
+                    <BlueprintHeader globalStats={globalStats} />
+                    
+                    {/* Mobile Sections List */}
+                    <div className="space-y-4">
+                        <BlueprintSectionsList 
+                            sections={sections}
+                            selectedSectionId={selectedSectionId}
+                            selectedStepId={selectedStepId}
+                            onSelectSection={setSelectedSection}
+                            onSelectStep={handleSelectStep}
+                        />
                     </div>
+
+                    {/* Mobile Step Drawer */}
                     <MobileStepDrawer isOpen={isMobileDrawerOpen} onClose={handleCloseDrawer}>
                         <BlueprintStepDetail 
                             step={selectedStep} 
                             onUpdateChecklist={updateChecklist} 
                         />
                     </MobileStepDrawer>
-                </>
+                </div>
             ) : (
-                <>
+                <div className="space-y-8">
+                    {/* Desktop Progress Header */}
                     <BlueprintHeader globalStats={globalStats} />
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start mt-8">
-                        <div className="lg:col-span-1">
+                    
+                    {/* Desktop Two-Column Layout */}
+                    <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 items-start">
+                        <div className="xl:col-span-2 space-y-6">
                             <BlueprintSectionsList 
                                 sections={sections}
                                 selectedSectionId={selectedSectionId}
@@ -549,14 +622,14 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                                 onSelectStep={handleSelectStep}
                             />
                         </div>
-                        <div className="lg:col-span-2 sticky top-8">
+                        <div className="xl:col-span-3 sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto">
                             <BlueprintStepDetail 
                                 step={selectedStep} 
                                 onUpdateChecklist={updateChecklist} 
                             />
                         </div>
                     </div>
-                </>
+                </div>
             )}
             
             <CelebrationToast 
