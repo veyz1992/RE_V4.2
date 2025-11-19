@@ -264,13 +264,7 @@ const BlueprintStepDetail: React.FC<{
                 </p>
             </div>
 
-            {step.why_it_matters && (
-                <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
-                    <h4 className="font-bold text-[var(--text-main)] mb-2">Why this matters</h4>
-                    <p className="text-[var(--text-muted)] text-sm">{step.why_it_matters}</p>
-                </div>
-            )}
-
+            {/* Checklist section - moved to be first after status */}
             {step.checklist && step.checklist.length > 0 && (
                 <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
                     <h4 className="font-bold text-[var(--text-main)] mb-2">Checklist</h4>
@@ -296,6 +290,14 @@ const BlueprintStepDetail: React.FC<{
                             </label>
                         ))}
                     </div>
+                </div>
+            )}
+
+            {/* Why this matters section - moved to be after checklist */}
+            {step.why_it_matters && (
+                <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
+                    <h4 className="font-bold text-[var(--text-main)] mb-2">Why this matters</h4>
+                    <p className="text-[var(--text-muted)] text-sm">{step.why_it_matters}</p>
                 </div>
             )}
         </Card>
