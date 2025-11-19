@@ -10,53 +10,177 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
       :root {
-        --bg-main: #F3F4F6; /* gray-light */
+        /* Premium Background System */
+        --bg-app: #FAFAF9; /* Warm off-white app background */
+        --bg-surface: #ffffff; /* Clean white surface */
+        --bg-surface-soft: #F8F8F7; /* Soft surface with warmth */
+        
+        /* Legacy compatibility (mapped to new system) */
+        --bg-main: #FAFAF9;
         --bg-card: #ffffff;
-        --bg-subtle: #F9FAFB; /* gray-50 equivalent */
+        --bg-subtle: #F8F8F7;
         --bg-input: #ffffff;
         --bg-overlay: rgba(44, 44, 44, 0.6);
 
-        --text-main: #2C2C2C; /* charcoal */
-        --text-muted: #4A4A4A; /* gray-dark */
+        /* Premium Brand Colors */
+        --brand-gold: #C4A574; /* Primary premium gold */
+        --brand-gold-soft: rgba(196, 165, 116, 0.1); /* Soft gold backgrounds */
+        --brand-success: rgba(160, 214, 180, 0.15); /* Premium subtle green */
+        --accent-aqua: #5DADE2; /* Supporting aqua accent */
+
+        /* Typography Scale */
+        --text-primary: #2C2C2C; /* Primary dark charcoal */
+        --text-muted: #6B7280; /* Professional muted gray */
         --text-inverted: #F5F5F5;
         
-        --border-subtle: #E5E7EB; /* gray-border */
+        /* Legacy text compatibility */
+        --text-main: #2C2C2C;
         
-        --accent: #b19866; /* gold -> brand-accent */
-        --accent-dark: #9c8658; /* gold-dark -> brand-accent dark */
-        --accent-light: #c9b891; /* gold-light -> lighter brand-accent */
-        --accent-text: #2C2C2C; /* charcoal */
-        --accent-bg-subtle: rgba(177, 152, 102, 0.1);
+        /* UI Framework */
+        --border-subtle: #E5E7EB;
+        
+        /* Enhanced Accent System */
+        --accent: #C4A574; /* Updated to premium brand gold */
+        --accent-dark: #B8956A; /* Darker premium gold */
+        --accent-light: #D9C18F; /* Lighter premium gold */
+        --accent-text: #2C2C2C;
+        --accent-bg-subtle: rgba(196, 165, 116, 0.1);
+        --accent-hover: #D9C18F;
 
+        /* Semantic Colors */
         --success: #10B981;
         --warning: #F59E0B;
         --error: #EF4444;
         --info: #3B82F6;
+
+        /* Elevation System */
+        --elevation-low: 0 1px 3px rgba(0, 0, 0, 0.05);
+        --elevation-medium: 0 4px 12px rgba(0, 0, 0, 0.1);
+        --elevation-high: 0 8px 25px rgba(0, 0, 0, 0.15);
       }
       
       html[data-theme='dark'] {
-        --bg-main: #1A1A1A; /* charcoal-dark */
-        --bg-card: #2C2C2C; /* charcoal */
-        --bg-subtle: #404040; /* charcoal-light */
+        /* Dark Premium Background System */
+        --bg-app: #1A1A1A; /* Deep charcoal app background */
+        --bg-surface: #2C2C2C; /* Elevated charcoal surface */
+        --bg-surface-soft: #333333; /* Softer elevated surface */
+        
+        /* Legacy compatibility */
+        --bg-main: #1A1A1A;
+        --bg-card: #2C2C2C;
+        --bg-subtle: #333333;
         --bg-input: #404040;
         --bg-overlay: rgba(0, 0, 0, 0.8);
+
+        /* Dark Premium Brand Colors */
+        --brand-gold: #E8D7A0; /* Brighter gold for dark contrast */
+        --brand-gold-soft: rgba(232, 215, 160, 0.1); /* Soft gold on dark */
+        --brand-success: rgba(160, 214, 180, 0.1); /* Subtle green on dark */
+        --accent-aqua: #7EC8E3; /* Lighter aqua for dark mode */
         
-        --text-main: #F5F5F5; /* text-light */
-        --text-muted: #8B8B8B; /* gray */
+        /* Dark Typography */
+        --text-primary: #F5F5F5; /* Light text on dark */
+        --text-muted: #A1A1AA; /* Muted light gray */
         --text-inverted: #1A1A1A;
         
-        --border-subtle: #404040; /* charcoal-light */
+        /* Legacy text compatibility */
+        --text-main: #F5F5F5;
         
-        /* Dark theme accents could be brighter gold for contrast if needed */
-        --accent: #E8D7A0; /* gold-light */
-        --accent-dark: #D4AF37; /* gold */
-        --accent-light: #F0E6C0;
-        --accent-text: #1A1A1A;
+        /* Dark UI Framework */
+        --border-subtle: #404040;
+        
+        /* Dark Enhanced Accent System */
+        --accent: #E8D7A0; /* Bright gold for contrast */
+        --accent-dark: #D4AF37; /* Traditional gold */
+        --accent-light: #F0E6C0; /* Light gold */
+        --accent-text: #1A1A1A; /* Dark text on gold */
         --accent-bg-subtle: rgba(232, 215, 160, 0.1);
+        --accent-hover: #F0E6C0;
+
+        /* Dark Elevation System */
+        --elevation-low: 0 1px 3px rgba(0, 0, 0, 0.3);
+        --elevation-medium: 0 4px 12px rgba(0, 0, 0, 0.4);
+        --elevation-high: 0 8px 25px rgba(0, 0, 0, 0.5);
       }
       
       body {
         transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+        background-color: var(--bg-app);
+        color: var(--text-primary);
+      }
+
+      /* Typography Scale System */
+      .text-page-title {
+        font-family: 'Playfair Display', serif;
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1.2;
+        color: var(--text-primary);
+      }
+
+      .text-section-title {
+        font-family: 'Playfair Display', serif;
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1.3;
+        color: var(--text-primary);
+      }
+
+      .text-step-title {
+        font-family: 'Inter', sans-serif;
+        font-size: 1rem;
+        font-weight: 600;
+        line-height: 1.4;
+        color: var(--text-primary);
+      }
+
+      .text-meta {
+        font-family: 'Inter', sans-serif;
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1.4;
+        color: var(--text-muted);
+      }
+
+      /* Vertical Rhythm System */
+      .space-stack-sm > * + * { margin-top: 1rem; }
+      .space-stack-md > * + * { margin-top: 1.5rem; }
+      .space-stack-lg > * + * { margin-top: 2rem; }
+      .space-stack-xl > * + * { margin-top: 3rem; }
+
+      /* Premium Surface Components */
+      .surface-card {
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 0.75rem;
+        box-shadow: var(--elevation-low);
+        transition: all 0.2s ease-in-out;
+      }
+
+      .surface-card:hover {
+        box-shadow: var(--elevation-medium);
+        transform: translateY(-1px);
+      }
+
+      .surface-soft {
+        background-color: var(--bg-surface-soft);
+        border: 1px solid var(--border-subtle);
+        border-radius: 0.75rem;
+        transition: all 0.2s ease-in-out;
+      }
+
+      /* Premium Interactive States */
+      .interactive-gold {
+        transition: all 0.12s ease-out;
+      }
+
+      .interactive-gold:hover {
+        transform: scale(1.02);
+        box-shadow: 0 0 0 4px var(--brand-gold-soft);
+      }
+
+      .interactive-gold:active {
+        transform: scale(0.98);
       }
       
       /* === Custom Slider Styles === */

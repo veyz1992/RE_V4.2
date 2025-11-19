@@ -36,7 +36,7 @@ const useIsMobile = (breakpoint = 1024) => {
 };
 
 const Card: React.FC<{ children: React.ReactNode, className?: string, onClick?: () => void }> = ({ children, className = '', onClick }) => (
-    <div onClick={onClick} className={`bg-[var(--bg-card)] p-6 rounded-2xl shadow-lg border border-[var(--border-subtle)] ${className} ${onClick ? 'cursor-pointer transition-transform duration-200 hover:-translatey-1' : ''}`}>
+    <div onClick={onClick} className={`surface-card p-6 ${className} ${onClick ? 'cursor-pointer interactive-gold' : ''}`}>
         {children}
     </div>
 );
@@ -72,8 +72,8 @@ const CelebrationToast: React.FC<{ message: string; isVisible: boolean; onClose:
 // Compact page heading component (desktop only)
 const BlueprintPageHeader: React.FC = () => (
     <div className="mb-6 hidden lg:block">
-        <h2 className="text-lg font-semibold text-[var(--text-main)] mb-1">Your 99 Steps Blueprint Progress</h2>
-        <p className="text-sm text-[var(--text-muted)]">
+        <h2 className="text-page-title mb-2">Your 99 Steps Blueprint Progress</h2>
+        <p className="text-meta">
             Your step-by-step roadmap to building a dominant restoration business.
         </p>
     </div>
@@ -92,26 +92,26 @@ const BlueprintProgressCard: React.FC<{ globalStats: { totalSteps: number; compl
         <Card>
             <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
                 <div className="flex-1">
-                    <h3 className="font-semibold text-lg text-[var(--text-main)] mb-1">Your Progress</h3>
-                    <p className="text-base text-[var(--text-main)]">
-                        <span className="font-bold text-[var(--accent)]">{globalStats.completedSteps}</span>
+                    <h3 className="text-section-title mb-2">Your Progress</h3>
+                    <p className="text-step-title">
+                        <span className="font-bold text-[var(--brand-gold)]">{globalStats.completedSteps}</span>
                         <span className="text-[var(--text-muted)]"> of </span>
-                        <span className="font-bold">{globalStats.totalSteps}</span>
+                        <span className="font-bold text-[var(--text-primary)]">{globalStats.totalSteps}</span>
                         <span className="text-[var(--text-muted)]"> steps completed – </span>
-                        <span className="font-bold text-[var(--accent)]">{globalStats.completionPercent}%</span>
+                        <span className="font-bold text-[var(--brand-gold)]">{globalStats.completionPercent}%</span>
                     </p>
                 </div>
                 <div className="text-left lg:text-right">
-                    <p className="text-sm font-semibold text-[var(--text-muted)] mb-1">Mastery Level</p>
-                    <p className="font-bold text-xl text-[var(--accent)] font-playfair">{globalStats.masteryLevel}</p>
+                    <p className="text-meta mb-1">Mastery Level</p>
+                    <p className="font-bold text-xl text-[var(--brand-gold)] font-playfair">{globalStats.masteryLevel}</p>
                 </div>
             </div>
-            <div className="w-full bg-gray-200 rounded-xl h-3 mt-4 shadow-inner">
+            <div className="w-full bg-[var(--bg-surface-soft)] rounded-xl h-3 mt-4 shadow-inner border border-[var(--border-subtle)]">
                 <div 
-                    className="h-3 rounded-xl transition-all duration-500 ease-out shadow-sm"
+                    className="h-3 rounded-xl transition-all duration-200 ease-out shadow-sm"
                     style={{ 
                         width: `${displayPercentage}%`,
-                        background: 'linear-gradient(90deg, #C4A574 0%, #D9C18F 100%)'
+                        background: 'linear-gradient(90deg, var(--brand-gold) 0%, var(--accent-light) 100%)'
                     }}
                 ></div>
             </div>
@@ -129,26 +129,26 @@ const MobileStickyProgressBar: React.FC<{ globalStats: { totalSteps: number; com
     }, [globalStats.completionPercent]);
 
     return (
-        <div className="sticky top-0 z-20 bg-[var(--bg-card)] border-b border-[var(--border-subtle)] px-4 py-3 shadow-sm">
+        <div className="sticky top-0 z-20 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] px-4 py-3 shadow-sm">
             <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1">
-                        <span className="text-sm font-medium text-[var(--text-muted)]">Progress</span>
-                        <span className="text-sm font-bold text-[var(--accent)]">{globalStats.completionPercent}%</span>
+                        <span className="text-meta">Progress</span>
+                        <span className="text-sm font-bold text-[var(--brand-gold)]">{globalStats.completionPercent}%</span>
                     </div>
                     <div className="w-px h-4 bg-[var(--border-subtle)]"></div>
                     <div className="flex items-center gap-1">
-                        <span className="text-sm font-medium text-[var(--text-muted)]">Mastery</span>
-                        <span className="text-sm font-bold text-[var(--accent)]">{globalStats.masteryLevel}</span>
+                        <span className="text-meta">Mastery</span>
+                        <span className="text-sm font-bold text-[var(--brand-gold)]">{globalStats.masteryLevel}</span>
                     </div>
                 </div>
             </div>
-            <div className="w-full bg-gray-200 rounded-xl h-2 shadow-inner">
+            <div className="w-full bg-[var(--bg-surface-soft)] rounded-xl h-2 shadow-inner border border-[var(--border-subtle)]">
                 <div 
-                    className="h-2 rounded-xl transition-all duration-500 ease-out shadow-sm"
+                    className="h-2 rounded-xl transition-all duration-200 ease-out shadow-sm"
                     style={{ 
                         width: `${displayPercentage}%`,
-                        background: 'linear-gradient(90deg, #C4A574 0%, #D9C18F 100%)'
+                        background: 'linear-gradient(90deg, var(--brand-gold) 0%, var(--accent-light) 100%)'
                     }}
                 ></div>
             </div>
@@ -208,13 +208,15 @@ const BlueprintSectionsList: React.FC<{
     const statusColors: Record<StepStatus, string> = {
         'not_started': 'bg-gray-200 text-gray-600',
         'in_progress': 'bg-blue-100 text-blue-800',
-        'completed': 'text-yellow-800 shadow-sm',
+        'completed': 'shadow-sm border',
     };
 
     const getStatusStyle = (status: StepStatus) => {
         if (status === 'completed') {
             return {
-                background: 'linear-gradient(135deg, rgba(196, 165, 116, 0.2) 0%, rgba(217, 193, 143, 0.3) 100%)'
+                background: 'var(--brand-gold-soft)',
+                color: 'var(--brand-gold)',
+                borderColor: 'var(--brand-gold)'
             };
         }
         return {};
@@ -228,19 +230,20 @@ const BlueprintSectionsList: React.FC<{
                 const isFullyCompleted = section.completionRate === 100 && section.totalSteps > 0;
 
                 return (
-                    <Card 
+                    <div
                         key={section.id}
                         data-section-id={section.id}
-                        className={`p-0 overflow-hidden transition-all duration-300 ${
-                            isSelected ? 'ring-2 ring-[var(--accent)] bg-[var(--accent-bg-subtle)]' : ''
-                        } ${isFullyCompleted ? 'ring-2 ring-yellow-200 shadow-lg' : ''}`}
+                        className={`surface-card p-0 overflow-hidden transition-all duration-300 ${
+                            isSelected ? 'ring-2 ring-[var(--brand-gold)] bg-[var(--brand-gold-soft)]' : ''
+                        } ${isFullyCompleted ? 'ring-2 shadow-lg' : ''}`}
                         style={isFullyCompleted ? {
-                            background: 'linear-gradient(90deg, rgba(196, 165, 116, 0.1) 0%, rgba(217, 193, 143, 0.05) 100%)',
-                            boxShadow: '0 0 20px rgba(196, 165, 116, 0.3)'
+                            background: 'var(--brand-gold-soft)',
+                            boxShadow: '0 0 20px var(--brand-gold-soft), var(--elevation-high)',
+                            borderColor: 'var(--brand-gold)'
                         } : {}}
                     >
-                        <div className={`p-5 transition-all duration-200 ${
-                            isOpen ? 'bg-[var(--bg-subtle)]' : 'hover:bg-[var(--bg-subtle)]'
+                        <div className={`p-5 transition-all duration-120 ${
+                            isOpen ? 'bg-[var(--bg-surface-soft)]' : 'hover:bg-[var(--bg-surface-soft)] hover:shadow-md'
                         }`}>
                             <div className="flex justify-between items-center">
                                 <div 
@@ -248,30 +251,32 @@ const BlueprintSectionsList: React.FC<{
                                     onClick={() => handleSectionHeaderClick(section.id)}
                                 >
                                     <div className="flex items-center gap-3 mb-2">
-                                        <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{section.name}</h3>
+                                        <h3 className="text-section-title">{section.name}</h3>
                                         {isFullyCompleted && (
-                                            <div className="w-6 h-6 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center shadow-lg animate-pulse-gold">
+                                            <div className="w-6 h-6 bg-gradient-to-br from-[var(--brand-gold)] to-[var(--accent-light)] rounded-full flex items-center justify-center shadow-lg animate-pulse-gold">
                                                 <PremiumCheckIcon className="w-4 h-4" />
                                             </div>
                                         )}
                                     </div>
                                     <div className="flex items-center gap-2 mb-2">
-                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                                            section.completionRate === 100 ? 'text-yellow-800 shadow-sm' :
+                                        <span className={`px-3 py-1 text-xs font-bold rounded-full transition-all ${
+                                            section.completionRate === 100 ? 'shadow-sm' :
                                             section.completionRate > 0 ? 'bg-blue-100 text-blue-800' :
                                             'bg-gray-100 text-gray-600'
                                         }`}
                                         style={section.completionRate === 100 ? {
-                                            background: 'linear-gradient(135deg, rgba(196, 165, 116, 0.2) 0%, rgba(217, 193, 143, 0.3) 100%)'
+                                            background: 'var(--brand-gold-soft)',
+                                            color: 'var(--brand-gold)',
+                                            border: '1px solid var(--brand-gold)'
                                         } : {}}>
                                             {section.completedSteps} of {section.totalSteps} completed
                                         </span>
-                                        <span className="text-sm font-semibold text-[var(--accent)]">
+                                        <span className="text-sm font-semibold text-[var(--brand-gold)]">
                                             {section.completionRate}%
                                         </span>
                                     </div>
                                     {section.description && (
-                                        <p className="text-sm text-[var(--text-muted)] leading-relaxed">{section.description}</p>
+                                        <p className="text-meta leading-relaxed">{section.description}</p>
                                     )}
                                 </div>
                                 <button
@@ -295,16 +300,16 @@ const BlueprintSectionsList: React.FC<{
                                 id={`section-${section.id}-content`}
                                 aria-labelledby={`section-${section.id}-header`}
                             >
-                                <div className="w-full bg-gray-200 rounded-xl h-2 mb-6 shadow-inner">
+                                <div className="w-full bg-[var(--bg-surface-soft)] rounded-xl h-2 mb-6 shadow-inner border border-[var(--border-subtle)]">
                                     <div 
-                                        className="h-2 rounded-xl transition-all duration-500 shadow-sm" 
+                                        className="h-2 rounded-xl transition-all duration-200 shadow-sm" 
                                         style={{ 
                                             width: `${section.completionRate}%`,
-                                            background: 'linear-gradient(90deg, #C4A574 0%, #D9C18F 100%)'
+                                            background: 'linear-gradient(90deg, var(--brand-gold) 0%, var(--accent-light) 100%)'
                                         }}
                                     ></div>
                                 </div>
-                                <div className="space-y-3">
+                                <div className="space-y-3 space-stack-sm">
                                     {section.steps.map(step => {
                                         const isStepSelected = step.id === selectedStepId;
                                         
@@ -313,14 +318,16 @@ const BlueprintSectionsList: React.FC<{
                                                 key={step.id}
                                                 data-step-id={step.id}
                                                 onClick={(e) => handleStepClick(step.id, e)}
-                                                className={`p-4 rounded-xl cursor-pointer transition-all duration-200 flex items-start gap-4 min-h-[80px] touch-manipulation ${
+                                                className={`surface-soft p-4 cursor-pointer transition-all duration-120 flex items-start gap-4 min-h-[80px] touch-manipulation interactive-gold ${
                                                     isStepSelected 
-                                                        ? 'bg-[var(--accent)] text-white shadow-lg scale-[1.02] transform' 
-                                                        : 'hover:bg-[var(--bg-subtle)] hover:shadow-md active:scale-[0.98]'
+                                                        ? 'bg-[var(--brand-gold)] text-white shadow-lg scale-[1.02] transform' 
+                                                        : 'hover:shadow-md active:scale-[0.98]'
                                                 } ${step.status === 'completed' && !isStepSelected ? 'border border-opacity-70' : ''}`}
                                                 style={step.status === 'completed' && !isStepSelected ? {
-                                                    background: 'linear-gradient(90deg, rgba(160, 214, 180, 0.7) 0%, transparent 100%)',
-                                                    borderColor: 'rgba(160, 214, 180, 0.7)'
+                                                    background: 'var(--brand-success)',
+                                                    borderColor: 'var(--brand-gold)'
+                                                } : isStepSelected ? {
+                                                    background: 'var(--brand-gold)'
                                                 } : {}}
                                                 role="button"
                                                 tabIndex={0}
@@ -332,28 +339,28 @@ const BlueprintSectionsList: React.FC<{
                                                     }
                                                 }}
                                             >
-                                                <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center font-bold text-sm mt-1 transition-all duration-300 ${
+                                                <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center font-bold text-sm mt-1 transition-all duration-120 ${
                                                     step.status === 'completed' 
                                                         ? isStepSelected 
-                                                            ? 'bg-white text-[var(--accent)] scale-110 shadow-md' 
+                                                            ? 'bg-white text-[var(--brand-gold)] scale-110 shadow-md' 
                                                             : 'scale-105 shadow-lg'
                                                         : isStepSelected
-                                                            ? 'bg-white text-[var(--accent)] scale-105'
+                                                            ? 'bg-white text-[var(--brand-gold)] scale-105'
                                                             : 'bg-gray-200 text-gray-600'
                                                 }`}
                                                 style={step.status === 'completed' && !isStepSelected ? {
-                                                    background: 'linear-gradient(135deg, #C4A574 0%, #D9C18F 100%)'
+                                                    background: 'linear-gradient(135deg, var(--brand-gold) 0%, var(--accent-light) 100%)'
                                                 } : {}}>
                                                     {step.status === 'completed' ? <PremiumCheckIcon className="w-5 h-5"/> : step.step_number}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className={`font-semibold leading-tight text-base mb-2 break-words ${
-                                                        isStepSelected ? 'text-white' : 'text-[var(--text-main)]'
+                                                    <p className={`text-step-title mb-2 break-words ${
+                                                        isStepSelected ? 'text-white' : ''
                                                     }`}>
                                                         {step.title}
                                                     </p>
                                                     <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${
+                                                        <span className={`px-3 py-1 text-xs font-bold rounded-full transition-all duration-120 ${
                                                             isStepSelected 
                                                                 ? 'bg-white bg-opacity-20 text-white'
                                                                 : statusColors[step.status]
@@ -362,8 +369,8 @@ const BlueprintSectionsList: React.FC<{
                                                             {step.status.replace('_', ' ')}
                                                         </span>
                                                         {step.checklist && step.checklist.length > 0 && (
-                                                            <span className={`text-xs font-medium ${
-                                                                isStepSelected ? 'text-white text-opacity-80' : 'text-[var(--text-muted)]'
+                                                            <span className={`text-meta ${
+                                                                isStepSelected ? 'text-white text-opacity-80' : ''
                                                             }`}>
                                                                 {(step.checklistState || []).filter(Boolean).length}/{step.checklist.length} tasks
                                                             </span>
@@ -376,7 +383,7 @@ const BlueprintSectionsList: React.FC<{
                                 </div>
                             </div>
                         )}
-                    </Card>
+                    </div>
                 );
             })}
         </div>
@@ -415,13 +422,15 @@ const BlueprintStepDetail: React.FC<{
     const statusColors: Record<StepStatus, string> = {
         'not_started': 'bg-gray-100 text-gray-700',
         'in_progress': 'bg-blue-100 text-blue-800',
-        'completed': 'text-yellow-800 shadow-sm',
+        'completed': 'shadow-sm border',
     };
 
     const getDetailStatusStyle = (status: StepStatus) => {
         if (status === 'completed') {
             return {
-                background: 'linear-gradient(135deg, rgba(196, 165, 116, 0.2) 0%, rgba(217, 193, 143, 0.3) 100%)'
+                background: 'var(--brand-gold-soft)',
+                color: 'var(--brand-gold)',
+                borderColor: 'var(--brand-gold)'
             };
         }
         return {};
@@ -430,19 +439,19 @@ const BlueprintStepDetail: React.FC<{
     return (
         <Card>
             <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-bold text-[var(--accent-dark)]">Step {step.step_number}</span>
+                <span className="text-meta font-bold text-[var(--brand-gold)]">Step {step.step_number}</span>
             </div>
-            <h2 className="font-playfair text-3xl font-bold text-[var(--text-main)] mt-1">{step.title}</h2>
+            <h2 className="text-page-title mt-1">{step.title}</h2>
             
             {step.description && (
-                <p className="text-[var(--text-muted)] mt-2">{step.description}</p>
+                <p className="text-meta mt-2">{step.description}</p>
             )}
             
             <div className="mt-6">
-                <p className="text-sm font-semibold text-[var(--text-muted)] mb-3">
+                <p className="text-meta mb-3">
                     Status (automatically updated):
                 </p>
-                <div className="flex bg-[var(--bg-subtle)] p-1.5 rounded-xl">
+                <div className="flex bg-[var(--bg-surface-soft)] p-1.5 rounded-xl border border-[var(--border-subtle)]">
                     {statusOptions.map(s => (
                         <div 
                             key={s} 
@@ -464,25 +473,25 @@ const BlueprintStepDetail: React.FC<{
             {step.checklist && step.checklist.length > 0 && (
                 <div className="mt-8 pt-6 border-t border-[var(--border-subtle)]">
                     <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-bold text-[var(--text-main)] text-lg">Checklist</h4>
-                        <span className="text-sm text-[var(--text-muted)] font-medium">
+                        <h4 className="text-section-title">Checklist</h4>
+                        <span className="text-meta">
                             {(step.checklistState || []).filter(Boolean).length} of {step.checklist.length} completed
                         </span>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-3 space-stack-sm">
                         {step.checklist.map((item, index) => {
                             const isChecked = (step.checklistState || Array(step.checklist.length).fill(false))[index] || false;
                             return (
                                 <label 
                                     key={index} 
-                                    className={`flex items-start gap-4 p-4 rounded-xl cursor-pointer transition-all duration-200 touch-manipulation min-h-[60px] ${
+                                    className={`surface-soft p-4 cursor-pointer transition-all duration-120 touch-manipulation min-h-[60px] flex items-start gap-4 interactive-gold ${
                                         isChecked 
-                                            ? 'border border-opacity-50 shadow-sm' 
-                                            : 'hover:bg-[var(--bg-subtle)] border border-transparent active:bg-[var(--bg-subtle)]'
+                                            ? 'border shadow-sm' 
+                                            : 'border-transparent'
                                     }`}
                                     style={isChecked ? {
-                                        background: 'rgba(160, 214, 180, 0.15)',
-                                        borderColor: 'rgba(160, 214, 180, 0.5)'
+                                        background: 'var(--brand-success)',
+                                        borderColor: 'var(--brand-gold)'
                                     } : {}}
                                 >
                                     <div className="relative shrink-0 mt-1">
@@ -492,22 +501,24 @@ const BlueprintStepDetail: React.FC<{
                                             onChange={e => handleChecklistChange(index, e.target.checked)}
                                             className="opacity-0 absolute h-5 w-5 cursor-pointer"
                                         />
-                                        <div className={`h-5 w-5 rounded border-2 transition-all duration-200 cursor-pointer flex items-center justify-center ${
+                                        <div className={`h-5 w-5 rounded border-2 transition-all duration-120 cursor-pointer flex items-center justify-center ${
                                             isChecked 
-                                                ? 'border-yellow-600 shadow-sm' 
+                                                ? 'shadow-sm' 
                                                 : 'border-gray-300 hover:border-gray-400'
                                         }`}
                                         style={isChecked ? {
-                                            background: 'linear-gradient(135deg, #C4A574 0%, #D9C18F 100%)'
+                                            background: 'linear-gradient(135deg, var(--brand-gold) 0%, var(--accent-light) 100%)',
+                                            borderColor: 'var(--brand-gold)'
                                         } : {}}>
                                             {isChecked && <PremiumCheckIcon className="h-3 w-3" />}
                                         </div>
                                     </div>
-                                    <span className={`text-base leading-relaxed transition-all duration-200 break-words ${
+                                    <span className={`text-step-title leading-relaxed transition-all duration-120 break-words ${
                                         isChecked 
-                                            ? 'line-through text-[var(--text-muted)] opacity-80' 
-                                            : 'text-[var(--text-main)]'
-                                    }`}>
+                                            ? 'line-through opacity-80' 
+                                            : ''
+                                    }`}
+                                    style={isChecked ? { color: 'var(--text-muted)' } : {}}>
                                         {item}
                                     </span>
                                 </label>
@@ -520,8 +531,8 @@ const BlueprintStepDetail: React.FC<{
             {/* Why this matters section - moved to be after checklist */}
             {step.why_it_matters && (
                 <div className="mt-6 pt-6 border-t border-[var(--border-subtle)]">
-                    <h4 className="font-bold text-[var(--text-main)] mb-2">Why this matters</h4>
-                    <p className="text-[var(--text-muted)] text-sm">{step.why_it_matters}</p>
+                    <h4 className="text-section-title mb-2">Why this matters</h4>
+                    <p className="text-meta">{step.why_it_matters}</p>
                 </div>
             )}
         </Card>
