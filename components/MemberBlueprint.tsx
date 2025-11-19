@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { KeyIcon, CheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, XMarkIcon } from './icons';
+import { KeyIcon, CheckIcon, PremiumCheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, XMarkIcon } from './icons';
 import { useBlueprintAccess } from '../src/hooks';
 import { useBlueprintData } from '../src/hooks/useBlueprintData';
 import type { StepWithProgress, SectionWithStats, StepStatus } from '../src/hooks/useBlueprintData';
@@ -69,9 +69,9 @@ const CelebrationToast: React.FC<{ message: string; isVisible: boolean; onClose:
 
 // --- Sub-components for Blueprint ---
 
-// Compact page heading component
+// Compact page heading component (desktop only)
 const BlueprintPageHeader: React.FC = () => (
-    <div className="mb-6">
+    <div className="mb-6 hidden lg:block">
         <h2 className="text-lg font-semibold text-[var(--text-main)] mb-1">Your 99 Steps Blueprint Progress</h2>
         <p className="text-sm text-[var(--text-muted)]">
             Your step-by-step roadmap to building a dominant restoration business.
@@ -106,10 +106,13 @@ const BlueprintProgressCard: React.FC<{ globalStats: { totalSteps: number; compl
                     <p className="font-bold text-xl text-[var(--accent)] font-playfair">{globalStats.masteryLevel}</p>
                 </div>
             </div>
-            <div className="w-full bg-[var(--bg-subtle)] rounded-full h-3 mt-4 shadow-inner">
+            <div className="w-full bg-gray-200 rounded-xl h-3 mt-4 shadow-inner">
                 <div 
-                    className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] h-3 rounded-full transition-all duration-500 ease-out shadow-sm"
-                    style={{ width: `${displayPercentage}%` }}
+                    className="h-3 rounded-xl transition-all duration-500 ease-out shadow-sm"
+                    style={{ 
+                        width: `${displayPercentage}%`,
+                        background: 'linear-gradient(90deg, #C4A574 0%, #D9C18F 100%)'
+                    }}
                 ></div>
             </div>
         </Card>
@@ -140,10 +143,13 @@ const MobileStickyProgressBar: React.FC<{ globalStats: { totalSteps: number; com
                     </div>
                 </div>
             </div>
-            <div className="w-full bg-[var(--bg-subtle)] rounded-full h-2 shadow-inner">
+            <div className="w-full bg-gray-200 rounded-xl h-2 shadow-inner">
                 <div 
-                    className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] h-2 rounded-full transition-all duration-500 ease-out shadow-sm"
-                    style={{ width: `${displayPercentage}%` }}
+                    className="h-2 rounded-xl transition-all duration-500 ease-out shadow-sm"
+                    style={{ 
+                        width: `${displayPercentage}%`,
+                        background: 'linear-gradient(90deg, #C4A574 0%, #D9C18F 100%)'
+                    }}
                 ></div>
             </div>
         </div>
@@ -202,7 +208,16 @@ const BlueprintSectionsList: React.FC<{
     const statusColors: Record<StepStatus, string> = {
         'not_started': 'bg-gray-200 text-gray-600',
         'in_progress': 'bg-blue-100 text-blue-800',
-        'completed': 'bg-green-100 text-green-800',
+        'completed': 'text-yellow-800 shadow-sm',
+    };
+
+    const getStatusStyle = (status: StepStatus) => {
+        if (status === 'completed') {
+            return {
+                background: 'linear-gradient(135deg, rgba(196, 165, 116, 0.2) 0%, rgba(217, 193, 143, 0.3) 100%)'
+            };
+        }
+        return {};
     };
 
     return (
@@ -218,7 +233,11 @@ const BlueprintSectionsList: React.FC<{
                         data-section-id={section.id}
                         className={`p-0 overflow-hidden transition-all duration-300 ${
                             isSelected ? 'ring-2 ring-[var(--accent)] bg-[var(--accent-bg-subtle)]' : ''
-                        } ${isFullyCompleted ? 'ring-2 ring-green-200 bg-gradient-to-r from-green-50 to-transparent' : ''}`}
+                        } ${isFullyCompleted ? 'ring-2 ring-yellow-200 shadow-lg' : ''}`}
+                        style={isFullyCompleted ? {
+                            background: 'linear-gradient(90deg, rgba(196, 165, 116, 0.1) 0%, rgba(217, 193, 143, 0.05) 100%)',
+                            boxShadow: '0 0 20px rgba(196, 165, 116, 0.3)'
+                        } : {}}
                     >
                         <div className={`p-5 transition-all duration-200 ${
                             isOpen ? 'bg-[var(--bg-subtle)]' : 'hover:bg-[var(--bg-subtle)]'
@@ -231,17 +250,20 @@ const BlueprintSectionsList: React.FC<{
                                     <div className="flex items-center gap-3 mb-2">
                                         <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{section.name}</h3>
                                         {isFullyCompleted && (
-                                            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-sm">
-                                                <CheckIcon className="w-4 h-4 text-white" />
+                                            <div className="w-6 h-6 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center shadow-lg animate-pulse-gold">
+                                                <PremiumCheckIcon className="w-4 h-4" />
                                             </div>
                                         )}
                                     </div>
                                     <div className="flex items-center gap-2 mb-2">
                                         <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                                            section.completionRate === 100 ? 'bg-green-100 text-green-800' :
+                                            section.completionRate === 100 ? 'text-yellow-800 shadow-sm' :
                                             section.completionRate > 0 ? 'bg-blue-100 text-blue-800' :
                                             'bg-gray-100 text-gray-600'
-                                        }`}>
+                                        }`}
+                                        style={section.completionRate === 100 ? {
+                                            background: 'linear-gradient(135deg, rgba(196, 165, 116, 0.2) 0%, rgba(217, 193, 143, 0.3) 100%)'
+                                        } : {}}>
                                             {section.completedSteps} of {section.totalSteps} completed
                                         </span>
                                         <span className="text-sm font-semibold text-[var(--accent)]">
@@ -262,7 +284,7 @@ const BlueprintSectionsList: React.FC<{
                                     aria-controls={`section-${section.id}-content`}
                                     aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${section.name} section`}
                                 >
-                                    <ChevronDownIcon className={`w-6 h-6 text-[var(--text-muted)] transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+                                    <ChevronDownIcon className={`w-6 h-6 text-[var(--text-muted)] transition-transform duration-[120ms] ease-out ${isOpen ? 'rotate-180' : ''}`} />
                                 </button>
                             </div>
                         </div>
@@ -273,10 +295,13 @@ const BlueprintSectionsList: React.FC<{
                                 id={`section-${section.id}-content`}
                                 aria-labelledby={`section-${section.id}-header`}
                             >
-                                <div className="w-full bg-[var(--bg-subtle)] rounded-full h-2 mb-6 shadow-inner">
+                                <div className="w-full bg-gray-200 rounded-xl h-2 mb-6 shadow-inner">
                                     <div 
-                                        className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] h-2 rounded-full transition-all duration-500 shadow-sm" 
-                                        style={{ width: `${section.completionRate}%` }}
+                                        className="h-2 rounded-xl transition-all duration-500 shadow-sm" 
+                                        style={{ 
+                                            width: `${section.completionRate}%`,
+                                            background: 'linear-gradient(90deg, #C4A574 0%, #D9C18F 100%)'
+                                        }}
                                     ></div>
                                 </div>
                                 <div className="space-y-3">
@@ -292,7 +317,11 @@ const BlueprintSectionsList: React.FC<{
                                                     isStepSelected 
                                                         ? 'bg-[var(--accent)] text-white shadow-lg scale-[1.02] transform' 
                                                         : 'hover:bg-[var(--bg-subtle)] hover:shadow-md active:scale-[0.98]'
-                                                } ${step.status === 'completed' && !isStepSelected ? 'bg-gradient-to-r from-green-50 to-transparent border border-green-200' : ''}`}
+                                                } ${step.status === 'completed' && !isStepSelected ? 'border border-opacity-70' : ''}`}
+                                                style={step.status === 'completed' && !isStepSelected ? {
+                                                    background: 'linear-gradient(90deg, rgba(160, 214, 180, 0.7) 0%, transparent 100%)',
+                                                    borderColor: 'rgba(160, 214, 180, 0.7)'
+                                                } : {}}
                                                 role="button"
                                                 tabIndex={0}
                                                 aria-label={`Select step ${step.step_number}: ${step.title}`}
@@ -307,12 +336,15 @@ const BlueprintSectionsList: React.FC<{
                                                     step.status === 'completed' 
                                                         ? isStepSelected 
                                                             ? 'bg-white text-[var(--accent)] scale-110 shadow-md' 
-                                                            : 'bg-green-500 text-white scale-105 shadow-sm'
+                                                            : 'scale-105 shadow-lg'
                                                         : isStepSelected
                                                             ? 'bg-white text-[var(--accent)] scale-105'
                                                             : 'bg-gray-200 text-gray-600'
-                                                }`}>
-                                                    {step.status === 'completed' ? <CheckIcon className="w-5 h-5"/> : step.step_number}
+                                                }`}
+                                                style={step.status === 'completed' && !isStepSelected ? {
+                                                    background: 'linear-gradient(135deg, #C4A574 0%, #D9C18F 100%)'
+                                                } : {}}>
+                                                    {step.status === 'completed' ? <PremiumCheckIcon className="w-5 h-5"/> : step.step_number}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className={`font-semibold leading-tight text-base mb-2 break-words ${
@@ -325,7 +357,8 @@ const BlueprintSectionsList: React.FC<{
                                                             isStepSelected 
                                                                 ? 'bg-white bg-opacity-20 text-white'
                                                                 : statusColors[step.status]
-                                                        }`}>
+                                                        }`}
+                                                        style={!isStepSelected ? getStatusStyle(step.status) : {}}>
                                                             {step.status.replace('_', ' ')}
                                                         </span>
                                                         {step.checklist && step.checklist.length > 0 && (
@@ -382,7 +415,16 @@ const BlueprintStepDetail: React.FC<{
     const statusColors: Record<StepStatus, string> = {
         'not_started': 'bg-gray-100 text-gray-700',
         'in_progress': 'bg-blue-100 text-blue-800',
-        'completed': 'bg-green-100 text-green-800',
+        'completed': 'text-yellow-800 shadow-sm',
+    };
+
+    const getDetailStatusStyle = (status: StepStatus) => {
+        if (status === 'completed') {
+            return {
+                background: 'linear-gradient(135deg, rgba(196, 165, 116, 0.2) 0%, rgba(217, 193, 143, 0.3) 100%)'
+            };
+        }
+        return {};
     };
 
     return (
@@ -407,6 +449,7 @@ const BlueprintStepDetail: React.FC<{
                             className={`flex-1 py-3 px-2 text-sm font-bold rounded-lg transition-all text-center ${
                                 step.status === s ? statusColors[s] + ' shadow-md transform scale-105' : 'text-[var(--text-muted)] opacity-60'
                             }`}
+                            style={step.status === s ? getDetailStatusStyle(s) : {}}
                         >
                             {s.replace('_', ' ')}
                         </div>
@@ -434,16 +477,32 @@ const BlueprintStepDetail: React.FC<{
                                     key={index} 
                                     className={`flex items-start gap-4 p-4 rounded-xl cursor-pointer transition-all duration-200 touch-manipulation min-h-[60px] ${
                                         isChecked 
-                                            ? 'bg-green-50 hover:bg-green-100 border border-green-200' 
+                                            ? 'border border-opacity-50 shadow-sm' 
                                             : 'hover:bg-[var(--bg-subtle)] border border-transparent active:bg-[var(--bg-subtle)]'
                                     }`}
+                                    style={isChecked ? {
+                                        background: 'rgba(160, 214, 180, 0.15)',
+                                        borderColor: 'rgba(160, 214, 180, 0.5)'
+                                    } : {}}
                                 >
-                                    <input 
-                                        type="checkbox" 
-                                        checked={isChecked}
-                                        onChange={e => handleChecklistChange(index, e.target.checked)}
-                                        className="h-5 w-5 mt-1 rounded-md border-2 border-gray-300 text-[var(--accent)] focus:ring-[var(--accent)] focus:ring-2 transition-all duration-150 cursor-pointer shrink-0"
-                                    />
+                                    <div className="relative shrink-0 mt-1">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={isChecked}
+                                            onChange={e => handleChecklistChange(index, e.target.checked)}
+                                            className="opacity-0 absolute h-5 w-5 cursor-pointer"
+                                        />
+                                        <div className={`h-5 w-5 rounded border-2 transition-all duration-200 cursor-pointer flex items-center justify-center ${
+                                            isChecked 
+                                                ? 'border-yellow-600 shadow-sm' 
+                                                : 'border-gray-300 hover:border-gray-400'
+                                        }`}
+                                        style={isChecked ? {
+                                            background: 'linear-gradient(135deg, #C4A574 0%, #D9C18F 100%)'
+                                        } : {}}>
+                                            {isChecked && <PremiumCheckIcon className="h-3 w-3" />}
+                                        </div>
+                                    </div>
                                     <span className={`text-base leading-relaxed transition-all duration-200 break-words ${
                                         isChecked 
                                             ? 'line-through text-[var(--text-muted)] opacity-80' 
@@ -734,7 +793,23 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
             />
             
             <style jsx>{`
-                /* Step completion animation - subtle scale and glow */
+                /* Premium gold pulse animation */
+                .animate-pulse-gold {
+                    animation: pulseGold 2s infinite;
+                }
+                
+                @keyframes pulseGold {
+                    0%, 100% { 
+                        box-shadow: 0 0 0 0 rgba(196, 165, 116, 0.7);
+                        transform: scale(1);
+                    }
+                    50% { 
+                        box-shadow: 0 0 0 8px rgba(196, 165, 116, 0);
+                        transform: scale(1.05);
+                    }
+                }
+
+                /* Step completion animation - premium gold glow */
                 .step-completing {
                     animation: stepComplete 0.3s ease-out;
                 }
@@ -742,21 +817,21 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 @keyframes stepComplete {
                     0% { 
                         transform: scale(1); 
-                        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+                        box-shadow: 0 0 0 0 rgba(196, 165, 116, 0);
                     }
                     50% { 
                         transform: scale(1.02); 
-                        box-shadow: 0 4px 12px 0 rgba(34, 197, 94, 0.2);
-                        background-color: rgba(34, 197, 94, 0.05);
+                        box-shadow: 0 4px 12px 0 rgba(196, 165, 116, 0.3);
+                        background-color: rgba(196, 165, 116, 0.1);
                     }
                     100% { 
                         transform: scale(1); 
-                        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+                        box-shadow: 0 0 0 0 rgba(196, 165, 116, 0);
                         background-color: transparent;
                     }
                 }
                 
-                /* Section completion animation - elegant glow and underline */
+                /* Section completion animation - premium gold glow */
                 .section-completing {
                     animation: sectionComplete 0.6s ease-out;
                     position: relative;
@@ -767,13 +842,13 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                         background-color: transparent;
                     }
                     25% { 
-                        background-color: rgba(34, 197, 94, 0.08);
+                        background-color: rgba(196, 165, 116, 0.08);
                     }
                     50% {
-                        background-color: rgba(34, 197, 94, 0.12);
+                        background-color: rgba(196, 165, 116, 0.12);
                     }
                     100% { 
-                        background-color: rgba(34, 197, 94, 0.05);
+                        background-color: rgba(196, 165, 116, 0.05);
                     }
                 }
                 
@@ -784,7 +859,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                     left: 0;
                     width: 0;
                     height: 2px;
-                    background: linear-gradient(90deg, rgba(34, 197, 94, 0.8), rgba(34, 197, 94, 0.4));
+                    background: linear-gradient(90deg, rgba(196, 165, 116, 0.8), rgba(196, 165, 116, 0.4));
                     animation: underlineGrow 0.8s ease-out;
                 }
                 
