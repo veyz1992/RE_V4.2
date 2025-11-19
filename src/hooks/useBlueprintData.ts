@@ -82,11 +82,11 @@ const deriveStatusFromChecklist = deriveStatus;
 
 // Calculate mastery level from completion percentage
 function getMasteryLevelLabel(percent: number): string {
-  if (percent >= 85) return 'Market Dominator';
-  if (percent >= 65) return 'Scaling Strong';
-  if (percent >= 35) return 'Building Momentum';
-  if (percent >= 10) return 'Getting Organized';
-  return 'Just Getting Started';
+  if (percent >= 90) return 'Empire Builder';
+  if (percent >= 60) return 'Scaling Up';
+  if (percent >= 30) return 'Building Momentum';
+  if (percent >= 0) return 'Getting Organized';
+  return 'Getting Organized';
 }
 
 // Legacy alias for backward compatibility
