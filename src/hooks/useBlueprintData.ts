@@ -81,13 +81,16 @@ function deriveStatus(values: boolean[]): StepStatus {
 const deriveStatusFromChecklist = deriveStatus;
 
 // Calculate mastery level from completion percentage
-const getMasteryLevel = (completionPercent: number): string => {
-  if (completionPercent >= 90) return 'Dominating Your Market';
-  if (completionPercent >= 70) return 'Scaling Strong';
-  if (completionPercent >= 35) return 'Building Momentum';
-  if (completionPercent >= 10) return 'Getting Organized';
+function getMasteryLevelLabel(percent: number): string {
+  if (percent >= 85) return 'Market Dominator';
+  if (percent >= 65) return 'Scaling Strong';
+  if (percent >= 35) return 'Building Momentum';
+  if (percent >= 10) return 'Getting Organized';
   return 'Just Getting Started';
-};
+}
+
+// Legacy alias for backward compatibility
+const getMasteryLevel = getMasteryLevelLabel;
 
 // Calculate global and section stats
 const calculateStats = (sections: SectionWithStats[]) => {
