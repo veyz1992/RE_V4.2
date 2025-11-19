@@ -80,12 +80,12 @@ function deriveStatus(values: boolean[]): StepStatus {
 // Legacy alias for backward compatibility
 const deriveStatusFromChecklist = deriveStatus;
 
-// Calculate mastery level from completion percentage
+// Calculate mastery level from completion percentage based on specified thresholds
 function getMasteryLevelLabel(percent: number): string {
-  if (percent >= 90) return 'Empire Builder';
-  if (percent >= 60) return 'Scaling Up';
-  if (percent >= 30) return 'Building Momentum';
-  if (percent >= 0) return 'Getting Organized';
+  if (percent >= 95) return 'Category King';
+  if (percent >= 75) return 'Market Leader';
+  if (percent >= 50) return 'Dialing In Systems';
+  if (percent >= 25) return 'Building Momentum';
   return 'Getting Organized';
 }
 

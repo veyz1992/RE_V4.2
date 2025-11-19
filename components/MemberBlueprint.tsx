@@ -1,3 +1,17 @@
+/*
+ * 99 Steps Blueprint Component - Updated Implementation
+ * 
+ * Key Changes Made:
+ * 1. Removed redundant H1 title (kept in navbar only)
+ * 2. Added compact page heading above progress card
+ * 3. Created mobile sticky progress bar for better UX
+ * 4. Fixed section accordion flicker by isolating toggle controls
+ * 5. Implemented responsive default open/closed behavior
+ * 6. Updated mastery level calculation with proper thresholds
+ * 7. Improved mobile layouts and spacing
+ * 8. Enhanced accessibility with proper ARIA attributes
+ */
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { KeyIcon, CheckIcon, ChevronDownIcon, ClipboardDocumentCheckIcon, XMarkIcon } from './icons';
 import { useBlueprintAccess } from '../src/hooks';
@@ -55,7 +69,18 @@ const CelebrationToast: React.FC<{ message: string; isVisible: boolean; onClose:
 
 // --- Sub-components for Blueprint ---
 
-const BlueprintHeader: React.FC<{ globalStats: { totalSteps: number; completedSteps: number; completionPercent: number; masteryLevel: string } }> = ({ globalStats }) => {
+// Compact page heading component
+const BlueprintPageHeader: React.FC = () => (
+    <div className="mb-6">
+        <h2 className="text-lg font-semibold text-[var(--text-main)] mb-1">Your 99 Steps Blueprint Progress</h2>
+        <p className="text-sm text-[var(--text-muted)]">
+            Your step-by-step roadmap to building a dominant restoration business.
+        </p>
+    </div>
+);
+
+// Desktop progress card component 
+const BlueprintProgressCard: React.FC<{ globalStats: { totalSteps: number; completedSteps: number; completionPercent: number; masteryLevel: string } }> = ({ globalStats }) => {
     const [displayPercentage, setDisplayPercentage] = useState(0);
 
     useEffect(() => {
@@ -64,15 +89,15 @@ const BlueprintHeader: React.FC<{ globalStats: { totalSteps: number; completedSt
     }, [globalStats.completionPercent]);
 
     return (
-        <Card className="sticky top-4 z-10">
+        <Card>
             <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
                 <div className="flex-1">
-                    <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-1">99 Steps Blueprint</h2>
+                    <h3 className="font-semibold text-lg text-[var(--text-main)] mb-1">Your Progress</h3>
                     <p className="text-base text-[var(--text-main)]">
                         <span className="font-bold text-[var(--accent)]">{globalStats.completedSteps}</span>
                         <span className="text-[var(--text-muted)]"> of </span>
                         <span className="font-bold">{globalStats.totalSteps}</span>
-                        <span className="text-[var(--text-muted)]"> steps completed • </span>
+                        <span className="text-[var(--text-muted)]"> steps completed – </span>
                         <span className="font-bold text-[var(--accent)]">{globalStats.completionPercent}%</span>
                     </p>
                 </div>
@@ -91,24 +116,66 @@ const BlueprintHeader: React.FC<{ globalStats: { totalSteps: number; completedSt
     );
 };
 
+// Mobile sticky progress bar component
+const MobileStickyProgressBar: React.FC<{ globalStats: { totalSteps: number; completedSteps: number; completionPercent: number; masteryLevel: string } }> = ({ globalStats }) => {
+    const [displayPercentage, setDisplayPercentage] = useState(0);
+
+    useEffect(() => {
+        const timeout = setTimeout(() => setDisplayPercentage(globalStats.completionPercent), 100);
+        return () => clearTimeout(timeout);
+    }, [globalStats.completionPercent]);
+
+    return (
+        <div className="sticky top-0 z-20 bg-[var(--bg-card)] border-b border-[var(--border-subtle)] px-4 py-3 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1">
+                        <span className="text-sm font-medium text-[var(--text-muted)]">Progress</span>
+                        <span className="text-sm font-bold text-[var(--accent)]">{globalStats.completionPercent}%</span>
+                    </div>
+                    <div className="w-px h-4 bg-[var(--border-subtle)]"></div>
+                    <div className="flex items-center gap-1">
+                        <span className="text-sm font-medium text-[var(--text-muted)]">Mastery</span>
+                        <span className="text-sm font-bold text-[var(--accent)]">{globalStats.masteryLevel}</span>
+                    </div>
+                </div>
+            </div>
+            <div className="w-full bg-[var(--bg-subtle)] rounded-full h-2 shadow-inner">
+                <div 
+                    className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] h-2 rounded-full transition-all duration-500 ease-out shadow-sm"
+                    style={{ width: `${displayPercentage}%` }}
+                ></div>
+            </div>
+        </div>
+    );
+};
+
 const BlueprintSectionsList: React.FC<{
     sections: SectionWithStats[];
     selectedSectionId: string | null;
     selectedStepId: string | null;
     onSelectSection: (sectionId: string) => void;
     onSelectStep: (stepId: string) => void;
-}> = ({ sections, selectedSectionId, selectedStepId, onSelectSection, onSelectStep }) => {
+    isMobile: boolean;
+}> = ({ sections, selectedSectionId, selectedStepId, onSelectSection, onSelectStep, isMobile }) => {
     const [expandedSectionIds, setExpandedSectionIds] = useState<Set<string>>(new Set());
     const [hasInitialized, setHasInitialized] = useState(false);
 
-    // Only auto-open the initial selected section once on mount
+    // Initialize default open/closed behavior based on screen size
     useEffect(() => {
-        if (!hasInitialized && selectedSectionId) {
-            setExpandedSectionIds(new Set([selectedSectionId]));
+        if (!hasInitialized && sections.length > 0) {
+            if (isMobile) {
+                // Mobile: all sections collapsed by default
+                setExpandedSectionIds(new Set());
+            } else {
+                // Desktop: first section open by default
+                setExpandedSectionIds(new Set([sections[0]?.id].filter(Boolean)));
+            }
             setHasInitialized(true);
         }
-    }, [selectedSectionId, hasInitialized]);
+    }, [sections, isMobile, hasInitialized]);
 
+    // Toggle section expand/collapse - only triggered by chevron button
     const toggleSection = (sectionId: string) => {
         setExpandedSectionIds(prev => {
             const newSet = new Set(prev);
@@ -119,11 +186,16 @@ const BlueprintSectionsList: React.FC<{
             }
             return newSet;
         });
+    };
+
+    // Handle section header click (select section but don't toggle)
+    const handleSectionHeaderClick = (sectionId: string) => {
         onSelectSection(sectionId);
     };
 
-    const handleStepClick = (stepId: string) => {
-        // Only select the step, don't change accordion state
+    // Handle step click (select step only, don't affect accordion)
+    const handleStepClick = (stepId: string, event: React.MouseEvent) => {
+        event.stopPropagation(); // Prevent any parent handlers
         onSelectStep(stepId);
     };
 
@@ -148,44 +220,59 @@ const BlueprintSectionsList: React.FC<{
                             isSelected ? 'ring-2 ring-[var(--accent)] bg-[var(--accent-bg-subtle)]' : ''
                         } ${isFullyCompleted ? 'ring-2 ring-green-200 bg-gradient-to-r from-green-50 to-transparent' : ''}`}
                     >
-                        <button 
-                            onClick={() => toggleSection(section.id)} 
-                            className={`w-full p-5 flex justify-between items-center text-left transition-all duration-200 ${
-                                isOpen ? 'bg-[var(--bg-subtle)]' : 'hover:bg-[var(--bg-subtle)]'
-                            }`}
-                        >
-                            <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-2">
-                                    <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{section.name}</h3>
-                                    {isFullyCompleted && (
-                                        <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-sm">
-                                            <CheckIcon className="w-4 h-4 text-white" />
-                                        </div>
+                        <div className={`p-5 transition-all duration-200 ${
+                            isOpen ? 'bg-[var(--bg-subtle)]' : 'hover:bg-[var(--bg-subtle)]'
+                        }`}>
+                            <div className="flex justify-between items-center">
+                                <div 
+                                    className="flex-1 cursor-pointer" 
+                                    onClick={() => handleSectionHeaderClick(section.id)}
+                                >
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">{section.name}</h3>
+                                        {isFullyCompleted && (
+                                            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-sm">
+                                                <CheckIcon className="w-4 h-4 text-white" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${
+                                            section.completionRate === 100 ? 'bg-green-100 text-green-800' :
+                                            section.completionRate > 0 ? 'bg-blue-100 text-blue-800' :
+                                            'bg-gray-100 text-gray-600'
+                                        }`}>
+                                            {section.completedSteps} of {section.totalSteps} completed
+                                        </span>
+                                        <span className="text-sm font-semibold text-[var(--accent)]">
+                                            {section.completionRate}%
+                                        </span>
+                                    </div>
+                                    {section.description && (
+                                        <p className="text-sm text-[var(--text-muted)] leading-relaxed">{section.description}</p>
                                     )}
                                 </div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className={`px-2 py-1 text-xs font-bold rounded-full ${
-                                        section.completionRate === 100 ? 'bg-green-100 text-green-800' :
-                                        section.completionRate > 0 ? 'bg-blue-100 text-blue-800' :
-                                        'bg-gray-100 text-gray-600'
-                                    }`}>
-                                        {section.completedSteps} of {section.totalSteps} completed
-                                    </span>
-                                    <span className="text-sm font-semibold text-[var(--accent)]">
-                                        {section.completionRate}%
-                                    </span>
-                                </div>
-                                {section.description && (
-                                    <p className="text-sm text-[var(--text-muted)] leading-relaxed">{section.description}</p>
-                                )}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleSection(section.id);
+                                    }}
+                                    className="p-2 rounded-lg hover:bg-[var(--bg-card)] transition-colors ml-4"
+                                    aria-expanded={isOpen}
+                                    aria-controls={`section-${section.id}-content`}
+                                    aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${section.name} section`}
+                                >
+                                    <ChevronDownIcon className={`w-6 h-6 text-[var(--text-muted)] transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+                                </button>
                             </div>
-                            <div className="flex items-center gap-3 ml-4">
-                                <ChevronDownIcon className={`w-6 h-6 text-[var(--text-muted)] transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
-                            </div>
-                        </button>
+                        </div>
                         
                         {isOpen && (
-                            <div className="px-5 pb-5 animate-fade-in">
+                            <div 
+                                className="px-5 pb-5 animate-fade-in"
+                                id={`section-${section.id}-content`}
+                                aria-labelledby={`section-${section.id}-header`}
+                            >
                                 <div className="w-full bg-[var(--bg-subtle)] rounded-full h-2 mb-6 shadow-inner">
                                     <div 
                                         className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] h-2 rounded-full transition-all duration-500 shadow-sm" 
@@ -200,12 +287,21 @@ const BlueprintSectionsList: React.FC<{
                                             <div
                                                 key={step.id}
                                                 data-step-id={step.id}
-                                                onClick={() => handleStepClick(step.id)}
-                                                className={`p-4 rounded-xl cursor-pointer transition-all duration-200 flex items-start gap-4 min-h-[80px] ${
+                                                onClick={(e) => handleStepClick(step.id, e)}
+                                                className={`p-4 rounded-xl cursor-pointer transition-all duration-200 flex items-start gap-4 min-h-[80px] touch-manipulation ${
                                                     isStepSelected 
                                                         ? 'bg-[var(--accent)] text-white shadow-lg scale-[1.02] transform' 
-                                                        : 'hover:bg-[var(--bg-subtle)] hover:shadow-md'
+                                                        : 'hover:bg-[var(--bg-subtle)] hover:shadow-md active:scale-[0.98]'
                                                 } ${step.status === 'completed' && !isStepSelected ? 'bg-gradient-to-r from-green-50 to-transparent border border-green-200' : ''}`}
+                                                role="button"
+                                                tabIndex={0}
+                                                aria-label={`Select step ${step.step_number}: ${step.title}`}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault();
+                                                        handleStepClick(step.id, e);
+                                                    }
+                                                }}
                                             >
                                                 <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center font-bold text-sm mt-1 transition-all duration-300 ${
                                                     step.status === 'completed' 
@@ -219,12 +315,12 @@ const BlueprintSectionsList: React.FC<{
                                                     {step.status === 'completed' ? <CheckIcon className="w-5 h-5"/> : step.step_number}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className={`font-semibold leading-tight text-base mb-2 ${
+                                                    <p className={`font-semibold leading-tight text-base mb-2 break-words ${
                                                         isStepSelected ? 'text-white' : 'text-[var(--text-main)]'
                                                     }`}>
                                                         {step.title}
                                                     </p>
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 flex-wrap">
                                                         <span className={`px-3 py-1 text-xs font-bold rounded-full transition-colors ${
                                                             isStepSelected 
                                                                 ? 'bg-white bg-opacity-20 text-white'
@@ -336,19 +432,19 @@ const BlueprintStepDetail: React.FC<{
                             return (
                                 <label 
                                     key={index} 
-                                    className={`flex items-start gap-4 p-4 rounded-xl cursor-pointer transition-all duration-200 ${
+                                    className={`flex items-start gap-4 p-4 rounded-xl cursor-pointer transition-all duration-200 touch-manipulation min-h-[60px] ${
                                         isChecked 
                                             ? 'bg-green-50 hover:bg-green-100 border border-green-200' 
-                                            : 'hover:bg-[var(--bg-subtle)] border border-transparent'
+                                            : 'hover:bg-[var(--bg-subtle)] border border-transparent active:bg-[var(--bg-subtle)]'
                                     }`}
                                 >
                                     <input 
                                         type="checkbox" 
                                         checked={isChecked}
                                         onChange={e => handleChecklistChange(index, e.target.checked)}
-                                        className="h-5 w-5 mt-0.5 rounded-md border-2 border-gray-300 text-[var(--accent)] focus:ring-[var(--accent)] focus:ring-2 transition-all duration-150 cursor-pointer"
+                                        className="h-5 w-5 mt-1 rounded-md border-2 border-gray-300 text-[var(--accent)] focus:ring-[var(--accent)] focus:ring-2 transition-all duration-150 cursor-pointer shrink-0"
                                     />
-                                    <span className={`text-base leading-relaxed transition-all duration-200 ${
+                                    <span className={`text-base leading-relaxed transition-all duration-200 break-words ${
                                         isChecked 
                                             ? 'line-through text-[var(--text-muted)] opacity-80' 
                                             : 'text-[var(--text-main)]'
@@ -576,25 +672,20 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
     // Render the full Blueprint UI when user has access
     return (
         <div className="animate-fade-in pb-8">
-            {/* Page Title - Only show on mobile, desktop uses header component title */}
-            <div className="mb-6 lg:hidden">
-                <h1 className="font-playfair text-3xl font-bold text-[var(--text-main)]">99 Steps Blueprint</h1>
-                <p className="mt-2 text-base text-[var(--text-muted)]">Your step-by-step roadmap to building a dominant restoration business.</p>
-            </div>
-
             {isMobile ? (
                 <div className="space-y-6">
-                    {/* Mobile Progress Header */}
-                    <BlueprintHeader globalStats={globalStats} />
+                    {/* Mobile: Sticky Progress Bar at top */}
+                    <MobileStickyProgressBar globalStats={globalStats} />
                     
                     {/* Mobile Sections List */}
-                    <div className="space-y-4">
+                    <div className="space-y-4 px-4">
                         <BlueprintSectionsList 
                             sections={sections}
                             selectedSectionId={selectedSectionId}
                             selectedStepId={selectedStepId}
                             onSelectSection={setSelectedSection}
                             onSelectStep={handleSelectStep}
+                            isMobile={isMobile}
                         />
                     </div>
 
@@ -608,8 +699,11 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                 </div>
             ) : (
                 <div className="space-y-8">
-                    {/* Desktop Progress Header */}
-                    <BlueprintHeader globalStats={globalStats} />
+                    {/* Desktop: Compact page header */}
+                    <BlueprintPageHeader />
+                    
+                    {/* Desktop: Progress Card */}
+                    <BlueprintProgressCard globalStats={globalStats} />
                     
                     {/* Desktop Two-Column Layout */}
                     <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 items-start">
@@ -620,6 +714,7 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                                 selectedStepId={selectedStepId}
                                 onSelectSection={setSelectedSection}
                                 onSelectStep={handleSelectStep}
+                                isMobile={isMobile}
                             />
                         </div>
                         <div className="xl:col-span-3 sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto">
