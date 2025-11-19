@@ -92,18 +92,33 @@ const BlueprintSectionsList: React.FC<{
     onSelectSection: (sectionId: string) => void;
     onSelectStep: (stepId: string) => void;
 }> = ({ sections, selectedSectionId, selectedStepId, onSelectSection, onSelectStep }) => {
-    const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+    const [expandedSectionIds, setExpandedSectionIds] = useState<Set<string>>(new Set());
+    const [hasInitialized, setHasInitialized] = useState(false);
 
-    // Auto-open the selected section
+    // Only auto-open the initial selected section once on mount
     useEffect(() => {
-        if (selectedSectionId && !openSections[selectedSectionId]) {
-            setOpenSections(prev => ({ ...prev, [selectedSectionId]: true }));
+        if (!hasInitialized && selectedSectionId) {
+            setExpandedSectionIds(new Set([selectedSectionId]));
+            setHasInitialized(true);
         }
-    }, [selectedSectionId, openSections]);
+    }, [selectedSectionId, hasInitialized]);
 
     const toggleSection = (sectionId: string) => {
-        setOpenSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
+        setExpandedSectionIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(sectionId)) {
+                newSet.delete(sectionId);
+            } else {
+                newSet.add(sectionId);
+            }
+            return newSet;
+        });
         onSelectSection(sectionId);
+    };
+
+    const handleStepClick = (stepId: string) => {
+        // Only select the step, don't change accordion state
+        onSelectStep(stepId);
     };
 
     const statusColors: Record<StepStatus, string> = {
@@ -116,7 +131,7 @@ const BlueprintSectionsList: React.FC<{
         <div className="space-y-6">
             {sections.map(section => {
                 const isSelected = section.id === selectedSectionId;
-                const isOpen = openSections[section.id];
+                const isOpen = expandedSectionIds.has(section.id);
                 const isFullyCompleted = section.completionRate === 100 && section.totalSteps > 0;
 
                 return (
@@ -162,7 +177,7 @@ const BlueprintSectionsList: React.FC<{
                                             <div
                                                 key={step.id}
                                                 data-step-id={step.id}
-                                                onClick={() => onSelectStep(step.id)}
+                                                onClick={() => handleStepClick(step.id)}
                                                 className={`p-3 rounded-lg cursor-pointer transition-all duration-200 flex items-start gap-3 ${
                                                     isStepSelected 
                                                         ? 'bg-[var(--accent-bg-subtle)] shadow-inner' 

@@ -82,11 +82,11 @@ const deriveStatusFromChecklist = deriveStatus;
 
 // Calculate mastery level from completion percentage
 const getMasteryLevel = (completionPercent: number): string => {
-  if (completionPercent === 100) return 'Restoration Elite';
-  if (completionPercent >= 75) return 'Dominating Your Market';
-  if (completionPercent >= 50) return 'Scaling Up';
-  if (completionPercent >= 25) return 'Building Momentum';
-  return 'Getting Organized';
+  if (completionPercent >= 90) return 'Dominating Your Market';
+  if (completionPercent >= 70) return 'Scaling Strong';
+  if (completionPercent >= 35) return 'Building Momentum';
+  if (completionPercent >= 10) return 'Getting Organized';
+  return 'Just Getting Started';
 };
 
 // Calculate global and section stats
@@ -166,7 +166,7 @@ export const useBlueprintData = () => {
       totalSteps: 0,
       completedSteps: 0,
       completionPercent: 0,
-      masteryLevel: 'Getting Organized',
+      masteryLevel: getMasteryLevel(0),
     },
     previousStepStatuses: new Map(),
     isInitialLoad: true,
