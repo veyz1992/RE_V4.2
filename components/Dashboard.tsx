@@ -6312,11 +6312,14 @@ const MemberDashboard: React.FC = () => {
                     .in('service_request_id', requestIds)
                     .order('created_at', { ascending: false });
 
-                if (activityError || !activityData) {
+                if (activityError) {
                     console.error('Failed to load service request activity', activityError);
                     setServiceRequestActivities({});
                 } else {
-                    const activityRows = (activityData as SupabaseServiceRequestActivity[] | null) ?? [];
+                    const activityRows = Array.isArray(activityData)
+                        ? (activityData as SupabaseServiceRequestActivity[])
+                        : [];
+
                     const missingActorUserIds = new Set<string>();
 
                     activityRows.forEach((row) => {
@@ -6332,10 +6335,13 @@ const MemberDashboard: React.FC = () => {
                             .select('user_id, display_name, email')
                             .in('user_id', Array.from(missingActorUserIds));
 
-                        if (actorError || !actorData) {
+                        if (actorError) {
                             console.error('Failed to load activity actor details', actorError);
                         } else {
-                            const actorRows = (actorData as SupabaseAdminProfileRow[] | null) ?? [];
+                            const actorRows = Array.isArray(actorData)
+                                ? (actorData as SupabaseAdminProfileRow[])
+                                : [];
+
                             actorRows.forEach((actor) => {
                                 if (actor.user_id) {
                                     adminNameByUserId.set(
