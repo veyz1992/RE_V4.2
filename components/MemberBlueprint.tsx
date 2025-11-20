@@ -106,12 +106,17 @@ const BlueprintProgressCard: React.FC<{ globalStats: { totalSteps: number; compl
                     <p className="font-bold text-xl text-[var(--brand-gold)] font-playfair">{globalStats.masteryLevel}</p>
                 </div>
             </div>
-            <div className="w-full bg-[var(--bg-surface-soft)] rounded-xl h-3 mt-4 shadow-inner border border-[var(--border-subtle)]">
+            <div className="w-full h-2 mt-4 shadow-inner" style={{
+                backgroundColor: 'var(--progress-track-bg)',
+                borderRadius: '8px'
+            }}>
                 <div 
-                    className="h-3 rounded-xl transition-all duration-200 ease-out shadow-sm"
+                    className="h-2 shadow-sm"
                     style={{ 
                         width: `${displayPercentage}%`,
-                        background: 'linear-gradient(90deg, var(--brand-gold) 0%, var(--accent-light) 100%)'
+                        backgroundColor: '#C4A574',
+                        borderRadius: '999px',
+                        transition: 'width 0.35s ease'
                     }}
                 ></div>
             </div>
@@ -143,12 +148,17 @@ const MobileStickyProgressBar: React.FC<{ globalStats: { totalSteps: number; com
                     </div>
                 </div>
             </div>
-            <div className="w-full bg-[var(--bg-surface-soft)] rounded-xl h-2 shadow-inner border border-[var(--border-subtle)]">
+            <div className="w-full h-2 shadow-inner" style={{
+                backgroundColor: 'var(--progress-track-bg)',
+                borderRadius: '8px'
+            }}>
                 <div 
-                    className="h-2 rounded-xl transition-all duration-200 ease-out shadow-sm"
+                    className="h-2 shadow-sm"
                     style={{ 
                         width: `${displayPercentage}%`,
-                        background: 'linear-gradient(90deg, var(--brand-gold) 0%, var(--accent-light) 100%)'
+                        backgroundColor: '#C4A574',
+                        borderRadius: '999px',
+                        transition: 'width 0.35s ease'
                     }}
                 ></div>
             </div>
@@ -202,6 +212,7 @@ const BlueprintSectionsList: React.FC<{
     // Handle step click (select step only, don't affect accordion)
     const handleStepClick = (stepId: string, event: React.MouseEvent) => {
         event.stopPropagation(); // Prevent any parent handlers
+        // Ensure step selection persists and doesn't get reset
         onSelectStep(stepId);
     };
 
@@ -253,8 +264,8 @@ const BlueprintSectionsList: React.FC<{
                                     <div className="flex items-center gap-3 mb-2">
                                         <h3 className="text-section-title">{section.name}</h3>
                                         {isFullyCompleted && (
-                                            <div className="w-6 h-6 bg-gradient-to-br from-[var(--brand-gold)] to-[var(--accent-light)] rounded-full flex items-center justify-center shadow-lg animate-pulse-gold">
-                                                <PremiumCheckIcon className="w-4 h-4" />
+                                            <div className="w-6 h-6 rounded-full flex items-center justify-center shadow-lg animate-pulse-gold" style={{background: '#C4A574'}}>
+                                                <PremiumCheckIcon className="w-4 h-4" style={{fill: 'var(--checkmark-color)'}} />
                                             </div>
                                         )}
                                     </div>
@@ -300,12 +311,17 @@ const BlueprintSectionsList: React.FC<{
                                 id={`section-${section.id}-content`}
                                 aria-labelledby={`section-${section.id}-header`}
                             >
-                                <div className="w-full bg-[var(--bg-surface-soft)] rounded-xl h-2 mb-6 shadow-inner border border-[var(--border-subtle)]">
+                                <div className="w-full h-2 mb-6 shadow-inner" style={{
+                                    backgroundColor: 'var(--progress-track-bg)',
+                                    borderRadius: '8px'
+                                }}>
                                     <div 
-                                        className="h-2 rounded-xl transition-all duration-200 shadow-sm" 
+                                        className="h-2 shadow-sm" 
                                         style={{ 
                                             width: `${section.completionRate}%`,
-                                            background: 'linear-gradient(90deg, var(--brand-gold) 0%, var(--accent-light) 100%)'
+                                            backgroundColor: '#C4A574',
+                                            borderRadius: '999px',
+                                            transition: 'width 0.35s ease'
                                         }}
                                     ></div>
                                 </div>
@@ -349,9 +365,9 @@ const BlueprintSectionsList: React.FC<{
                                                             : 'bg-gray-200 text-gray-600'
                                                 }`}
                                                 style={step.status === 'completed' && !isStepSelected ? {
-                                                    background: 'linear-gradient(135deg, var(--brand-gold) 0%, var(--accent-light) 100%)'
+                                                    background: '#C4A574'
                                                 } : {}}>
-                                                    {step.status === 'completed' ? <PremiumCheckIcon className="w-5 h-5"/> : step.step_number}
+                                                    {step.status === 'completed' ? <PremiumCheckIcon className="w-5 h-5" style={{fill: 'var(--checkmark-color)'}} /> : step.step_number}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className={`text-step-title mb-2 break-words ${
@@ -448,9 +464,6 @@ const BlueprintStepDetail: React.FC<{
             )}
             
             <div className="mt-6">
-                <p className="text-meta mb-3">
-                    Status (automatically updated):
-                </p>
                 <div className="flex bg-[var(--bg-surface-soft)] p-1.5 rounded-xl border border-[var(--border-subtle)]">
                     {statusOptions.map(s => (
                         <div 
@@ -507,10 +520,10 @@ const BlueprintStepDetail: React.FC<{
                                                 : 'border-gray-300 hover:border-gray-400'
                                         }`}
                                         style={isChecked ? {
-                                            background: 'linear-gradient(135deg, var(--brand-gold) 0%, var(--accent-light) 100%)',
-                                            borderColor: 'var(--brand-gold)'
+                                            background: '#C4A574',
+                                            borderColor: '#C4A574'
                                         } : {}}>
-                                            {isChecked && <PremiumCheckIcon className="h-3 w-3" />}
+                                            {isChecked && <PremiumCheckIcon className="h-3 w-3" style={{fill: 'var(--checkmark-color)'}} />}
                                         </div>
                                     </div>
                                     <span className={`text-step-title leading-relaxed transition-all duration-120 break-words ${
@@ -654,11 +667,23 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
     };
 
     const handleSelectStep = (stepId: string) => {
+        // Always ensure we set the step, regardless of section state
         setSelectedStep(stepId);
+        
+        // Find which section contains this step and ensure it's selected too
+        const containingSection = sections.find(section => 
+            section.steps.some(step => step.id === stepId)
+        );
+        if (containingSection && containingSection.id !== selectedSectionId) {
+            setSelectedSection(containingSection.id);
+        }
     };
 
     const handleCloseDrawer = () => {
-        setSelectedStep('');
+        // Only clear selection on mobile when explicitly closing drawer
+        if (isMobile) {
+            setSelectedStep('');
+        }
     };
 
     const isMobileDrawerOpen = isMobile && !!selectedStepId;
