@@ -235,7 +235,6 @@ type AuthState = {
   user: SupabaseUser | null;
   isAdmin: boolean;
   loading: boolean;
-  isInitializing: boolean;
 };
 
 export const useAuth = (): AuthContextValue => {
@@ -251,12 +250,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     session: null,
     user: null,
     isAdmin: false,
-    loading: false,
-    isInitializing: true,
+    loading: true,
   });
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const { session, user, isAdmin, loading, isInitializing } = authState;
+  const { session, user, isAdmin, loading } = authState;
 
   useEffect(() => {
     let isMounted = true;
@@ -274,7 +272,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           user: null,
           isAdmin: false,
           loading: false,
-          isInitializing: false,
         });
         return;
       }
@@ -283,8 +280,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...previous,
         session: data.session ?? null,
         user: data.session?.user ?? null,
-        loading: data.session ? true : false,
-        isInitializing: false,
+        loading: false,
       }));
     };
 
@@ -298,7 +294,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user: null,
         isAdmin: false,
         loading: false,
-        isInitializing: false,
       });
     });
 
@@ -312,7 +307,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         session: newSession ?? null,
         user: newSession?.user ?? null,
         isAdmin: false,
-        loading: newSession !== null,
       }));
     });
 
@@ -334,7 +328,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     let isMounted = true;
-    setAuthState((previous) => ({ ...previous, loading: true }));
 
     const determineAdminStatus = async () => {
       try {
@@ -497,7 +490,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user: null,
       isAdmin: false,
       loading: false,
-      isInitializing: false,
     });
     setCurrentUser(null);
   }, []);
@@ -512,14 +504,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user,
       isAdmin,
       loading,
-      isLoading: isInitializing, // Use isInitializing for the main loading screen
+      isLoading: loading, // Use loading for the main loading screen (now only initial bootstrap)
       currentUser,
       login,
       adminLogin,
       logout,
       updateUser,
     }),
-    [session, user, isAdmin, loading, isInitializing, currentUser, login, adminLogin, logout, updateUser],
+    [session, user, isAdmin, loading, currentUser, login, adminLogin, logout, updateUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
