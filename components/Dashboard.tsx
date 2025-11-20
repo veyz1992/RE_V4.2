@@ -1087,174 +1087,6 @@ const MyRequests: React.FC<{
         ? activitiesByRequest[selectedRequest.id] ?? []
         : [];
 
-    const fetchRequests = useCallback(async () => {
-        if (!session?.user?.id) {
-            setRequests([]);
-            setActivitiesByRequest({});
-            return;
-        }
-
-        setIsLoading(true);
-
-        try {
-            const { data, error: requestError } = await supabase
-                .from('service_requests')
-                // Request only real columns; request_type/priority map to MemberServiceRequest.requestType/priority
-                .select(`
-                    id,
-                    profile_id,
-                    request_type,
-                    title,
-                    description,
-                    priority,
-                    status,
-                    assigned_admin_id,
-                    created_at,
-                    updated_at
-                `)
-                .eq('profile_id', session.user.id)
-                .order('created_at', { ascending: false });
-
-            if (requestError) {
-                throw requestError;
-            }
-
-            const rows = (data as SupabaseServiceRequest[] | null) ?? [];
-
-            const assignedAdminIds = Array.from(
-                new Set(
-                    rows
-                        .map((row) => row.assigned_admin_id)
-                        .filter((value): value is string | number => value !== null && value !== undefined),
-                ),
-            ).map((value) => String(value));
-
-            let adminProfiles: SupabaseAdminProfileRow[] = [];
-            if (assignedAdminIds.length > 0) {
-                const { data: adminData, error: adminError } = await supabase
-                    .from('admin_profiles')
-                    .select('id, user_id, display_name, email')
-                    .in('id', assignedAdminIds);
-
-                if (adminError) {
-                    console.error('Failed to load assigned admin details', adminError);
-                } else {
-                    adminProfiles = (adminData as SupabaseAdminProfileRow[] | null) ?? [];
-                }
-            }
-
-            const adminNameById = new Map<string, string>(
-                adminProfiles.map((admin) => [String(admin.id), admin.display_name ?? admin.email ?? String(admin.id)] as const),
-            );
-            const adminNameByUserId = new Map<string, string>(
-                adminProfiles
-                    .filter((admin) => Boolean(admin.user_id))
-                    .map(
-                        (admin) =>
-                            [
-                                admin.user_id as string,
-                                admin.display_name ?? admin.email ?? (admin.user_id as string),
-                            ] as const,
-                    ),
-            );
-
-            const mappedRequests = rows.map((row) => {
-                const base = mapMemberServiceRequestRow(row);
-                return {
-                    ...base,
-                    assignedAdminName: base.assignedAdminId
-                        ? adminNameById.get(String(base.assignedAdminId)) ?? null
-                        : null,
-                };
-            });
-
-            setRequests(mappedRequests);
-
-            const requestIds = rows
-                .map((row) => row.id)
-                .filter((value): value is string | number => value !== null && value !== undefined);
-
-            if (requestIds.length > 0) {
-                const { data: activityData, error: activityError } = await supabase
-                    .from('service_request_activity')
-                    .select('*')
-                    .in('service_request_id', requestIds)
-                    .order('created_at', { ascending: false });
-
-                if (activityError) {
-                    console.error('Failed to load service request activity', activityError);
-                    setActivitiesByRequest({});
-                } else {
-                    const activityRows = (activityData as SupabaseServiceRequestActivity[] | null) ?? [];
-                    const missingActorUserIds = new Set<string>();
-
-                    activityRows.forEach((row) => {
-                        const actorUserId = row.actor_user_id;
-                        if (actorUserId && !adminNameByUserId.has(actorUserId)) {
-                            missingActorUserIds.add(actorUserId);
-                        }
-                    });
-
-                    if (missingActorUserIds.size > 0) {
-                        const { data: actorData, error: actorError } = await supabase
-                            .from('admin_profiles')
-                            .select('user_id, display_name, email')
-                            .in('user_id', Array.from(missingActorUserIds));
-
-                        if (actorError) {
-                            console.error('Failed to load activity actor details', actorError);
-                        } else {
-                            const actorRows = (actorData as SupabaseAdminProfileRow[] | null) ?? [];
-                            actorRows.forEach((actor) => {
-                                if (actor.user_id) {
-                                    adminNameByUserId.set(
-                                        actor.user_id,
-                                        actor.display_name ?? actor.email ?? actor.user_id,
-                                    );
-                                }
-                            });
-                        }
-                    }
-
-                    const grouped: Record<string, ServiceRequestActivityLog[]> = {};
-
-                    activityRows.forEach((row) => {
-                        const mapped = mapServiceRequestActivityRow(row);
-                        if (!mapped.actorName && mapped.actorUserId) {
-                            const fallback = adminNameByUserId.get(mapped.actorUserId);
-                            if (fallback) {
-                                mapped.actorName = fallback;
-                            }
-                        }
-                        if (!mapped.serviceRequestId) {
-                            return;
-                        }
-                        if (!grouped[mapped.serviceRequestId]) {
-                            grouped[mapped.serviceRequestId] = [];
-                        }
-                        grouped[mapped.serviceRequestId].push(mapped);
-                    });
-
-                    setActivitiesByRequest(grouped);
-                }
-            } else {
-                setActivitiesByRequest({});
-            }
-
-            setError(null);
-        } catch (fetchError) {
-            console.error('Failed to load service requests', fetchError);
-            setError('We were unable to load your service requests. Please try again.');
-            setRequests([]);
-            setActivitiesByRequest({});
-        } finally {
-            setIsLoading(false);
-        }
-    }, [session?.user?.id]);
-
-    useEffect(() => {
-        void fetchRequests();
-    }, [fetchRequests, refreshKey]);
 
     const handleStatusFilterChange = (value: string) => {
         if (value === 'all' || value === 'open' || value === 'in_progress' || value === 'completed' || value === 'canceled') {
@@ -6408,8 +6240,14 @@ const MemberDashboard: React.FC = () => {
                 .eq('profile_id', session.user.id)
                 .order('created_at', { ascending: false });
 
-            if (requestError) {
-                throw requestError;
+            if (requestError || !data) {
+                console.error('Failed to load service requests', requestError);
+                setServiceRequestsError('We were unable to load your service requests. Please try again.');
+                setServiceRequests([]);
+                setServiceRequestActivities({});
+                setServiceRequestsLoading(false);
+                setServiceRequestsLoadedOnce(true);
+                return;
             }
 
             const rows = (data as SupabaseServiceRequest[] | null) ?? [];
@@ -6429,7 +6267,7 @@ const MemberDashboard: React.FC = () => {
                     .select('id, user_id, display_name, email')
                     .in('id', assignedAdminIds);
 
-                if (adminError) {
+                if (adminError || !adminData) {
                     console.error('Failed to load assigned admin details', adminError);
                 } else {
                     adminProfiles = (adminData as SupabaseAdminProfileRow[] | null) ?? [];
@@ -6474,7 +6312,7 @@ const MemberDashboard: React.FC = () => {
                     .in('service_request_id', requestIds)
                     .order('created_at', { ascending: false });
 
-                if (activityError) {
+                if (activityError || !activityData) {
                     console.error('Failed to load service request activity', activityError);
                     setServiceRequestActivities({});
                 } else {
@@ -6494,7 +6332,7 @@ const MemberDashboard: React.FC = () => {
                             .select('user_id, display_name, email')
                             .in('user_id', Array.from(missingActorUserIds));
 
-                        if (actorError) {
+                        if (actorError || !actorData) {
                             console.error('Failed to load activity actor details', actorError);
                         } else {
                             const actorRows = (actorData as SupabaseAdminProfileRow[] | null) ?? [];
