@@ -9,6 +9,28 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+      /*
+       * RESTORATION EXPERTISE - UNIFIED DESIGN SYSTEM
+       * 
+       * Primary Accent Color: #C8AD7B (gold)
+       * 
+       * Design Tokens:
+       * --accent: Primary brand accent color (#C8AD7B)
+       * --accent-soft: Lighter variant for subtle backgrounds
+       * --accent-strong: Darker variant for borders/emphasis  
+       * --accent-soft-bg: Soft background tint
+       * 
+       * Usage:
+       * - All progress bars use var(--accent)
+       * - All completion badges/checkmarks use accent system
+       * - Section highlights and selections use accent variants
+       * - Step completion indicators use accent-soft backgrounds
+       * - Custom checkboxes use accent-soft with accent borders
+       * 
+       * Checkmark Visibility:
+       * Light mode: Dark neutral (#1f2937) on accent-soft backgrounds
+       * Dark mode: Near-white (#f1f5f9) on accent-soft backgrounds
+       */
       :root {
         /* Premium Background System */
         --bg-app: #FAFAF9; /* Warm off-white app background */
@@ -22,11 +44,16 @@
         --bg-input: #ffffff;
         --bg-overlay: rgba(44, 44, 44, 0.6);
 
-        /* Premium Brand Colors */
-        --brand-gold: #C4A574; /* Primary premium gold */
-        --brand-gold-soft: rgba(196, 165, 116, 0.1); /* Soft gold backgrounds */
-        --brand-success: rgba(160, 214, 180, 0.15); /* Premium subtle green */
-        --accent-aqua: #5DADE2; /* Supporting aqua accent */
+        /* Unified Accent System - Primary Brand Color */
+        --accent: #C8AD7B; /* Primary accent - gold */
+        --accent-soft: #D4C197; /* Slightly lighter for subtle backgrounds */
+        --accent-strong: #B5966A; /* Slightly darker for borders/emphasis */
+        --accent-soft-bg: rgba(200, 173, 123, 0.1); /* Soft background tint */
+
+        /* Legacy Brand Colors (mapped to unified system) */
+        --brand-gold: #C8AD7B;
+        --brand-gold-soft: rgba(200, 173, 123, 0.1);
+        --brand-success: rgba(160, 214, 180, 0.15); /* Keep semantic green */
 
         /* Typography Scale */
         --text-primary: #2C2C2C; /* Primary dark charcoal */
@@ -39,13 +66,12 @@
         /* UI Framework */
         --border-subtle: #E5E7EB;
         
-        /* Enhanced Accent System */
-        --accent: #C4A574; /* Updated to premium brand gold */
-        --accent-dark: #B8956A; /* Darker premium gold */
-        --accent-light: #D9C18F; /* Lighter premium gold */
+        /* Legacy Enhanced Accent System (mapped to unified) */
+        --accent-dark: #B5966A; /* Mapped to accent-strong */
+        --accent-light: #D4C197; /* Mapped to accent-soft */
         --accent-text: #2C2C2C;
-        --accent-bg-subtle: rgba(196, 165, 116, 0.1);
-        --accent-hover: #D9C18F;
+        --accent-bg-subtle: rgba(200, 173, 123, 0.1);
+        --accent-hover: #D4C197;
 
         /* Semantic Colors */
         --success: #10B981;
@@ -60,7 +86,10 @@
         
         /* Progress bar theme tokens */
         --progress-track-bg: #E9E9E9;
-        --checkmark-color: #3A3A3A;
+        
+        /* Checkmark visibility tokens */
+        --checkmark-color: #1f2937; /* Dark neutral for high contrast */
+        --checkmark-bg-light: var(--accent-soft-bg); /* Light accent background */
       }
       
       html[data-theme='dark'] {
@@ -76,11 +105,16 @@
         --bg-input: #404040;
         --bg-overlay: rgba(0, 0, 0, 0.8);
 
-        /* Dark Premium Brand Colors */
-        --brand-gold: #E8D7A0; /* Brighter gold for dark contrast */
-        --brand-gold-soft: rgba(232, 215, 160, 0.1); /* Soft gold on dark */
-        --brand-success: rgba(160, 214, 180, 0.1); /* Subtle green on dark */
-        --accent-aqua: #7EC8E3; /* Lighter aqua for dark mode */
+        /* Unified Dark Accent System - Same Primary Brand Color */
+        --accent: #C8AD7B; /* Same primary accent in dark mode */
+        --accent-soft: #A6916A; /* Darker tinted for dark mode backgrounds */
+        --accent-strong: #D4C197; /* Slightly lighter for borders/emphasis in dark */
+        --accent-soft-bg: rgba(200, 173, 123, 0.15); /* Darker tinted background for dark mode */
+
+        /* Legacy Dark Brand Colors (mapped to unified system) */
+        --brand-gold: #C8AD7B;
+        --brand-gold-soft: rgba(200, 173, 123, 0.15);
+        --brand-success: rgba(160, 214, 180, 0.1); /* Keep semantic green */
         
         /* Dark Typography */
         --text-primary: #F5F5F5; /* Light text on dark */
@@ -93,13 +127,12 @@
         /* Dark UI Framework */
         --border-subtle: #404040;
         
-        /* Dark Enhanced Accent System */
-        --accent: #E8D7A0; /* Bright gold for contrast */
-        --accent-dark: #D4AF37; /* Traditional gold */
-        --accent-light: #F0E6C0; /* Light gold */
+        /* Legacy Dark Enhanced Accent System (mapped to unified) */
+        --accent-dark: #A6916A; /* Mapped to accent-soft for dark */
+        --accent-light: #D4C197; /* Mapped to accent-strong for dark */
         --accent-text: #1A1A1A; /* Dark text on gold */
-        --accent-bg-subtle: rgba(232, 215, 160, 0.1);
-        --accent-hover: #F0E6C0;
+        --accent-bg-subtle: rgba(200, 173, 123, 0.15);
+        --accent-hover: #D4C197;
 
         /* Dark Elevation System */
         --elevation-low: 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -108,7 +141,10 @@
         
         /* Dark progress bar theme tokens */
         --progress-track-bg: #323232;
-        --checkmark-color: #1A1A1A;
+        
+        /* Dark checkmark visibility tokens */
+        --checkmark-color: #f1f5f9; /* Near-white for high contrast */
+        --checkmark-bg-dark: var(--accent-soft-bg); /* Dark accent background */
       }
       
       body {

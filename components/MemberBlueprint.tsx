@@ -94,16 +94,16 @@ const BlueprintProgressCard: React.FC<{ globalStats: { totalSteps: number; compl
                 <div className="flex-1">
                     <h3 className="text-section-title mb-2">Your Progress</h3>
                     <p className="text-step-title">
-                        <span className="font-bold text-[var(--brand-gold)]">{globalStats.completedSteps}</span>
+                        <span className="font-bold text-[var(--accent)]">{globalStats.completedSteps}</span>
                         <span className="text-[var(--text-muted)]"> of </span>
                         <span className="font-bold text-[var(--text-primary)]">{globalStats.totalSteps}</span>
                         <span className="text-[var(--text-muted)]"> steps completed – </span>
-                        <span className="font-bold text-[var(--brand-gold)]">{globalStats.completionPercent}%</span>
+                        <span className="font-bold text-[var(--accent)]">{globalStats.completionPercent}%</span>
                     </p>
                 </div>
                 <div className="text-left lg:text-right">
                     <p className="text-meta mb-1">Mastery Level</p>
-                    <p className="font-bold text-xl text-[var(--brand-gold)] font-playfair">{globalStats.masteryLevel}</p>
+                    <p className="font-bold text-xl text-[var(--accent)] font-playfair">{globalStats.masteryLevel}</p>
                 </div>
             </div>
             <div className="w-full h-2 mt-4 shadow-inner" style={{
@@ -114,7 +114,7 @@ const BlueprintProgressCard: React.FC<{ globalStats: { totalSteps: number; compl
                     className="h-2 shadow-sm"
                     style={{ 
                         width: `${displayPercentage}%`,
-                        backgroundColor: '#C4A574',
+                        backgroundColor: 'var(--accent)',
                         borderRadius: '999px',
                         transition: 'width 0.35s ease'
                     }}
@@ -139,12 +139,12 @@ const MobileStickyProgressBar: React.FC<{ globalStats: { totalSteps: number; com
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1">
                         <span className="text-meta">Progress</span>
-                        <span className="text-sm font-bold text-[var(--brand-gold)]">{globalStats.completionPercent}%</span>
+                        <span className="text-sm font-bold text-[var(--accent)]">{globalStats.completionPercent}%</span>
                     </div>
                     <div className="w-px h-4 bg-[var(--border-subtle)]"></div>
                     <div className="flex items-center gap-1">
                         <span className="text-meta">Mastery</span>
-                        <span className="text-sm font-bold text-[var(--brand-gold)]">{globalStats.masteryLevel}</span>
+                        <span className="text-sm font-bold text-[var(--accent)]">{globalStats.masteryLevel}</span>
                     </div>
                 </div>
             </div>
@@ -156,7 +156,7 @@ const MobileStickyProgressBar: React.FC<{ globalStats: { totalSteps: number; com
                     className="h-2 shadow-sm"
                     style={{ 
                         width: `${displayPercentage}%`,
-                        backgroundColor: '#C4A574',
+                        backgroundColor: 'var(--accent)',
                         borderRadius: '999px',
                         transition: 'width 0.35s ease'
                     }}
@@ -225,9 +225,9 @@ const BlueprintSectionsList: React.FC<{
     const getStatusStyle = (status: StepStatus) => {
         if (status === 'completed') {
             return {
-                background: 'var(--brand-gold-soft)',
-                color: 'var(--brand-gold)',
-                borderColor: 'var(--brand-gold)'
+                background: 'var(--accent-soft-bg)',
+                color: 'var(--accent)',
+                borderColor: 'var(--accent)'
             };
         }
         return {};
@@ -245,12 +245,12 @@ const BlueprintSectionsList: React.FC<{
                         key={section.id}
                         data-section-id={section.id}
                         className={`surface-card p-0 overflow-hidden transition-all duration-300 ${
-                            isSelected ? 'ring-2 ring-[var(--brand-gold)] bg-[var(--brand-gold-soft)]' : ''
+                            isSelected ? 'ring-2 ring-[var(--accent)] bg-[var(--accent-soft-bg)]' : ''
                         } ${isFullyCompleted ? 'ring-2 shadow-lg' : ''}`}
                         style={isFullyCompleted ? {
-                            background: 'var(--brand-gold-soft)',
-                            boxShadow: '0 0 20px var(--brand-gold-soft), var(--elevation-high)',
-                            borderColor: 'var(--brand-gold)'
+                            background: 'var(--accent-soft-bg)',
+                            boxShadow: '0 0 20px var(--accent-soft-bg), var(--elevation-high)',
+                            borderColor: 'var(--accent)'
                         } : {}}
                     >
                         <div className={`p-5 transition-all duration-120 ${
@@ -264,7 +264,7 @@ const BlueprintSectionsList: React.FC<{
                                     <div className="flex items-center gap-3 mb-2">
                                         <h3 className="text-section-title">{section.name}</h3>
                                         {isFullyCompleted && (
-                                            <div className="w-6 h-6 rounded-full flex items-center justify-center shadow-lg animate-pulse-gold" style={{background: '#C4A574'}}>
+                                            <div className="w-6 h-6 rounded-full flex items-center justify-center shadow-lg animate-pulse-gold" style={{background: 'var(--accent-soft)', border: '2px solid var(--accent)'}}>
                                                 <PremiumCheckIcon className="w-4 h-4" style={{fill: 'var(--checkmark-color)'}} />
                                             </div>
                                         )}
@@ -276,13 +276,13 @@ const BlueprintSectionsList: React.FC<{
                                             'bg-gray-100 text-gray-600'
                                         }`}
                                         style={section.completionRate === 100 ? {
-                                            background: 'var(--brand-gold-soft)',
-                                            color: 'var(--brand-gold)',
-                                            border: '1px solid var(--brand-gold)'
+                                            background: 'var(--accent-soft-bg)',
+                                            color: 'var(--accent)',
+                                            border: '1px solid var(--accent)'
                                         } : {}}>
                                             {section.completedSteps} of {section.totalSteps} completed
                                         </span>
-                                        <span className="text-sm font-semibold text-[var(--brand-gold)]">
+                                        <span className="text-sm font-semibold text-[var(--accent)]">
                                             {section.completionRate}%
                                         </span>
                                     </div>
@@ -319,7 +319,7 @@ const BlueprintSectionsList: React.FC<{
                                         className="h-2 shadow-sm" 
                                         style={{ 
                                             width: `${section.completionRate}%`,
-                                            backgroundColor: '#C4A574',
+                                            backgroundColor: 'var(--accent)',
                                             borderRadius: '999px',
                                             transition: 'width 0.35s ease'
                                         }}
@@ -336,14 +336,14 @@ const BlueprintSectionsList: React.FC<{
                                                 onClick={(e) => handleStepClick(step.id, e)}
                                                 className={`surface-soft p-4 cursor-pointer transition-all duration-120 flex items-start gap-4 min-h-[80px] touch-manipulation interactive-gold ${
                                                     isStepSelected 
-                                                        ? 'bg-[var(--brand-gold)] text-white shadow-lg scale-[1.02] transform' 
+                                                        ? 'text-white shadow-lg scale-[1.02] transform' 
                                                         : 'hover:shadow-md active:scale-[0.98]'
                                                 } ${step.status === 'completed' && !isStepSelected ? 'border border-opacity-70' : ''}`}
                                                 style={step.status === 'completed' && !isStepSelected ? {
                                                     background: 'var(--brand-success)',
-                                                    borderColor: 'var(--brand-gold)'
+                                                    borderColor: 'var(--accent)'
                                                 } : isStepSelected ? {
-                                                    background: 'var(--brand-gold)'
+                                                    background: 'var(--accent)'
                                                 } : {}}
                                                 role="button"
                                                 tabIndex={0}
@@ -358,14 +358,17 @@ const BlueprintSectionsList: React.FC<{
                                                 <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center font-bold text-sm mt-1 transition-all duration-120 ${
                                                     step.status === 'completed' 
                                                         ? isStepSelected 
-                                                            ? 'bg-white text-[var(--brand-gold)] scale-110 shadow-md' 
+                                                            ? 'bg-white scale-110 shadow-md' 
                                                             : 'scale-105 shadow-lg'
                                                         : isStepSelected
-                                                            ? 'bg-white text-[var(--brand-gold)] scale-105'
+                                                            ? 'bg-white scale-105'
                                                             : 'bg-gray-200 text-gray-600'
                                                 }`}
                                                 style={step.status === 'completed' && !isStepSelected ? {
-                                                    background: '#C4A574'
+                                                    background: 'var(--accent-soft)',
+                                                    border: '2px solid var(--accent)'
+                                                } : isStepSelected ? {
+                                                    color: 'var(--accent)'
                                                 } : {}}>
                                                     {step.status === 'completed' ? <PremiumCheckIcon className="w-5 h-5" style={{fill: 'var(--checkmark-color)'}} /> : step.step_number}
                                                 </div>
@@ -444,9 +447,9 @@ const BlueprintStepDetail: React.FC<{
     const getDetailStatusStyle = (status: StepStatus) => {
         if (status === 'completed') {
             return {
-                background: 'var(--brand-gold-soft)',
-                color: 'var(--brand-gold)',
-                borderColor: 'var(--brand-gold)'
+                background: 'var(--accent-soft-bg)',
+                color: 'var(--accent)',
+                borderColor: 'var(--accent)'
             };
         }
         return {};
@@ -455,7 +458,7 @@ const BlueprintStepDetail: React.FC<{
     return (
         <Card>
             <div className="flex items-center gap-2 mb-2">
-                <span className="text-meta font-bold text-[var(--brand-gold)]">Step {step.step_number}</span>
+                <span className="text-meta font-bold text-[var(--accent)]">Step {step.step_number}</span>
             </div>
             <h2 className="text-page-title mt-1">{step.title}</h2>
             
@@ -504,7 +507,7 @@ const BlueprintStepDetail: React.FC<{
                                     }`}
                                     style={isChecked ? {
                                         background: 'var(--brand-success)',
-                                        borderColor: 'var(--brand-gold)'
+                                        borderColor: 'var(--accent)'
                                     } : {}}
                                 >
                                     <div className="relative shrink-0 mt-1">
@@ -520,8 +523,8 @@ const BlueprintStepDetail: React.FC<{
                                                 : 'border-gray-300 hover:border-gray-400'
                                         }`}
                                         style={isChecked ? {
-                                            background: '#C4A574',
-                                            borderColor: '#C4A574'
+                                            background: 'var(--accent-soft)',
+                                            borderColor: 'var(--accent)'
                                         } : {}}>
                                             {isChecked && <PremiumCheckIcon className="h-3 w-3" style={{fill: 'var(--checkmark-color)'}} />}
                                         </div>
