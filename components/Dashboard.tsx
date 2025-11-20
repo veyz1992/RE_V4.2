@@ -1018,12 +1018,14 @@ const MyRequests: React.FC<{
     onNewRequest: () => void;
     showToast: (message: string, type: 'success' | 'error') => void;
     refreshKey: number;
-}> = ({ onNewRequest, showToast, refreshKey }) => {
-    const { session } = useAuth();
-    const [requests, setRequests] = useState<MemberServiceRequest[]>([]);
-    const [activitiesByRequest, setActivitiesByRequest] = useState<Record<string, ServiceRequestActivityLog[]>>({});
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    requests: MemberServiceRequest[];
+    activitiesByRequest: Record<string, ServiceRequestActivityLog[]>;
+    isLoading: boolean;
+    error: string | null;
+    hasLoadedOnce: boolean;
+    onRefresh: () => void;
+}> = ({ onNewRequest, showToast, refreshKey, requests, activitiesByRequest, isLoading, error, hasLoadedOnce, onRefresh }) => {
+    // Use props instead of local state for cached data
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | ServiceRequestStatus>('all');
     const [serviceFilter, setServiceFilter] = useState<string>('All');
@@ -1261,7 +1263,7 @@ const MyRequests: React.FC<{
     };
 
     const handleRefresh = () => {
-        void fetchRequests();
+        onRefresh();
     };
 
     return (
@@ -6334,7 +6336,6 @@ const viewTitles: Record<MemberView, string> = {
 
 const MemberDashboard: React.FC = () => {
     const { currentUser, logout, session } = useAuth();
-    const { hasBlueprintAccess, loading: blueprintLoading } = useBlueprintAccess();
     const [activeView, setActiveView] = useState<MemberView>('overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
@@ -6348,7 +6349,11 @@ const MemberDashboard: React.FC = () => {
     const [documents, setDocuments] = useState<DashboardDocument[]>([]);
     const [recentRequests, setRecentRequests] = useState<DashboardServiceRequest[]>([]);
     const [overviewData, setOverviewData] = useState<OverviewState | null>(null);
-    const [serviceRequests, setServiceRequests] = useState<any[]>([]);
+    const [serviceRequests, setServiceRequests] = useState<MemberServiceRequest[]>([]);
+    const [serviceRequestActivities, setServiceRequestActivities] = useState<Record<string, ServiceRequestActivityLog[]>>({});
+    const [serviceRequestsLoading, setServiceRequestsLoading] = useState(false);
+    const [serviceRequestsError, setServiceRequestsError] = useState<string | null>(null);
+    const [serviceRequestsLoadedOnce, setServiceRequestsLoadedOnce] = useState(false);
     const [isDashboardLoading, setIsDashboardLoading] = useState(false);
     const [dashboardError, setDashboardError] = useState<string | null>(null);
 
@@ -6373,6 +6378,172 @@ const MemberDashboard: React.FC = () => {
         const mapped = rows.map(mapDocumentRow);
         setDocuments(mapped);
         return mapped;
+    }, [session?.user?.id]);
+
+    const fetchServiceRequests = useCallback(async () => {
+        if (!session?.user?.id) {
+            setServiceRequests([]);
+            setServiceRequestActivities({});
+            setServiceRequestsLoadedOnce(true);
+            return;
+        }
+
+        setServiceRequestsLoading(true);
+        try {
+            const { data, error: requestError } = await supabase
+                .from('service_requests')
+                // Request only real columns; request_type/priority map to MemberServiceRequest.requestType/priority
+                .select(`
+                    id,
+                    profile_id,
+                    request_type,
+                    title,
+                    description,
+                    priority,
+                    status,
+                    assigned_admin_id,
+                    created_at,
+                    updated_at
+                `)
+                .eq('profile_id', session.user.id)
+                .order('created_at', { ascending: false });
+
+            if (requestError) {
+                throw requestError;
+            }
+
+            const rows = (data as SupabaseServiceRequest[] | null) ?? [];
+
+            const assignedAdminIds = Array.from(
+                new Set(
+                    rows
+                        .map((row) => row.assigned_admin_id)
+                        .filter((value): value is string | number => value !== null && value !== undefined),
+                ),
+            ).map((value) => String(value));
+
+            let adminProfiles: SupabaseAdminProfileRow[] = [];
+            if (assignedAdminIds.length > 0) {
+                const { data: adminData, error: adminError } = await supabase
+                    .from('admin_profiles')
+                    .select('id, user_id, display_name, email')
+                    .in('id', assignedAdminIds);
+
+                if (adminError) {
+                    console.error('Failed to load assigned admin details', adminError);
+                } else {
+                    adminProfiles = (adminData as SupabaseAdminProfileRow[] | null) ?? [];
+                }
+            }
+
+            const adminNameById = new Map<string, string>(
+                adminProfiles.map((admin) => [String(admin.id), admin.display_name ?? admin.email ?? String(admin.id)] as const),
+            );
+            const adminNameByUserId = new Map<string, string>(
+                adminProfiles
+                    .filter((admin) => Boolean(admin.user_id))
+                    .map(
+                        (admin) =>
+                            [
+                                admin.user_id as string,
+                                admin.display_name ?? admin.email ?? (admin.user_id as string),
+                            ] as const,
+                    ),
+            );
+
+            const mappedRequests = rows.map((row) => {
+                const base = mapMemberServiceRequestRow(row);
+                return {
+                    ...base,
+                    assignedAdminName: base.assignedAdminId
+                        ? adminNameById.get(String(base.assignedAdminId)) ?? null
+                        : null,
+                };
+            });
+
+            setServiceRequests(mappedRequests);
+
+            const requestIds = rows
+                .map((row) => row.id)
+                .filter((value): value is string | number => value !== null && value !== undefined);
+
+            if (requestIds.length > 0) {
+                const { data: activityData, error: activityError } = await supabase
+                    .from('service_request_activity')
+                    .select('*')
+                    .in('service_request_id', requestIds)
+                    .order('created_at', { ascending: false });
+
+                if (activityError) {
+                    console.error('Failed to load service request activity', activityError);
+                    setServiceRequestActivities({});
+                } else {
+                    const activityRows = (activityData as SupabaseServiceRequestActivity[] | null) ?? [];
+                    const missingActorUserIds = new Set<string>();
+
+                    activityRows.forEach((row) => {
+                        const actorUserId = row.actor_user_id;
+                        if (actorUserId && !adminNameByUserId.has(actorUserId)) {
+                            missingActorUserIds.add(actorUserId);
+                        }
+                    });
+
+                    if (missingActorUserIds.size > 0) {
+                        const { data: actorData, error: actorError } = await supabase
+                            .from('admin_profiles')
+                            .select('user_id, display_name, email')
+                            .in('user_id', Array.from(missingActorUserIds));
+
+                        if (actorError) {
+                            console.error('Failed to load activity actor details', actorError);
+                        } else {
+                            const actorRows = (actorData as SupabaseAdminProfileRow[] | null) ?? [];
+                            actorRows.forEach((actor) => {
+                                if (actor.user_id) {
+                                    adminNameByUserId.set(
+                                        actor.user_id,
+                                        actor.display_name ?? actor.email ?? actor.user_id,
+                                    );
+                                }
+                            });
+                        }
+                    }
+
+                    const grouped: Record<string, ServiceRequestActivityLog[]> = {};
+
+                    activityRows.forEach((row) => {
+                        const mapped = mapServiceRequestActivityRow(row);
+                        if (!mapped.actorName && mapped.actorUserId) {
+                            const fallback = adminNameByUserId.get(mapped.actorUserId);
+                            if (fallback) {
+                                mapped.actorName = fallback;
+                            }
+                        }
+                        if (!mapped.serviceRequestId) {
+                            return;
+                        }
+                        if (!grouped[mapped.serviceRequestId]) {
+                            grouped[mapped.serviceRequestId] = [];
+                        }
+                        grouped[mapped.serviceRequestId].push(mapped);
+                    });
+
+                    setServiceRequestActivities(grouped);
+                }
+            } else {
+                setServiceRequestActivities({});
+            }
+
+            setServiceRequestsError(null);
+        } catch (fetchError) {
+            console.error('Failed to load service requests', fetchError);
+            setServiceRequestsError('We were unable to load your service requests. Please try again.');
+            setServiceRequests([]);
+            setServiceRequestActivities({});
+        } finally {
+            setServiceRequestsLoading(false);
+            setServiceRequestsLoadedOnce(true);
+        }
     }, [session?.user?.id]);
 
     const loadOverviewData = useCallback(async () => {
@@ -6583,6 +6754,30 @@ const MemberDashboard: React.FC = () => {
     const showToast = (message: string, type: 'success' | 'error') => {
         setToast({ message, type });
     };
+
+    // Fetch service requests on first "my-requests" view
+    useEffect(() => {
+        if (!serviceRequestsLoadedOnce && activeView === 'my-requests') {
+            void fetchServiceRequests();
+        }
+    }, [activeView, serviceRequestsLoadedOnce, fetchServiceRequests]);
+
+    // Re-fetch when new request is created
+    useEffect(() => {
+        if (serviceRequestsLoadedOnce) {
+            void fetchServiceRequests();
+        }
+    }, [requestRefreshKey, fetchServiceRequests, serviceRequestsLoadedOnce]);
+
+    const handleRefreshRequests = () => {
+        void fetchServiceRequests();
+    };
+
+    // Compute blueprint access using existing membership/subscription data
+    const hasBlueprintAccess = Boolean(
+        membership?.plan === 'Founding Member' || 
+        subscription?.status === 'active'
+    );
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
