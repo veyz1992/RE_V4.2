@@ -6963,7 +6963,7 @@ const MemberDashboard: React.FC = () => {
             <SidebarLink icon={<StarIcon className="w-6 h-6" />} label="Benefits" isActive={activeView === 'benefits'} onClick={() => handleViewChange('benefits')} />
             <SidebarLink icon={<CreditCardIcon className="w-6 h-6" />} label="Billing" isActive={activeView === 'billing'} onClick={() => handleViewChange('billing')} />
             <SidebarLink icon={<UsersIcon className="w-6 h-6" />} label="Community" isActive={activeView === 'community'} onClick={() => handleViewChange('community')} />
-            <SidebarLink icon={<ClipboardDocumentCheckIcon className="w-6 h-6" />} label="99 Steps Blueprint" isActive={activeView === 'blueprint'} onClick={() => handleViewChange('blueprint')} locked={!blueprintLoading && !hasBlueprintAccess} />
+            <SidebarLink icon={<ClipboardDocumentCheckIcon className="w-6 h-6" />} label="99 Steps Blueprint" isActive={activeView === 'blueprint'} onClick={() => handleViewChange('blueprint')} locked={!isDashboardLoading && !hasBlueprintAccess} />
             <SidebarLink icon={<Cog6ToothIcon className="w-6 h-6" />} label="Settings" isActive={activeView === 'settings'} onClick={() => handleViewChange('settings')} />
         </>
     );
