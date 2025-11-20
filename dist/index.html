@@ -9,54 +9,222 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+      /*
+       * RESTORATION EXPERTISE - UNIFIED DESIGN SYSTEM
+       * 
+       * Primary Accent Color: #C8AD7B (gold)
+       * 
+       * Design Tokens:
+       * --accent: Primary brand accent color (#C8AD7B)
+       * --accent-soft: Lighter variant for subtle backgrounds
+       * --accent-strong: Darker variant for borders/emphasis  
+       * --accent-soft-bg: Soft background tint
+       * 
+       * Usage:
+       * - All progress bars use var(--accent)
+       * - All completion badges/checkmarks use accent system
+       * - Section highlights and selections use accent variants
+       * - Step completion indicators use accent-soft backgrounds
+       * - Custom checkboxes use accent-soft with accent borders
+       * 
+       * Checkmark Visibility:
+       * Light mode: Dark neutral (#1f2937) on accent-soft backgrounds
+       * Dark mode: Near-white (#f1f5f9) on accent-soft backgrounds
+       */
       :root {
-        --bg-main: #F3F4F6; /* gray-light */
+        /* Premium Background System */
+        --bg-app: #FAFAF9; /* Warm off-white app background */
+        --bg-surface: #ffffff; /* Clean white surface */
+        --bg-surface-soft: #F8F8F7; /* Soft surface with warmth */
+        
+        /* Legacy compatibility (mapped to new system) */
+        --bg-main: #FAFAF9;
         --bg-card: #ffffff;
-        --bg-subtle: #F9FAFB; /* gray-50 equivalent */
+        --bg-subtle: #F8F8F7;
         --bg-input: #ffffff;
         --bg-overlay: rgba(44, 44, 44, 0.6);
 
-        --text-main: #2C2C2C; /* charcoal */
-        --text-muted: #4A4A4A; /* gray-dark */
+        /* Unified Accent System - Primary Brand Color */
+        --accent: #C8AD7B; /* Primary accent - gold */
+        --accent-soft: #D4C197; /* Slightly lighter for subtle backgrounds */
+        --accent-strong: #B5966A; /* Slightly darker for borders/emphasis */
+        --accent-soft-bg: rgba(200, 173, 123, 0.1); /* Soft background tint */
+
+        /* Legacy Brand Colors (mapped to unified system) */
+        --brand-gold: #C8AD7B;
+        --brand-gold-soft: rgba(200, 173, 123, 0.1);
+        --brand-success: rgba(160, 214, 180, 0.15); /* Keep semantic green */
+
+        /* Typography Scale */
+        --text-primary: #2C2C2C; /* Primary dark charcoal */
+        --text-muted: #6B7280; /* Professional muted gray */
         --text-inverted: #F5F5F5;
         
-        --border-subtle: #E5E7EB; /* gray-border */
+        /* Legacy text compatibility */
+        --text-main: #2C2C2C;
         
-        --accent: #b19866; /* gold -> brand-accent */
-        --accent-dark: #9c8658; /* gold-dark -> brand-accent dark */
-        --accent-light: #c9b891; /* gold-light -> lighter brand-accent */
-        --accent-text: #2C2C2C; /* charcoal */
-        --accent-bg-subtle: rgba(177, 152, 102, 0.1);
+        /* UI Framework */
+        --border-subtle: #E5E7EB;
+        
+        /* Legacy Enhanced Accent System (mapped to unified) */
+        --accent-dark: #B5966A; /* Mapped to accent-strong */
+        --accent-light: #D4C197; /* Mapped to accent-soft */
+        --accent-text: #2C2C2C;
+        --accent-bg-subtle: rgba(200, 173, 123, 0.1);
+        --accent-hover: #D4C197;
 
+        /* Semantic Colors */
         --success: #10B981;
         --warning: #F59E0B;
         --error: #EF4444;
         --info: #3B82F6;
+
+        /* Elevation System */
+        --elevation-low: 0 1px 3px rgba(0, 0, 0, 0.05);
+        --elevation-medium: 0 4px 12px rgba(0, 0, 0, 0.1);
+        --elevation-high: 0 8px 25px rgba(0, 0, 0, 0.15);
+        
+        /* Progress bar theme tokens */
+        --progress-track-bg: #E9E9E9;
+        
+        /* Checkmark visibility tokens */
+        --checkmark-color: #1f2937; /* Dark neutral for high contrast */
+        --checkmark-bg-light: var(--accent-soft-bg); /* Light accent background */
       }
       
       html[data-theme='dark'] {
-        --bg-main: #1A1A1A; /* charcoal-dark */
-        --bg-card: #2C2C2C; /* charcoal */
-        --bg-subtle: #404040; /* charcoal-light */
+        /* Dark Premium Background System */
+        --bg-app: #1A1A1A; /* Deep charcoal app background */
+        --bg-surface: #2C2C2C; /* Elevated charcoal surface */
+        --bg-surface-soft: #333333; /* Softer elevated surface */
+        
+        /* Legacy compatibility */
+        --bg-main: #1A1A1A;
+        --bg-card: #2C2C2C;
+        --bg-subtle: #333333;
         --bg-input: #404040;
         --bg-overlay: rgba(0, 0, 0, 0.8);
+
+        /* Unified Dark Accent System - Same Primary Brand Color */
+        --accent: #C8AD7B; /* Same primary accent in dark mode */
+        --accent-soft: #A6916A; /* Darker tinted for dark mode backgrounds */
+        --accent-strong: #D4C197; /* Slightly lighter for borders/emphasis in dark */
+        --accent-soft-bg: rgba(200, 173, 123, 0.15); /* Darker tinted background for dark mode */
+
+        /* Legacy Dark Brand Colors (mapped to unified system) */
+        --brand-gold: #C8AD7B;
+        --brand-gold-soft: rgba(200, 173, 123, 0.15);
+        --brand-success: rgba(160, 214, 180, 0.1); /* Keep semantic green */
         
-        --text-main: #F5F5F5; /* text-light */
-        --text-muted: #8B8B8B; /* gray */
+        /* Dark Typography */
+        --text-primary: #F5F5F5; /* Light text on dark */
+        --text-muted: #A1A1AA; /* Muted light gray */
         --text-inverted: #1A1A1A;
         
-        --border-subtle: #404040; /* charcoal-light */
+        /* Legacy text compatibility */
+        --text-main: #F5F5F5;
         
-        /* Dark theme accents could be brighter gold for contrast if needed */
-        --accent: #E8D7A0; /* gold-light */
-        --accent-dark: #D4AF37; /* gold */
-        --accent-light: #F0E6C0;
-        --accent-text: #1A1A1A;
-        --accent-bg-subtle: rgba(232, 215, 160, 0.1);
+        /* Dark UI Framework */
+        --border-subtle: #404040;
+        
+        /* Legacy Dark Enhanced Accent System (mapped to unified) */
+        --accent-dark: #A6916A; /* Mapped to accent-soft for dark */
+        --accent-light: #D4C197; /* Mapped to accent-strong for dark */
+        --accent-text: #1A1A1A; /* Dark text on gold */
+        --accent-bg-subtle: rgba(200, 173, 123, 0.15);
+        --accent-hover: #D4C197;
+
+        /* Dark Elevation System */
+        --elevation-low: 0 1px 3px rgba(0, 0, 0, 0.3);
+        --elevation-medium: 0 4px 12px rgba(0, 0, 0, 0.4);
+        --elevation-high: 0 8px 25px rgba(0, 0, 0, 0.5);
+        
+        /* Dark progress bar theme tokens */
+        --progress-track-bg: #323232;
+        
+        /* Dark checkmark visibility tokens */
+        --checkmark-color: #f1f5f9; /* Near-white for high contrast */
+        --checkmark-bg-dark: var(--accent-soft-bg); /* Dark accent background */
       }
       
       body {
         transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+        background-color: var(--bg-app);
+        color: var(--text-primary);
+      }
+
+      /* Typography Scale System */
+      .text-page-title {
+        font-family: 'Playfair Display', serif;
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1.2;
+        color: var(--text-primary);
+      }
+
+      .text-section-title {
+        font-family: 'Playfair Display', serif;
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1.3;
+        color: var(--text-primary);
+      }
+
+      .text-step-title {
+        font-family: 'Inter', sans-serif;
+        font-size: 1rem;
+        font-weight: 600;
+        line-height: 1.4;
+        color: var(--text-primary);
+      }
+
+      .text-meta {
+        font-family: 'Inter', sans-serif;
+        font-size: 0.875rem;
+        font-weight: 500;
+        line-height: 1.4;
+        color: var(--text-muted);
+      }
+
+      /* Vertical Rhythm System */
+      .space-stack-sm > * + * { margin-top: 1rem; }
+      .space-stack-md > * + * { margin-top: 1.5rem; }
+      .space-stack-lg > * + * { margin-top: 2rem; }
+      .space-stack-xl > * + * { margin-top: 3rem; }
+
+      /* Premium Surface Components */
+      .surface-card {
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 0.75rem;
+        box-shadow: var(--elevation-low);
+        transition: all 0.2s ease-in-out;
+      }
+
+      .surface-card:hover {
+        box-shadow: var(--elevation-medium);
+        transform: translateY(-1px);
+      }
+
+      .surface-soft {
+        background-color: var(--bg-surface-soft);
+        border: 1px solid var(--border-subtle);
+        border-radius: 0.75rem;
+        transition: all 0.2s ease-in-out;
+      }
+
+      /* Premium Interactive States */
+      .interactive-gold {
+        transition: all 0.12s ease-out;
+      }
+
+      .interactive-gold:hover {
+        transform: scale(1.02);
+        box-shadow: 0 0 0 4px var(--brand-gold-soft);
+      }
+
+      .interactive-gold:active {
+        transform: scale(0.98);
       }
       
       /* === Custom Slider Styles === */
@@ -775,7 +943,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="/assets/index-CiIsyLQl.js"></script>
+  <script type="module" crossorigin src="/assets/index-BT_KHvuw.js"></script>
 </head>
   <body class="bg-[var(--bg-main)] font-inter">
     <div id="root"></div>
