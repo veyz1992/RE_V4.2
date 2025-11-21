@@ -5879,7 +5879,6 @@ const MemberSettings: React.FC<{
     });
 
     // Security State
-    const [confirmOnNewDevice, setConfirmOnNewDevice] = useState(true);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
     // Preferences State
@@ -5935,9 +5934,15 @@ const MemberSettings: React.FC<{
         setIsAccountEditing(false);
     };
 
-    const handleLogoutAll = () => {
+    const handleLogoutAll = async () => {
         setIsLogoutModalOpen(false);
-        showToast('All active sessions have been cleared (dummy state).', 'success');
+        try {
+            await supabase.auth.signOut({ scope: 'global' });
+            showToast('You have been logged out on all devices.', 'success');
+        } catch (error) {
+            console.error('Failed to log out of all devices', error);
+            showToast('Could not log out of all devices. Please try again.', 'error');
+        }
     };
 
     const handlePreferencesSave = () => {
@@ -6049,12 +6054,9 @@ const MemberSettings: React.FC<{
                     <div className="flex justify-between items-start mb-4"><h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Sign-in & Security</h2></div>
                     <div className="space-y-6">
                         <div className="flex justify-between items-center p-3 bg-[var(--bg-subtle)] rounded-lg"><span className="font-medium text-[var(--text-main)]">Login method</span><span className="font-semibold text-[var(--text-muted)]">Email magic link</span></div>
-                        <label className="flex justify-between items-center cursor-pointer"><span className="font-medium text-[var(--text-main)] max-w-xs sm:max-w-none">Require confirmation for new logins from unknown devices</span><input type="checkbox" className="toggle-checkbox" checked={confirmOnNewDevice} onChange={e => setConfirmOnNewDevice(e.target.checked)} /></label>
-                        <div className="pt-4 border-t border-[var(--border-subtle)] flex flex-col sm:flex-row gap-4">
+                        <div className="pt-4 border-t border-[var(--border-subtle)]">
                             <button onClick={() => setIsLogoutModalOpen(true)} className="py-2.5 px-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">Log out of all devices</button>
-                            <button onClick={() => showToast('Verification email resent.', 'success')} className="py-2.5 px-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg font-semibold shadow-sm hover:bg-[var(--bg-subtle)]">Resend verification email</button>
                         </div>
-                        <p className="text-xs text-[var(--text-muted)]">Security features like 2FA and device history will be added in the full version.</p>
                     </div>
                 </Card>
 
