@@ -5191,7 +5191,44 @@ const createSummaryFromSubscription = (subscription: BillingSubscriptionRow | nu
     }
 
     const planLabel = formatTierLabel(subscription.tier);
-    const priceLabel = formatPriceLabel(subscription.unit_amount_cents, subscription.billing_cycle);
+    
+    // Price is sourced from Stripe subscription (primary) with MEMBERSHIP_PLANS fallback to keep Billing consistent
+    const unitAmountCents = subscription.unit_amount_cents;
+    const interval = subscription.billing_cycle?.toLowerCase();
+    let priceLabel = '$99 / month'; // fallback to prevent crashes
+    
+    if (unitAmountCents != null && unitAmountCents > 0) {
+        const priceMonthly = unitAmountCents / 100;
+        if (interval === 'month') {
+            priceLabel = `$${priceMonthly} / month`;
+        } else if (interval === 'year') {
+            const priceYearly = priceMonthly;
+            priceLabel = `$${priceYearly} / year`;
+        } else {
+            priceLabel = `$${priceMonthly} / ${interval || 'period'}`;
+        }
+    } else {
+        // Fallback to membership config when no subscription unit amount
+        const membershipPlan = MEMBERSHIP_PLANS.find(plan => {
+            const normalizedTier = plan.tier?.toLowerCase();
+            const subscriptionTier = subscription.tier?.toLowerCase();
+            return normalizedTier === subscriptionTier || 
+                   (normalizedTier === 'founding' && subscriptionTier === 'founding-member') ||
+                   (normalizedTier === 'founding-member' && subscriptionTier === 'founding');
+        });
+        
+        if (membershipPlan?.defaultPriceCents) {
+            const planPriceMonthlyFromConfig = membershipPlan.defaultPriceCents / 100;
+            if (interval === 'month') {
+                priceLabel = `$${planPriceMonthlyFromConfig} / month`;
+            } else if (interval === 'year') {
+                priceLabel = `$${planPriceMonthlyFromConfig} / year`;
+            } else {
+                priceLabel = `$${planPriceMonthlyFromConfig} / ${interval || 'month'}`;
+            }
+        }
+    }
+    
     const billingCycleLabel = formatBillingCycleLabel(subscription.billing_cycle);
     const normalizedStatus = (subscription.status ?? '').toLowerCase();
 
