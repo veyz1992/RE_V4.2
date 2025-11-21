@@ -5906,17 +5906,11 @@ const MemberSettings: React.FC<{
 }> = ({ showToast, onNavigate }) => {
     const { currentUser, updateUser, session } = useAuth();
 
-    const displayName =
-        currentUser?.account?.companyName?.trim() ||
-        currentUser?.account?.ownerName?.trim() ||
-        currentUser?.name?.trim() ||
-        'Member';
-
     // Account Info State
     const [isAccountEditing, setIsAccountEditing] = useState(false);
     const [accountData, setAccountData] = useState({
-        ownerName: currentUser?.account?.ownerName || currentUser?.name || '',
-        ownerEmail: currentUser?.account?.ownerEmail || currentUser?.email || '',
+        ownerName: (currentUser?.account?.ownerName ?? '') || currentUser?.name || '',
+        ownerEmail: (currentUser?.account?.ownerEmail ?? '') || currentUser?.email || '',
         companyName: currentUser?.account?.companyName || '',
     });
 
@@ -5948,9 +5942,9 @@ const MemberSettings: React.FC<{
     useEffect(() => {
         if (currentUser) {
             setAccountData({
-                ownerName: safeAccount.ownerName || currentUser?.name || '',
-                ownerEmail: safeAccount.ownerEmail || currentUser?.email || '',
-                companyName: safeAccount.companyName || '',
+                ownerName: account.ownerName || currentUser?.name || '',
+                ownerEmail: account.ownerEmail || currentUser?.email || '',
+                companyName: account.companyName || '',
             });
             if (currentUser.notifications) {
                 setNotifications(currentUser.notifications);
@@ -6011,17 +6005,21 @@ const MemberSettings: React.FC<{
         loadNotificationSettings();
     }, [session?.user?.id]);
 
-    if (!currentUser || !currentUser.account) return null;
+    if (!currentUser) return null;
 
     const handleAccountSave = () => {
         if (!currentUser) return;
+
         const updatedUser = {
             ...currentUser,
             account: {
-                ...(currentUser.account ?? {}),
-                ...accountData,
-            }
+                ...(currentUser?.account ?? {}),
+                ownerName: accountData.ownerName,
+                ownerEmail: accountData.ownerEmail,
+                companyName: accountData.companyName,
+            },
         };
+
         updateUser(updatedUser);
         setIsAccountEditing(false);
         showToast('Account info updated.', 'success');
@@ -6029,8 +6027,8 @@ const MemberSettings: React.FC<{
 
     const handleAccountCancel = () => {
         setAccountData({
-            ownerName: safeAccount.ownerName || currentUser?.name || '',
-            ownerEmail: safeAccount.ownerEmail || currentUser?.email || '',
+            ownerName: account.ownerName || currentUser?.name || '',
+            ownerEmail: account.ownerEmail || currentUser?.email || '',
         });
         setIsAccountEditing(false);
     };
@@ -6150,7 +6148,7 @@ const MemberSettings: React.FC<{
                 isOpen={isDeleteModalOpen}
                 onClose={() => setIsDeleteModalOpen(false)}
                 onConfirm={handleDeleteConfirm}
-                companyName={safeAccount.companyName}
+                companyName={account.companyName}
             />
             
             <div className="space-y-8">
@@ -6171,8 +6169,8 @@ const MemberSettings: React.FC<{
                         <div className="space-y-4 animate-fade-in">
                             <div><label className="text-sm font-medium text-[var(--text-muted)]">Account Owner Name</label><input type="text" value={accountData.ownerName} onChange={e => setAccountData({...accountData, ownerName: e.target.value})} className="mt-1 block w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)]" /></div>
                             <div><label className="text-sm font-medium text-[var(--text-muted)]">Account Email</label><input type="email" value={accountData.ownerEmail} onChange={e => setAccountData({...accountData, ownerEmail: e.target.value})} className="mt-1 block w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)]" /></div>
-                            <div><p className="text-sm text-[var(--text-muted)]">Role</p><p className="font-semibold text-[var(--text-muted)] bg-[var(--bg-subtle)] p-3 rounded-lg">{safeAccount.role}</p></div>
-                            <div><p className="text-sm text-[var(--text-muted)]">Company Name</p><p className="font-semibold text-[var(--text-muted)] bg-[var(--bg-subtle)] p-3 rounded-lg">{safeAccount.companyName || 'Not set'}</p></div>
+                            <div><p className="text-sm text-[var(--text-muted)]">Role</p><p className="font-semibold text-[var(--text-muted)] bg-[var(--bg-subtle)] p-3 rounded-lg">{account.role}</p></div>
+                            <div><p className="text-sm text-[var(--text-muted)]">Company Name</p><p className="font-semibold text-[var(--text-muted)] bg-[var(--bg-subtle)] p-3 rounded-lg">{account.companyName || 'Not set'}</p></div>
                             <div className="flex justify-end gap-4 pt-2">
                                 <button onClick={handleAccountCancel} className="py-2 px-5 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-lg font-semibold">Cancel</button>
                                 <button onClick={handleAccountSave} className="py-2 px-5 bg-[var(--accent)] text-[var(--accent-text)] rounded-lg font-bold">Save Changes</button>
@@ -6182,7 +6180,7 @@ const MemberSettings: React.FC<{
                         <div className="space-y-4">
                             <div><p className="text-sm text-[var(--text-muted)]">Account Owner Name</p><p className="font-semibold text-[var(--text-main)]">{accountData.ownerName}</p></div>
                             <div><p className="text-sm text-[var(--text-muted)]">Account Email</p><p className="font-semibold text-[var(--text-main)]">{accountData.ownerEmail}</p></div>
-                            <div><p className="text-sm text-[var(--text-muted)]">Role</p><p className="font-semibold text-[var(--text-main)]">{safeAccount.role}</p></div>
+                            <div><p className="text-sm text-[var(--text-muted)]">Role</p><p className="font-semibold text-[var(--text-main)]">{account.role}</p></div>
                             <div><p className="text-sm text-[var(--text-muted)]">Company Name</p><p className="font-semibold text-[var(--text-main)]">{accountData.companyName || 'Not set'}</p></div>
                         </div>
                     )}
@@ -6345,10 +6343,15 @@ const viewTitles: Record<MemberView, string> = {
 const MemberDashboard: React.FC = () => {
     const { currentUser, logout, session } = useAuth();
     
-    const safeAccount = currentUser?.account ?? { role: 'Owner', companyName: '' };
+    const account = currentUser?.account ?? {
+        ownerName: '',
+        ownerEmail: '',
+        companyName: '',
+        role: 'Owner',
+    };
     const displayName =
-        safeAccount.companyName?.trim?.() ||
-        safeAccount.ownerName?.trim?.() ||
+        account.companyName?.trim?.() ||
+        account.ownerName?.trim?.() ||
         currentUser?.name?.trim?.() ||
         'Member';
     const [activeView, setActiveView] = useState<MemberView>('overview');
