@@ -5906,6 +5906,12 @@ const MemberSettings: React.FC<{
 }> = ({ showToast, onNavigate }) => {
     const { currentUser, updateUser, session } = useAuth();
 
+    const displayName =
+        currentUser?.account?.companyName?.trim() ||
+        currentUser?.account?.ownerName?.trim() ||
+        currentUser?.name?.trim() ||
+        'Member';
+
     // Account Info State
     const [isAccountEditing, setIsAccountEditing] = useState(false);
     const [accountData, setAccountData] = useState({
@@ -6177,7 +6183,7 @@ const MemberSettings: React.FC<{
                             <div><p className="text-sm text-[var(--text-muted)]">Account Owner Name</p><p className="font-semibold text-[var(--text-main)]">{accountData.ownerName}</p></div>
                             <div><p className="text-sm text-[var(--text-muted)]">Account Email</p><p className="font-semibold text-[var(--text-main)]">{accountData.ownerEmail}</p></div>
                             <div><p className="text-sm text-[var(--text-muted)]">Role</p><p className="font-semibold text-[var(--text-main)]">{currentUser.account.role}</p></div>
-                            <div><p className="text-sm text-[var(--text-muted)]">Company Name</p><button onClick={() => onNavigate('profile')} className="font-semibold text-[var(--accent-dark)] hover:underline">{currentUser.account.companyName}</button></div>
+                            <div><p className="text-sm text-[var(--text-muted)]">Company Name</p><p className="font-semibold text-[var(--text-main)]">{accountData.companyName || 'Not set'}</p></div>
                         </div>
                     )}
                 </Card>
@@ -7039,7 +7045,7 @@ const MemberDashboard: React.FC = () => {
                                 <div className="w-9 h-9 bg-[var(--accent-bg-subtle)] rounded-full flex items-center justify-center">
                                     <UserCircleIcon className="w-6 h-6 text-[var(--accent-dark)]"/>
                                 </div>
-                                <span className="hidden sm:inline font-semibold text-sm">{currentUser.account?.companyName?.trim() || currentUser.account?.ownerName?.trim() || currentUser.name?.trim() || 'Member'}</span>
+                                <span className="hidden sm:inline font-semibold text-sm">{displayName}</span>
                             </button>
                             {isUserMenuOpen && (
                                 <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-card)] rounded-lg shadow-xl border border-[var(--border-subtle)] z-50 animate-fade-in">
