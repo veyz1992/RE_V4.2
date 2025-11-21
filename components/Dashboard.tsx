@@ -6774,6 +6774,12 @@ const MemberDashboard: React.FC = () => {
                         onNewRequest={() => setNewRequestModalOpen(true)}
                         showToast={showToast}
                         refreshKey={requestRefreshKey}
+                        requests={serviceRequests}
+                        activitiesByRequest={serviceRequestActivities}
+                        isLoading={serviceRequestsLoading}
+                        error={serviceRequestsError}
+                        hasLoadedOnce={serviceRequestsLoadedOnce}
+                        onRefresh={handleRefreshRequests}
                     />
                 );
             case 'profile':
