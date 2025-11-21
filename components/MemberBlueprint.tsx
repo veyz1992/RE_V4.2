@@ -23,57 +23,6 @@ import BlueprintUpgradePrompt from './BlueprintUpgradePrompt';
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
 
-// Category summaries configuration - static data for category overview
-const CATEGORY_SUMMARIES: Record<string, { intro: string; bullets: string[] }> = {
-  'foundation-vision': {
-    intro: 'Clarify why you exist, who you serve, and put the basic business + legal pieces in place.',
-    bullets: [
-      'Commit fully and embrace the grind.',
-      'Get trained, certified and insured.',
-      'Set up your legal, money and basic systems foundation.',
-    ],
-  },
-  'team-operations-basics': {
-    intro: 'Lay down the first hires, safety, equipment and daily workflows so jobs do not feel chaotic.',
-    bullets: [
-      'Start building your core team.',
-      'Standardise how you handle jobs day to day.',
-      'Make safety and reliability non-negotiable.',
-    ],
-  },
-  'marketing-sales-fundamentals': {
-    intro: 'Create a steady flow of quality leads and convert them into paying customers consistently.',
-    bullets: [
-      'Build a professional online presence.',
-      'Develop reliable lead generation systems.',
-      'Master the sales process and customer communication.',
-    ],
-  },
-  'financial-management': {
-    intro: 'Take control of your numbers, pricing, and cash flow to ensure sustainable profitability.',
-    bullets: [
-      'Set up proper bookkeeping and financial tracking.',
-      'Develop competitive yet profitable pricing strategies.',
-      'Manage cash flow and plan for growth.',
-    ],
-  },
-  'customer-experience': {
-    intro: 'Deliver exceptional service that turns customers into raving fans and referral sources.',
-    bullets: [
-      'Standardize your service delivery process.',
-      'Build systems for consistent communication.',
-      'Create memorable experiences that drive referrals.',
-    ],
-  },
-  'growth-scaling': {
-    intro: 'Scale your operations, expand your market reach, and build a business that works without you.',
-    bullets: [
-      'Develop systems that run without your constant oversight.',
-      'Expand into new markets and service areas.',
-      'Build a leadership team to support growth.',
-    ],
-  },
-};
 
 const useIsMobile = (breakpoint = 1024) => {
     const [isMobile, setIsMobile] = useState(window.innerWidth < breakpoint);
@@ -465,9 +414,59 @@ const BlueprintSectionsList: React.FC<{
 
 const CategoryOverview: React.FC<{
     section: SectionWithStats;
-}> = ({ section }) => {
-    const categoryData = CATEGORY_SUMMARIES[section.key] || CATEGORY_SUMMARIES[section.id];
+    onSelectStep: (stepId: string) => void;
+}> = ({ section, onSelectStep }) => {
     const isFullyCompleted = section.completionRate === 100 && section.totalSteps > 0;
+    const [stepSortMode, setStepSortMode] = useState<'actionable' | 'original'>('actionable');
+    
+    // Reset sort mode to default when section changes
+    useEffect(() => {
+        setStepSortMode('actionable');
+    }, [section.id]);
+    
+    const statusColors: Record<StepStatus, string> = {
+        'not_started': 'bg-gray-200 text-gray-600',
+        'in_progress': 'bg-blue-100 text-blue-800',
+        'completed': 'shadow-sm border',
+    };
+
+    const getStatusStyle = (status: StepStatus) => {
+        if (status === 'completed') {
+            return {
+                background: 'var(--accent-soft-bg)',
+                color: 'var(--accent)',
+                borderColor: 'var(--accent)'
+            };
+        }
+        return {};
+    };
+
+    // Sort steps based on current mode
+    const sortedSteps = useMemo(() => {
+        if (stepSortMode === 'original') {
+            return section.steps; // Use original order
+        }
+        
+        // Actionable first sorting
+        const stepsCopy = [...section.steps];
+        return stepsCopy.sort((a, b) => {
+            const statusPriority = {
+                'in_progress': 0,
+                'not_started': 1,
+                'completed': 2,
+            };
+            
+            const aPriority = statusPriority[a.status];
+            const bPriority = statusPriority[b.status];
+            
+            if (aPriority !== bPriority) {
+                return aPriority - bPriority;
+            }
+            
+            // Within same status group, maintain original order using step_number
+            return (a.step_number || 0) - (b.step_number || 0);
+        });
+    }, [section.steps, stepSortMode]);
     
     return (
         <Card>
@@ -483,7 +482,7 @@ const CategoryOverview: React.FC<{
             {/* Category Description */}
             <div className="mb-6">
                 <p className="text-meta leading-relaxed">
-                    {categoryData?.intro || section.description || 'Explore the steps in this category to build expertise in this area.'}
+                    {section.description || 'Explore the steps in this category to build expertise in this area.'}
                 </p>
             </div>
 
@@ -515,21 +514,6 @@ const CategoryOverview: React.FC<{
                 </div>
             </div>
 
-            {/* Key Focus Areas */}
-            {categoryData?.bullets && (
-                <div className="mb-6">
-                    <h4 className="text-section-title mb-3">Key Focus Areas</h4>
-                    <ul className="space-y-2">
-                        {categoryData.bullets.map((bullet, index) => (
-                            <li key={index} className="flex items-start gap-3">
-                                <div className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2 shrink-0"></div>
-                                <span className="text-meta leading-relaxed">{bullet}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
-
             {/* Success Panel for Completed Categories */}
             {isFullyCompleted && (
                 <div className="p-4 rounded-lg border-2 border-[var(--accent)] bg-[var(--accent-soft-bg)] mb-6">
@@ -545,9 +529,77 @@ const CategoryOverview: React.FC<{
                 </div>
             )}
 
-            {/* Hint */}
-            <div className="text-center pt-4 border-t border-[var(--border-subtle)]">
-                <p className="text-meta italic">Choose a step on the left to see the detailed tasks.</p>
+            {/* Steps in this category */}
+            <div className="mb-4">
+                <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-section-title">Steps in this category</h4>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-[var(--text-muted)]">Sort:</span>
+                        <button
+                            onClick={() => setStepSortMode(stepSortMode === 'actionable' ? 'original' : 'actionable')}
+                            className="text-xs font-bold px-3 py-1.5 rounded-full transition-all duration-120 hover:shadow-sm"
+                            style={{
+                                background: 'var(--bg-surface-soft)',
+                                color: 'var(--text-primary)',
+                                border: '1px solid var(--border-subtle)'
+                            }}
+                        >
+                            {stepSortMode === 'actionable' ? 'Actionable first' : 'Original order'}
+                        </button>
+                    </div>
+                </div>
+                <div className="space-y-3">
+                    {sortedSteps.map(step => (
+                        <div
+                            key={step.id}
+                            onClick={() => onSelectStep(step.id)}
+                            className="surface-soft p-4 cursor-pointer transition-all duration-120 flex items-center gap-4 hover:shadow-md active:scale-[0.98] interactive-gold touch-manipulation"
+                            style={step.status === 'completed' ? {
+                                background: 'var(--brand-success)',
+                                borderColor: 'var(--accent)'
+                            } : {}}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Select step ${step.step_number}: ${step.title}`}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    onSelectStep(step.id);
+                                }
+                            }}
+                        >
+                            <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center font-bold text-sm transition-all duration-120 ${
+                                step.status === 'completed' 
+                                    ? 'scale-105 shadow-lg'
+                                    : 'bg-gray-200 text-gray-600'
+                            }`}
+                            style={step.status === 'completed' ? {
+                                background: 'var(--accent-soft)',
+                                border: '2px solid var(--accent)'
+                            } : {}}>
+                                {step.status === 'completed' ? (
+                                    <PremiumCheckIcon className="w-5 h-5 text-white" />
+                                ) : (
+                                    step.step_number
+                                )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h5 className="text-step-title mb-1 break-words">{step.title}</h5>
+                                <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-1 text-xs font-bold rounded-full transition-all ${statusColors[step.status]}`}
+                                          style={getStatusStyle(step.status)}>
+                                        {step.status.replace('_', ' ')}
+                                    </span>
+                                    {step.checklist && step.checklist.length > 0 && (
+                                        <span className="text-xs text-[var(--text-muted)]">
+                                            {(step.checklistState || []).filter(Boolean).length}/{step.checklist.length} tasks
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         </Card>
     );
@@ -563,7 +615,7 @@ const BlueprintStepDetail: React.FC<{
                 <div className="text-center">
                     <ClipboardDocumentCheckIcon className="w-16 h-16 mx-auto text-gray-300"/>
                     <h3 className="mt-2 text-xl font-bold text-[var(--text-main)]">Select a step</h3>
-                    <p className="mt-1 text-[var(--text-muted)]">Choose a step from the list to see details and track your progress.</p>
+                    <p className="mt-1 text-[var(--text-muted)]">Select a step from the list to see the detailed tasks.</p>
                 </div>
             </Card>
         );
@@ -941,7 +993,10 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                                 onUpdateChecklist={updateChecklist} 
                             />
                         ) : selectedSection ? (
-                            <CategoryOverview section={selectedSection} />
+                            <CategoryOverview 
+                                section={selectedSection} 
+                                onSelectStep={handleSelectStep}
+                            />
                         ) : null}
                     </MobileStepDrawer>
                 </div>
@@ -972,7 +1027,10 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                                     onUpdateChecklist={updateChecklist} 
                                 />
                             ) : selectedSection ? (
-                                <CategoryOverview section={selectedSection} />
+                                <CategoryOverview 
+                                    section={selectedSection} 
+                                    onSelectStep={handleSelectStep}
+                                />
                             ) : (
                                 <BlueprintStepDetail 
                                     step={null} 

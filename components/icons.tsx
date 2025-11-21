@@ -32,12 +32,12 @@ export const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-// Premium Gold CheckIcon for Restoration Expertise branding
+// Premium CheckIcon for Restoration Expertise branding - now supports currentColor
 export const PremiumCheckIcon: React.FC<{ className?: string }> = ({ className = "" }) => (
     <svg 
         xmlns="http://www.w3.org/2000/svg" 
         viewBox="0 0 24 24" 
-        fill="#C4A574" 
+        fill="currentColor" 
         className={`premium-check-icon ${className}`}
     >
         <path 
