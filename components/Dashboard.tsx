@@ -5811,6 +5811,41 @@ const MemberCommunity: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
 };
 
 
+// Notification Settings Types
+type NotificationSettings = {
+    documents: {
+        approval_updates: boolean;        // "Email me when a document is approved or rejected"
+        status_changes: boolean;         // "Email me when my verification status changes"
+    };
+    requests: {
+        request_updates: boolean;        // "Email me when a new request is created or updated"
+        benefits_delivered: boolean;     // "Email me when a benefit (e.g. SEO post) is delivered"
+    };
+    billing: {
+        renewals_and_failures: boolean;  // "Email me about upcoming renewals and failed payments"
+    };
+    community: {
+        events_and_announcements: boolean; // "Email me about new events and important announcements"
+    };
+};
+
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+    documents: {
+        approval_updates: true,
+        status_changes: true,
+    },
+    requests: {
+        request_updates: true,
+        benefits_delivered: true,
+    },
+    billing: {
+        renewals_and_failures: true,
+    },
+    community: {
+        events_and_announcements: true,
+    },
+};
+
 const DeleteAccountModal: React.FC<{
     isOpen: boolean;
     onClose: () => void;
@@ -5869,7 +5904,7 @@ const MemberSettings: React.FC<{
     showToast: (message: string, type: 'success' | 'error') => void;
     onNavigate: (view: MemberView) => void;
 }> = ({ showToast, onNavigate }) => {
-    const { currentUser, updateUser } = useAuth();
+    const { currentUser, updateUser, session } = useAuth();
 
     // Account Info State
     const [isAccountEditing, setIsAccountEditing] = useState(false);
@@ -5887,7 +5922,12 @@ const MemberSettings: React.FC<{
         dateFormat: 'MM/DD/YYYY',
     });
     
-    // Notifications State
+    // Notification Settings State
+    const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
+    const [notificationSettingsLoading, setNotificationSettingsLoading] = useState(true);
+    const [notificationSettingsError, setNotificationSettingsError] = useState<string | null>(null);
+    
+    // Legacy notifications state for email frequency
     const [notifications, setNotifications] = useState(currentUser?.notifications || {
         documentStatus: true, verificationStatus: true, requestUpdates: true,
         benefitDelivery: false, billingUpdates: true, communityUpdates: true,
@@ -5909,6 +5949,59 @@ const MemberSettings: React.FC<{
             }
         }
     }, [currentUser]);
+
+    // Load notification settings from Supabase
+    useEffect(() => {
+        const loadNotificationSettings = async () => {
+            if (!session?.user?.id) {
+                setNotificationSettingsLoading(false);
+                return;
+            }
+
+            try {
+                const { data: profile, error } = await supabase
+                    .from('profiles')
+                    .select('notification_settings')
+                    .eq('id', session.user.id)
+                    .maybeSingle();
+
+                if (error) {
+                    console.error('Failed to load notification settings:', error);
+                    setNotificationSettingsError('Failed to load notification settings');
+                    setNotificationSettingsLoading(false);
+                    return;
+                }
+
+                let settings = profile?.notification_settings as NotificationSettings | null;
+
+                // If no settings exist, create and save defaults
+                if (!settings) {
+                    settings = DEFAULT_NOTIFICATION_SETTINGS;
+                    const { error: updateError } = await supabase
+                        .from('profiles')
+                        .update({ notification_settings: settings })
+                        .eq('id', session.user.id);
+
+                    if (updateError) {
+                        console.error('Failed to save default notification settings:', updateError);
+                        setNotificationSettingsError('Failed to save default settings');
+                        setNotificationSettingsLoading(false);
+                        return;
+                    }
+                }
+
+                setNotificationSettings(settings);
+                setNotificationSettingsError(null);
+            } catch (error) {
+                console.error('Error loading notification settings:', error);
+                setNotificationSettingsError('An unexpected error occurred');
+            } finally {
+                setNotificationSettingsLoading(false);
+            }
+        };
+
+        loadNotificationSettings();
+    }, [session?.user?.id]);
 
     if (!currentUser || !currentUser.account) return null;
 
@@ -5951,6 +6044,38 @@ const MemberSettings: React.FC<{
         showToast('Preferences saved.', 'success');
     };
     
+    const handleNotificationToggle = (
+        group: keyof NotificationSettings,
+        key: keyof NotificationSettings[typeof group],
+        value: boolean
+    ) => {
+        if (!notificationSettings || !session?.user?.id) return;
+
+        const updated: NotificationSettings = {
+            ...notificationSettings,
+            [group]: {
+                ...notificationSettings[group],
+                [key]: value,
+            },
+        };
+
+        setNotificationSettings(updated);
+
+        // persist to Supabase
+        void supabase
+            .from('profiles')
+            .update({ notification_settings: updated })
+            .eq('id', session.user.id)
+            .then(({ error }) => {
+                if (error) {
+                    console.error('Failed to update notification settings', error);
+                    showToast('Failed to save notification settings. Please try again.', 'error');
+                    // Revert local state on error
+                    setNotificationSettings(notificationSettings);
+                }
+            });
+    };
+
     const handleNotificationsSave = () => {
         if (!currentUser) return;
         const updatedUser = {
@@ -5972,10 +6097,16 @@ const MemberSettings: React.FC<{
     };
 
 
-    const NotificationToggle: React.FC<{ label: string; checked: boolean; onChange: (checked: boolean) => void; }> = ({ label, checked, onChange }) => (
-        <label className="flex justify-between items-center cursor-pointer p-3 hover:bg-[var(--bg-subtle)] rounded-lg">
+    const NotificationToggle: React.FC<{ label: string; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean; }> = ({ label, checked, onChange, disabled = false }) => (
+        <label className={`flex justify-between items-center p-3 rounded-lg ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-[var(--bg-subtle)]'}`}>
             <span className="font-medium text-[var(--text-main)]">{label}</span>
-            <input type="checkbox" className="toggle-checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
+            <input 
+                type="checkbox" 
+                className="toggle-checkbox" 
+                checked={checked} 
+                onChange={e => onChange(e.target.checked)}
+                disabled={disabled}
+            />
         </label>
     );
 
@@ -6090,24 +6221,59 @@ const MemberSettings: React.FC<{
                 {/* Notification Preferences Card */}
                 <Card>
                     <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Notification Preferences</h2>
+                    {notificationSettingsError && (
+                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+                            {notificationSettingsError}
+                        </div>
+                    )}
                     <div className="space-y-4">
                         <div>
                             <h3 className="font-semibold text-[var(--text-muted)] mb-2">Documents & Verification</h3>
-                            <NotificationToggle label="Email me when a document is approved or rejected" checked={notifications.documentStatus} onChange={c => setNotifications(p => ({...p, documentStatus: c}))} />
-                            <NotificationToggle label="Email me when my verification status changes" checked={notifications.verificationStatus} onChange={c => setNotifications(p => ({...p, verificationStatus: c}))} />
+                            <NotificationToggle 
+                                label="Email me when a document is approved or rejected" 
+                                checked={!!notificationSettings?.documents.approval_updates} 
+                                onChange={c => handleNotificationToggle('documents', 'approval_updates', c)}
+                                disabled={notificationSettingsLoading}
+                            />
+                            <NotificationToggle 
+                                label="Email me when my verification status changes" 
+                                checked={!!notificationSettings?.documents.status_changes} 
+                                onChange={c => handleNotificationToggle('documents', 'status_changes', c)}
+                                disabled={notificationSettingsLoading}
+                            />
                         </div>
                         <div className="pt-4 border-t border-[var(--border-subtle)]">
                             <h3 className="font-semibold text-[var(--text-muted)] mb-2">Benefits & Requests</h3>
-                            <NotificationToggle label="Email me when a new request is created or updated" checked={notifications.requestUpdates} onChange={c => setNotifications(p => ({...p, requestUpdates: c}))} />
-                            <NotificationToggle label="Email me when a benefit (e.g. SEO post) is delivered" checked={notifications.benefitDelivery} onChange={c => setNotifications(p => ({...p, benefitDelivery: c}))} />
+                            <NotificationToggle 
+                                label="Email me when a new request is created or updated" 
+                                checked={!!notificationSettings?.requests.request_updates} 
+                                onChange={c => handleNotificationToggle('requests', 'request_updates', c)}
+                                disabled={notificationSettingsLoading}
+                            />
+                            <NotificationToggle 
+                                label="Email me when a benefit (e.g. SEO post) is delivered" 
+                                checked={!!notificationSettings?.requests.benefits_delivered} 
+                                onChange={c => handleNotificationToggle('requests', 'benefits_delivered', c)}
+                                disabled={notificationSettingsLoading}
+                            />
                         </div>
                         <div className="pt-4 border-t border-[var(--border-subtle)]">
                             <h3 className="font-semibold text-[var(--text-muted)] mb-2">Billing</h3>
-                            <NotificationToggle label="Email me about upcoming renewals and failed payments" checked={notifications.billingUpdates} onChange={c => setNotifications(p => ({...p, billingUpdates: c}))} />
+                            <NotificationToggle 
+                                label="Email me about upcoming renewals and failed payments" 
+                                checked={!!notificationSettings?.billing.renewals_and_failures} 
+                                onChange={c => handleNotificationToggle('billing', 'renewals_and_failures', c)}
+                                disabled={notificationSettingsLoading}
+                            />
                         </div>
                         <div className="pt-4 border-t border-[var(--border-subtle)]">
                             <h3 className="font-semibold text-[var(--text-muted)] mb-2">Community</h3>
-                            <NotificationToggle label="Email me about new events and important announcements" checked={notifications.communityUpdates} onChange={c => setNotifications(p => ({...p, communityUpdates: c}))} />
+                            <NotificationToggle 
+                                label="Email me about new events and important announcements" 
+                                checked={!!notificationSettings?.community.events_and_announcements} 
+                                onChange={c => handleNotificationToggle('community', 'events_and_announcements', c)}
+                                disabled={notificationSettingsLoading}
+                            />
                         </div>
                     </div>
                 </Card>
