@@ -33,7 +33,7 @@ import {
     type PlanBenefits,
 } from '@/config/membershipPlans';
 import PlanManagementModal from '@/components/billing/PlanManagementModal';
-import { normalizePlanTier, type MembershipTier as PlanConfigMembershipTier } from '@/config/plans';
+import { PLANS, normalizePlanTier, type MembershipTier as PlanConfigMembershipTier } from '@/config/plans';
 import type { PostgrestError } from '@supabase/supabase-js';
 
 // --- Reusable Components ---
@@ -4188,6 +4188,11 @@ const mapResetPeriodToUsagePeriod = (resetPeriod?: string | null): SeoBlogPeriod
     return 'month';
 };
 
+// CHANGES:
+// - Cleaned up MemberBenefits layout: current plan card, single membership tiers grid, usage overview.
+// - Plans now driven from MEMBERSHIP_PLANS + PLANS configs.
+// - Removed legacy marketing pricing sections from member hub.
+// - Kept billing + invoice actions intact.
 const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 'error') => void; }> = ({ showToast }) => {
     const { currentUser, session } = useAuth();
     const [selectedBenefit, setSelectedBenefit] = useState<Benefit | null>(null);
@@ -4861,13 +4866,22 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
         [handlePlanCheckout, showToast],
     );
 
+    // Get pricing data from MEMBERSHIP_PLANS and match to the PLANS config for bullet points
+    const getCurrentPlanPricing = () => {
+        const membershipPlan = MEMBERSHIP_PLANS.find(mp => mp.tier === membershipPlanTier);
+        return membershipPlan ? formatMembershipPlanPrice(membershipPlan.defaultPriceCents) : null;
+    };
+
+    const currentPlanPrice = getCurrentPlanPricing();
+
     return (
         <div className="animate-fade-in space-y-8">
             <div>
                 <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Your Membership Benefits</h1>
-                <p className="mt-2 text-lg text-[var(--text-muted)]">See what’s included in your plan and how to make the most of your membership.</p>
+                <p className="mt-2 text-lg text-[var(--text-muted)]">See what's included in your plan and how to make the most of your membership.</p>
             </div>
 
+            {/* Your Current Plan */}
             <Card>
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div className="w-full">
@@ -4886,6 +4900,9 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                                         <span className="text-sm text-[var(--text-muted)]">No rating yet</span>
                                     )}
                                 </div>
+                                {currentPlanPrice && (
+                                    <p className="text-lg font-semibold text-[var(--text-main)] mt-1">{currentPlanPrice} / month</p>
+                                )}
                                 <p className="text-sm text-[var(--text-muted)] mt-2">{billingLine}</p>
                             </>
                         )}
@@ -4897,6 +4914,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                 </div>
             </Card>
 
+            {/* Membership tiers - single grid */}
             <Card>
                 <div className="space-y-6">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -4911,9 +4929,31 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                             const isCurrentPlan = plan.checkoutTier === planManagementTier;
                             const isPendingPlan = pendingPlanTier === plan.checkoutTier;
                             const billingSuffix = plan.billingCycle === 'monthly' ? '/mo' : `/${plan.billingCycle}`;
+                            
+                            // Find matching plan definition from PLANS config for bullet points
+                            const planDefinition = PLANS.find(p => {
+                                // Map tier IDs: 'founding' -> 'founding-member', others stay same
+                                const mappedId = plan.tier === 'founding' ? 'founding-member' : plan.tier;
+                                return p.id === mappedId;
+                            });
+
                             const planCardClasses = plan.isAvailable
                                 ? 'border-[var(--border-subtle)] bg-[var(--bg-card)]'
                                 : 'border-dashed border-[var(--border-subtle)] bg-[var(--bg-subtle)]';
+
+                            // Determine upgrade/downgrade button text
+                            const getCurrentPlanPrice = () => {
+                                const currentMembershipPlan = MEMBERSHIP_PLANS.find(mp => mp.checkoutTier === planManagementTier);
+                                return currentMembershipPlan?.defaultPriceCents || 0;
+                            };
+
+                            const currentPrice = getCurrentPlanPrice();
+                            let buttonText = 'Apply now';
+                            if (plan.defaultPriceCents > currentPrice) {
+                                buttonText = 'Upgrade';
+                            } else if (plan.defaultPriceCents < currentPrice) {
+                                buttonText = 'Downgrade';
+                            }
 
                             return (
                                 <div key={plan.tier} className={`flex flex-col justify-between rounded-2xl border p-6 shadow-md ${planCardClasses}`}>
@@ -4940,6 +4980,21 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                                             {formatMembershipPlanPrice(plan.defaultPriceCents)}
                                             <span className="ml-1 text-base font-semibold text-[var(--text-muted)]">{billingSuffix}</span>
                                         </p>
+
+                                        {/* Display 3-5 key bullet points from PLANS config */}
+                                        {planDefinition && (
+                                            <div className="mt-4 space-y-2">
+                                                {planDefinition.benefits.slice(0, 5).map((benefit, idx) => (
+                                                    <div key={idx} className="flex items-start gap-2 text-sm">
+                                                        <CheckCircleIcon className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                                                        <span className="text-[var(--text-main)]">{benefit.label}</span>
+                                                        {benefit.quotaLabel && (
+                                                            <span className="text-[var(--text-muted)] ml-auto">{benefit.quotaLabel}</span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="mt-6">
                                         {plan.isAvailable ? (
@@ -4957,7 +5012,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                                                         : 'bg-[var(--accent)] text-[var(--accent-text)] hover:bg-[var(--accent-light)]'
                                                 }`}
                                             >
-                                                {isCurrentPlan ? 'Current plan' : isPendingPlan ? 'Connecting…' : 'Apply now'}
+                                                {isCurrentPlan ? 'Current plan' : isPendingPlan ? 'Connecting…' : buttonText}
                                             </button>
                                         ) : (
                                             <div className="w-full rounded-xl border border-dashed border-[var(--border-subtle)] px-6 py-3 text-center text-sm font-semibold text-[var(--text-muted)]">
@@ -4972,6 +5027,7 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                 </div>
             </Card>
 
+            {/* Usage overview */}
             {benefitRulesError && (
                 <Card>
                     <p className="text-sm text-error">{benefitRulesError}</p>
@@ -4983,70 +5039,8 @@ const MemberBenefits: React.FC<{ showToast: (message: string, type: 'success' | 
                     <p className="text-sm text-[var(--text-muted)]">Loading your benefits...</p>
                 </Card>
             ) : (
-                <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {MEMBERSHIP_PLANS.map((plan) => {
-                            const formatPlanPrice = (priceCents: number, billingCycle: 'monthly'): string => {
-                                const amount = priceCents / 100;
-                                const formatted = new Intl.NumberFormat('en-US', {
-                                    style: 'currency',
-                                    currency: 'USD',
-                                    minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
-                                }).format(amount);
-                                return `${formatted} / ${billingCycle === 'monthly' ? 'month' : billingCycle}`;
-                            };
-
-                            const handlePlanAction = () => {
-                                if (plan.isAvailable) {
-                                    void handlePlanCardSelect(plan.checkoutTier);
-                                }
-                            };
-
-                            return (
-                                <Card 
-                                    key={plan.tier}
-                                    className="flex flex-col justify-between h-full"
-                                >
-                                    <div>
-                                        <h3 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-2">
-                                            {plan.label}
-                                        </h3>
-                                        <p className="text-lg font-semibold text-[var(--accent-dark)] mb-3">
-                                            {formatPlanPrice(plan.defaultPriceCents, plan.billingCycle)}
-                                        </p>
-                                        <p className="text-[var(--text-muted)] mb-4">
-                                            {plan.description}
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={handlePlanAction}
-                                        disabled={!plan.isAvailable}
-                                        className={`w-full py-3 px-6 rounded-xl font-bold text-center transition-colors ${
-                                            plan.isAvailable 
-                                                ? 'bg-[var(--accent)] text-[var(--accent-text)] hover:bg-[var(--accent-light)]'
-                                                : 'bg-[var(--bg-subtle)] text-[var(--text-muted)] cursor-not-allowed'
-                                        }`}
-                                    >
-                                        {plan.isAvailable ? (hasActiveSubscription ? 'Apply' : 'Start membership') : 'Coming soon'}
-                                    </button>
-                                </Card>
-                            );
-                        })}
-                    </div>
-
-                    <UsageOverviewChart seoUsed={seoPostsUsed} seoQuota={seoQuota} />
-                </>
+                <UsageOverviewChart seoUsed={seoPostsUsed} seoQuota={seoQuota} />
             )}
-            
-            <div className="bg-gradient-to-r from-gold to-gold-dark text-charcoal p-8 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-6">
-                <div className="text-center md:text-left">
-                    <h2 className="font-playfair text-2xl font-bold">Ready to grow faster?</h2>
-                    <p className="mt-1">Upgrade your membership to unlock more SEO posts, faster reviews, and exclusive member promotions.</p>
-                </div>
-                <button onClick={() => setPlanModalOpen(true)} className="py-3 px-8 bg-charcoal text-white font-bold rounded-lg shadow-md hover:bg-charcoal-light transition-colors whitespace-nowrap">
-                    Manage Plan
-                </button>
-            </div>
             
             <PlanManagementModal
                 isOpen={isPlanModalOpen}
