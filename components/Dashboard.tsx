@@ -5942,9 +5942,9 @@ const MemberSettings: React.FC<{
     useEffect(() => {
         if (currentUser) {
             setAccountData({
-                ownerName: account.ownerName || currentUser?.name || '',
-                ownerEmail: account.ownerEmail || currentUser?.email || '',
-                companyName: account.companyName || '',
+                ownerName: currentUser?.account?.ownerName || currentUser?.name || '',
+                ownerEmail: currentUser?.account?.ownerEmail || currentUser?.email || '',
+                companyName: currentUser?.account?.companyName || '',
             });
             if (currentUser.notifications) {
                 setNotifications(currentUser.notifications);
@@ -6027,8 +6027,9 @@ const MemberSettings: React.FC<{
 
     const handleAccountCancel = () => {
         setAccountData({
-            ownerName: account.ownerName || currentUser?.name || '',
-            ownerEmail: account.ownerEmail || currentUser?.email || '',
+            ownerName: currentUser?.account?.ownerName || currentUser?.name || '',
+            ownerEmail: currentUser?.account?.ownerEmail || currentUser?.email || '',
+            companyName: currentUser?.account?.companyName || '',
         });
         setIsAccountEditing(false);
     };
@@ -6148,7 +6149,7 @@ const MemberSettings: React.FC<{
                 isOpen={isDeleteModalOpen}
                 onClose={() => setIsDeleteModalOpen(false)}
                 onConfirm={handleDeleteConfirm}
-                companyName={account.companyName}
+                companyName={currentUser?.account?.companyName || accountData.companyName || 'your company'}
             />
             
             <div className="space-y-8">
@@ -6169,8 +6170,8 @@ const MemberSettings: React.FC<{
                         <div className="space-y-4 animate-fade-in">
                             <div><label className="text-sm font-medium text-[var(--text-muted)]">Account Owner Name</label><input type="text" value={accountData.ownerName} onChange={e => setAccountData({...accountData, ownerName: e.target.value})} className="mt-1 block w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)]" /></div>
                             <div><label className="text-sm font-medium text-[var(--text-muted)]">Account Email</label><input type="email" value={accountData.ownerEmail} onChange={e => setAccountData({...accountData, ownerEmail: e.target.value})} className="mt-1 block w-full p-2 border border-[var(--border-subtle)] rounded-lg bg-[var(--bg-input)]" /></div>
-                            <div><p className="text-sm text-[var(--text-muted)]">Role</p><p className="font-semibold text-[var(--text-muted)] bg-[var(--bg-subtle)] p-3 rounded-lg">{account.role}</p></div>
-                            <div><p className="text-sm text-[var(--text-muted)]">Company Name</p><p className="font-semibold text-[var(--text-muted)] bg-[var(--bg-subtle)] p-3 rounded-lg">{account.companyName || 'Not set'}</p></div>
+                            <div><p className="text-sm text-[var(--text-muted)]">Role</p><p className="font-semibold text-[var(--text-muted)] bg-[var(--bg-subtle)] p-3 rounded-lg">{currentUser?.account?.role || 'Owner'}</p></div>
+                            <div><p className="text-sm text-[var(--text-muted)]">Company Name</p><p className="font-semibold text-[var(--text-muted)] bg-[var(--bg-subtle)] p-3 rounded-lg">{accountData.companyName || currentUser?.account?.companyName || 'Not set'}</p></div>
                             <div className="flex justify-end gap-4 pt-2">
                                 <button onClick={handleAccountCancel} className="py-2 px-5 bg-[var(--bg-subtle)] border border-[var(--border-subtle)] rounded-lg font-semibold">Cancel</button>
                                 <button onClick={handleAccountSave} className="py-2 px-5 bg-[var(--accent)] text-[var(--accent-text)] rounded-lg font-bold">Save Changes</button>
@@ -6180,8 +6181,8 @@ const MemberSettings: React.FC<{
                         <div className="space-y-4">
                             <div><p className="text-sm text-[var(--text-muted)]">Account Owner Name</p><p className="font-semibold text-[var(--text-main)]">{accountData.ownerName}</p></div>
                             <div><p className="text-sm text-[var(--text-muted)]">Account Email</p><p className="font-semibold text-[var(--text-main)]">{accountData.ownerEmail}</p></div>
-                            <div><p className="text-sm text-[var(--text-muted)]">Role</p><p className="font-semibold text-[var(--text-main)]">{account.role}</p></div>
-                            <div><p className="text-sm text-[var(--text-muted)]">Company Name</p><p className="font-semibold text-[var(--text-main)]">{accountData.companyName || 'Not set'}</p></div>
+                            <div><p className="text-sm text-[var(--text-muted)] mb-1">Role</p><p className="text-sm font-semibold text-[var(--text-main)]">{currentUser?.account?.role || 'Owner'}</p></div>
+                            <div><p className="text-sm text-[var(--text-muted)] mb-1">Company Name</p><button className="text-sm font-semibold text-[var(--text-main)] hover:underline">{accountData.companyName || currentUser?.account?.companyName || 'Not set'}</button></div>
                         </div>
                     )}
                 </Card>
