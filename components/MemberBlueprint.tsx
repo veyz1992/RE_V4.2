@@ -10,6 +10,8 @@
  * 6. Updated mastery level calculation with proper thresholds
  * 7. Improved mobile layouts and spacing
  * 8. Enhanced accessibility with proper ARIA attributes
+ * 9. Made checkmarks clearly visible with high-contrast white color
+ * 10. Added category overview functionality when section is selected
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
@@ -20,6 +22,58 @@ import type { StepWithProgress, SectionWithStats, StepStatus } from '../src/hook
 import BlueprintUpgradePrompt from './BlueprintUpgradePrompt';
 
 type MemberView = 'overview' | 'my-requests' | 'profile' | 'badge' | 'documents' | 'benefits' | 'billing' | 'community' | 'blueprint' | 'settings';
+
+// Category summaries configuration - static data for category overview
+const CATEGORY_SUMMARIES: Record<string, { intro: string; bullets: string[] }> = {
+  'foundation-vision': {
+    intro: 'Clarify why you exist, who you serve, and put the basic business + legal pieces in place.',
+    bullets: [
+      'Commit fully and embrace the grind.',
+      'Get trained, certified and insured.',
+      'Set up your legal, money and basic systems foundation.',
+    ],
+  },
+  'team-operations-basics': {
+    intro: 'Lay down the first hires, safety, equipment and daily workflows so jobs do not feel chaotic.',
+    bullets: [
+      'Start building your core team.',
+      'Standardise how you handle jobs day to day.',
+      'Make safety and reliability non-negotiable.',
+    ],
+  },
+  'marketing-sales-fundamentals': {
+    intro: 'Create a steady flow of quality leads and convert them into paying customers consistently.',
+    bullets: [
+      'Build a professional online presence.',
+      'Develop reliable lead generation systems.',
+      'Master the sales process and customer communication.',
+    ],
+  },
+  'financial-management': {
+    intro: 'Take control of your numbers, pricing, and cash flow to ensure sustainable profitability.',
+    bullets: [
+      'Set up proper bookkeeping and financial tracking.',
+      'Develop competitive yet profitable pricing strategies.',
+      'Manage cash flow and plan for growth.',
+    ],
+  },
+  'customer-experience': {
+    intro: 'Deliver exceptional service that turns customers into raving fans and referral sources.',
+    bullets: [
+      'Standardize your service delivery process.',
+      'Build systems for consistent communication.',
+      'Create memorable experiences that drive referrals.',
+    ],
+  },
+  'growth-scaling': {
+    intro: 'Scale your operations, expand your market reach, and build a business that works without you.',
+    bullets: [
+      'Develop systems that run without your constant oversight.',
+      'Expand into new markets and service areas.',
+      'Build a leadership team to support growth.',
+    ],
+  },
+};
 
 const useIsMobile = (breakpoint = 1024) => {
     const [isMobile, setIsMobile] = useState(window.innerWidth < breakpoint);
@@ -265,7 +319,7 @@ const BlueprintSectionsList: React.FC<{
                                         <h3 className="text-section-title">{section.name}</h3>
                                         {isFullyCompleted && (
                                             <div className="w-6 h-6 rounded-full flex items-center justify-center shadow-lg animate-pulse-gold" style={{background: 'var(--accent-soft)', border: '2px solid var(--accent)'}}>
-                                                <PremiumCheckIcon className="w-4 h-4" style={{fill: 'var(--checkmark-color)'}} />
+                                                <PremiumCheckIcon className="w-4 h-4 text-white" />
                                             </div>
                                         )}
                                     </div>
@@ -370,7 +424,7 @@ const BlueprintSectionsList: React.FC<{
                                                 } : isStepSelected ? {
                                                     color: 'var(--accent)'
                                                 } : {}}>
-                                                    {step.status === 'completed' ? <PremiumCheckIcon className="w-5 h-5" style={{fill: 'var(--checkmark-color)'}} /> : step.step_number}
+                                                    {step.status === 'completed' ? <PremiumCheckIcon className="w-5 h-5 text-white" /> : step.step_number}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className={`text-step-title mb-2 break-words ${
@@ -406,6 +460,96 @@ const BlueprintSectionsList: React.FC<{
                 );
             })}
         </div>
+    );
+};
+
+const CategoryOverview: React.FC<{
+    section: SectionWithStats;
+}> = ({ section }) => {
+    const categoryData = CATEGORY_SUMMARIES[section.key] || CATEGORY_SUMMARIES[section.id];
+    const isFullyCompleted = section.completionRate === 100 && section.totalSteps > 0;
+    
+    return (
+        <Card>
+            <div className="flex items-center gap-3 mb-4">
+                <h2 className="text-page-title">{section.name}</h2>
+                {isFullyCompleted && (
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg animate-pulse-gold" style={{background: 'var(--accent-soft)', border: '2px solid var(--accent)'}}>
+                        <PremiumCheckIcon className="w-5 h-5 text-white" />
+                    </div>
+                )}
+            </div>
+            
+            {/* Category Description */}
+            <div className="mb-6">
+                <p className="text-meta leading-relaxed">
+                    {categoryData?.intro || section.description || 'Explore the steps in this category to build expertise in this area.'}
+                </p>
+            </div>
+
+            {/* Progress Summary */}
+            <div className="mb-6 p-4 bg-[var(--bg-surface-soft)] rounded-lg border border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-section-title">Progress</h4>
+                    <span className="text-step-title">
+                        <span className="font-bold text-[var(--accent)]">{section.completedSteps}</span>
+                        <span className="text-[var(--text-muted)]"> of </span>
+                        <span className="font-bold text-[var(--text-primary)]">{section.totalSteps}</span>
+                        <span className="text-[var(--text-muted)]"> steps completed – </span>
+                        <span className="font-bold text-[var(--accent)]">{section.completionRate}%</span>
+                    </span>
+                </div>
+                <div className="w-full h-2 shadow-inner" style={{
+                    backgroundColor: 'var(--progress-track-bg)',
+                    borderRadius: '8px'
+                }}>
+                    <div 
+                        className="h-2 shadow-sm"
+                        style={{ 
+                            width: `${section.completionRate}%`,
+                            backgroundColor: 'var(--accent)',
+                            borderRadius: '999px',
+                            transition: 'width 0.35s ease'
+                        }}
+                    ></div>
+                </div>
+            </div>
+
+            {/* Key Focus Areas */}
+            {categoryData?.bullets && (
+                <div className="mb-6">
+                    <h4 className="text-section-title mb-3">Key Focus Areas</h4>
+                    <ul className="space-y-2">
+                        {categoryData.bullets.map((bullet, index) => (
+                            <li key={index} className="flex items-start gap-3">
+                                <div className="w-2 h-2 rounded-full bg-[var(--accent)] mt-2 shrink-0"></div>
+                                <span className="text-meta leading-relaxed">{bullet}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {/* Success Panel for Completed Categories */}
+            {isFullyCompleted && (
+                <div className="p-4 rounded-lg border-2 border-[var(--accent)] bg-[var(--accent-soft-bg)] mb-6">
+                    <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-md" style={{background: 'var(--accent-soft)', border: '2px solid var(--accent)'}}>
+                            <PremiumCheckIcon className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-[var(--accent)] mb-1">Great work! You finished {section.name}.</h4>
+                            <p className="text-sm text-[var(--text-muted)]">You now have the foundation for this phase in place and you are ready to move into the next area.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Hint */}
+            <div className="text-center pt-4 border-t border-[var(--border-subtle)]">
+                <p className="text-meta italic">Choose a step on the left to see the detailed tasks.</p>
+            </div>
+        </Card>
     );
 };
 
@@ -526,7 +670,7 @@ const BlueprintStepDetail: React.FC<{
                                             background: 'var(--accent-soft)',
                                             borderColor: 'var(--accent)'
                                         } : {}}>
-                                            {isChecked && <PremiumCheckIcon className="h-3 w-3" style={{fill: 'var(--checkmark-color)'}} />}
+                                            {isChecked && <PremiumCheckIcon className="h-3 w-3 text-white" />}
                                         </div>
                                     </div>
                                     <span className={`text-step-title leading-relaxed transition-all duration-120 break-words ${
@@ -559,7 +703,8 @@ const MobileStepDrawer: React.FC<{
     isOpen: boolean;
     onClose: () => void;
     children: React.ReactNode;
-}> = ({ isOpen, onClose, children }) => {
+    selectedStep: StepWithProgress | null;
+}> = ({ isOpen, onClose, children, selectedStep }) => {
     useEffect(() => {
         if (isOpen) {
             document.body.style.overflow = 'hidden';
@@ -584,7 +729,9 @@ const MobileStepDrawer: React.FC<{
                 <div className="shrink-0 p-6 border-b border-[var(--border-subtle)] bg-[var(--bg-card)] rounded-t-3xl">
                     <div className="w-12 h-1.5 bg-[var(--border-subtle)] rounded-full mx-auto mb-4"></div>
                     <div className="flex items-center justify-between">
-                        <h3 className="font-playfair text-lg font-bold text-[var(--text-main)]">Step Details</h3>
+                        <h3 className="font-playfair text-lg font-bold text-[var(--text-main)]">
+                            {selectedStep ? 'Step Details' : 'Category Overview'}
+                        </h3>
                         <button 
                             onClick={onClose} 
                             className="p-2 rounded-full text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-subtle)] transition-colors"
@@ -683,13 +830,12 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
     };
 
     const handleCloseDrawer = () => {
-        // Only clear selection on mobile when explicitly closing drawer
+        // Only clear selections on mobile when explicitly closing drawer
         if (isMobile) {
             setSelectedStep('');
+            setSelectedSection('');
         }
     };
-
-    const isMobileDrawerOpen = isMobile && !!selectedStepId;
 
     // Handle access state based on the AccessState type
     if (accessState === 'loading') {
@@ -788,11 +934,15 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                     </div>
 
                     {/* Mobile Step Drawer */}
-                    <MobileStepDrawer isOpen={isMobileDrawerOpen} onClose={handleCloseDrawer}>
-                        <BlueprintStepDetail 
-                            step={selectedStep} 
-                            onUpdateChecklist={updateChecklist} 
-                        />
+                    <MobileStepDrawer isOpen={isMobile && (!!selectedStepId || !!selectedSectionId)} onClose={handleCloseDrawer} selectedStep={selectedStep}>
+                        {selectedStep ? (
+                            <BlueprintStepDetail 
+                                step={selectedStep} 
+                                onUpdateChecklist={updateChecklist} 
+                            />
+                        ) : selectedSection ? (
+                            <CategoryOverview section={selectedSection} />
+                        ) : null}
                     </MobileStepDrawer>
                 </div>
             ) : (
@@ -816,10 +966,19 @@ const MemberBlueprint: React.FC<{ onNavigate: (view: MemberView) => void; }> = (
                             />
                         </div>
                         <div className="xl:col-span-3 sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto">
-                            <BlueprintStepDetail 
-                                step={selectedStep} 
-                                onUpdateChecklist={updateChecklist} 
-                            />
+                            {selectedStep ? (
+                                <BlueprintStepDetail 
+                                    step={selectedStep} 
+                                    onUpdateChecklist={updateChecklist} 
+                                />
+                            ) : selectedSection ? (
+                                <CategoryOverview section={selectedSection} />
+                            ) : (
+                                <BlueprintStepDetail 
+                                    step={null} 
+                                    onUpdateChecklist={updateChecklist} 
+                                />
+                            )}
                         </div>
                     </div>
                 </div>
