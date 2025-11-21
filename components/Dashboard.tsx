@@ -7037,14 +7037,14 @@ const MemberDashboard: React.FC = () => {
                                 <div className="w-9 h-9 bg-[var(--accent-bg-subtle)] rounded-full flex items-center justify-center">
                                     <UserCircleIcon className="w-6 h-6 text-[var(--accent-dark)]"/>
                                 </div>
-                                <span className="hidden sm:inline font-semibold text-sm">{currentUser?.name}</span>
+                                <span className="hidden sm:inline font-semibold text-sm">{currentUser?.account?.companyName?.trim() || currentUser?.name?.trim() || 'Member'}</span>
                             </button>
                             {isUserMenuOpen && (
                                 <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-card)] rounded-lg shadow-xl border border-[var(--border-subtle)] z-50 animate-fade-in">
-                                    <a href="#" className="block px-4 py-2 text-sm text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">View Public Profile</a>
-                                    <a href="#" className="block px-4 py-2 text-sm text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">Account Settings</a>
-                                    <a href="#" className="block px-4 py-2 text-sm text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">Billing</a>
-                                    <a href="#" className="block px-4 py-2 text-sm text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">Help & Support</a>
+                                    <button onClick={() => { setActiveView('profile'); setUserMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">View Public Profile</button>
+                                    <button onClick={() => { setActiveView('settings'); setUserMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">Account Settings</button>
+                                    <button onClick={() => { setActiveView('billing'); setUserMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">Billing</button>
+                                    <button onClick={() => { window.open('mailto:support@restorationexpertise.com', '_blank'); setUserMenuOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-[var(--text-main)] hover:bg-[var(--bg-subtle)]">Help & Support</button>
                                     <div className="border-t border-[var(--border-subtle)] my-1"></div>
                                     <button onClick={() => void logout()} className="w-full text-left px-4 py-2 text-sm text-error hover:bg-[var(--bg-subtle)]">Logout</button>
                                 </div>
