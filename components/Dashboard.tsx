@@ -6346,6 +6346,11 @@ const MemberDashboard: React.FC = () => {
     const { currentUser, logout, session } = useAuth();
     
     const safeAccount = currentUser?.account ?? { role: 'Owner', companyName: '' };
+    const displayName =
+        safeAccount.companyName?.trim?.() ||
+        safeAccount.ownerName?.trim?.() ||
+        currentUser?.name?.trim?.() ||
+        'Member';
     const [activeView, setActiveView] = useState<MemberView>('overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
