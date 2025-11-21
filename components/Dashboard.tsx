@@ -5911,6 +5911,7 @@ const MemberSettings: React.FC<{
     const [accountData, setAccountData] = useState({
         ownerName: currentUser?.account?.ownerName || currentUser?.name || '',
         ownerEmail: currentUser?.account?.ownerEmail || currentUser?.email || '',
+        companyName: currentUser?.account?.companyName || '',
     });
 
     // Security State
@@ -5943,6 +5944,7 @@ const MemberSettings: React.FC<{
             setAccountData({
                 ownerName: currentUser.account?.ownerName || currentUser.name,
                 ownerEmail: currentUser.account?.ownerEmail || currentUser.email,
+                companyName: currentUser.account?.companyName || '',
             });
             if (currentUser.notifications) {
                 setNotifications(currentUser.notifications);
@@ -7037,7 +7039,7 @@ const MemberDashboard: React.FC = () => {
                                 <div className="w-9 h-9 bg-[var(--accent-bg-subtle)] rounded-full flex items-center justify-center">
                                     <UserCircleIcon className="w-6 h-6 text-[var(--accent-dark)]"/>
                                 </div>
-                                <span className="hidden sm:inline font-semibold text-sm">{currentUser?.account?.companyName?.trim() || currentUser?.name?.trim() || 'Member'}</span>
+                                <span className="hidden sm:inline font-semibold text-sm">{currentUser.account?.companyName?.trim() || currentUser.account?.ownerName?.trim() || currentUser.name?.trim() || 'Member'}</span>
                             </button>
                             {isUserMenuOpen && (
                                 <div className="absolute right-0 mt-2 w-56 bg-[var(--bg-card)] rounded-lg shadow-xl border border-[var(--border-subtle)] z-50 animate-fade-in">
