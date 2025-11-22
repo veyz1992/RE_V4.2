@@ -1,11 +1,11 @@
-export type BadgeStatus = 'draft' | 'pending_review' | 'active' | 'revoked';
+export type BadgeDesignStatus = 'draft' | 'pending_review' | 'active' | 'revoked';
 
 export interface BadgeDesignRow {
   id: string;
   profile_id: string;
-  status: BadgeStatus;
+  status: BadgeDesignStatus;
   version: number;
-  design_config: unknown; // will be the BadgeBuilder DesignState JSON
+  design_config: unknown;
   badge_label: string | null;
   rating: number | null;
   image_light_url: string | null;
@@ -17,8 +17,10 @@ export interface BadgeDesignRow {
   approved_at: string | null;
 }
 
+export type MemberBadgeUiStatus = 'NONE' | 'PENDING' | 'ACTIVE' | 'REVOKED';
+
 export interface MemberBadgeView {
-  status: BadgeStatus;
+  status: MemberBadgeUiStatus;
   badgeLabel: string;
   imageLightUrl: string | null;
   imageDarkUrl: string | null;
@@ -27,18 +29,28 @@ export interface MemberBadgeView {
 }
 
 export const mapRowToMemberBadgeView = (
-  row: BadgeDesignRow | null
+  row: BadgeDesignRow | null,
+  profileUrl: string | null = null,
 ): MemberBadgeView | null => {
   if (!row) {
     return null;
   }
 
+  const status: MemberBadgeUiStatus =
+    row.status === 'active'
+      ? 'ACTIVE'
+      : row.status === 'pending_review'
+      ? 'PENDING'
+      : row.status === 'revoked'
+      ? 'REVOKED'
+      : 'NONE';
+
   return {
-    status: row.status,
-    badgeLabel: row.badge_label ?? '',
-    imageLightUrl: row.image_light_url || null,
-    imageDarkUrl: row.image_dark_url || null,
-    profileUrl: null,
-    rating: row.rating ?? null,
+    status,
+    badgeLabel: row.badge_label ?? 'Restoration Expertise Badge',
+    imageLightUrl: row.image_light_url,
+    imageDarkUrl: row.image_dark_url,
+    profileUrl,
+    rating: row.rating,
   };
 };
