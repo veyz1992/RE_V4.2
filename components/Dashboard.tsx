@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { HomeIcon, ListBulletIcon, UserCircleIcon, ArrowRightOnRectangleIcon, PencilSquareIcon, TrophyIcon, DocumentTextIcon, CheckCircleIcon, CreditCardIcon, UsersIcon, Cog6ToothIcon, ClockIcon, ExclamationTriangleIcon, EyeIcon, CalendarDaysIcon, PlusCircleIcon, StarIcon, NewspaperIcon, ArrowDownTrayIcon, ArrowTrendingUpIcon, ShieldCheckIcon, MagnifyingGlassIcon, ClipboardIcon, LightBulbIcon, XMarkIcon, UploadIcon, TrashIcon, ChevronDownIcon, ChartBarIcon, ChatBubbleOvalLeftEllipsisIcon, CheckIcon, BriefcaseIcon, KeyIcon, ClipboardDocumentCheckIcon } from './icons';
 import { useAuth } from '@/context/AuthContext';
 import { useBlueprintAccess } from '@/hooks';
+import { useMemberBadge } from '@/hooks/useMemberBadge';
 import {
     Benefit,
     MemberServiceRequest,
@@ -3279,13 +3280,52 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
 
 
 const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast: (message: string, type: 'success' | 'error') => void; }> = ({ onNavigate, showToast }) => {
-    // For now, hardcode a member to get badge data. This would come from context/API.
+    const { badge, isLoading, error } = useMemberBadge();
     const { currentUser } = useAuth();
-    const currentMember = ADMIN_MEMBERS.find(m => m.email === currentUser?.email) || ADMIN_MEMBERS[0]; // Fallback to Acme
-    const { badge } = currentMember;
+    const currentMember = useMemo(
+        () => ADMIN_MEMBERS.find((member) => member.email === currentUser?.email) || ADMIN_MEMBERS[0],
+        [currentUser?.email]
+    );
 
     const [previewBg, setPreviewBg] = useState<'light' | 'dark'>('light');
     const [copied, setCopied] = useState(false);
+
+    const badgeRatingDisplay = badge?.rating ?? currentMember?.rating ?? '—';
+
+    if (isLoading) {
+        return (
+            <div className="animate-fade-in space-y-8">
+                <div>
+                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Your Restoration Expertise Badge</h1>
+                    <p className="mt-2 text-lg text-[var(--text-muted)]">Add this badge to your website and profiles so homeowners instantly know you’re verified.</p>
+                </div>
+                <Card>
+                    <div className="text-center py-12">
+                        <div className="w-16 h-16 mx-auto border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin"></div>
+                        <h3 className="mt-4 text-xl font-bold text-[var(--text-main)]">Loading your badge...</h3>
+                    </div>
+                </Card>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="animate-fade-in space-y-8">
+                <div>
+                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Your Restoration Expertise Badge</h1>
+                    <p className="mt-2 text-lg text-[var(--text-muted)]">Add this badge to your website and profiles so homeowners instantly know you’re verified.</p>
+                </div>
+                <Card>
+                    <div className="text-center py-12">
+                        <ExclamationTriangleIcon className="w-16 h-16 mx-auto text-error" />
+                        <h3 className="mt-4 text-xl font-bold text-[var(--text-main)]">We couldn’t load your badge.</h3>
+                        <p className="mt-1 text-[var(--text-muted)]">{error}</p>
+                    </div>
+                </Card>
+            </div>
+        );
+    }
 
     if (!badge || badge.status === "NONE") {
          return (
@@ -3324,6 +3364,7 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
     }
 
     const imageUrl = previewBg === 'dark' ? (badge.imageDarkUrl || badge.imageLightUrl) : badge.imageLightUrl;
+    const businessNameSlug = (currentMember?.businessName ?? 'member').toLowerCase().replace(/ /g, '-');
 
     const embedCode = `<a href="${badge.profileUrl}" target="_blank" rel="noopener noreferrer">
     <img src="${badge.imageLightUrl}"
@@ -3356,7 +3397,7 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
                 <div className="flex items-center">
                     <ShieldCheckIcon className="w-6 h-6 text-gold-dark mr-3 shrink-0" />
                     <p className="text-sm sm:text-base font-semibold">
-                        Verified Member · {currentMember.tier} Plan · Rating: {currentMember.rating}
+                        Verified Member · {currentMember.tier} Plan · Rating: {badgeRatingDisplay}
                     </p>
                 </div>
                 <button onClick={() => onNavigate('billing')} className="font-bold text-sm bg-gold/20 text-gold-dark py-1.5 px-3 rounded-md hover:bg-gold/30 transition-colors whitespace-nowrap self-end sm:self-center">
@@ -3379,7 +3420,7 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
                         <img src={imageUrl} alt={badge.badgeLabel} className="max-w-xs h-auto" />
                     </div>
                      <p className="text-sm text-[var(--text-muted)] mt-4 text-center lg:text-left px-2">
-                        This badge reflects your current plan ({currentMember.tier}) and rating ({currentMember.rating}). Any future upgrades or renewals will automatically update your badge.
+                        This badge reflects your current plan ({currentMember.tier}) and rating ({badgeRatingDisplay}). Any future upgrades or renewals will automatically update your badge.
                     </p>
                 </div>
 
@@ -3387,10 +3428,10 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
                     <Card>
                         <h3 className="font-playfair text-xl font-bold text-[var(--text-main)] mb-4">Download & Embed</h3>
                         <div className="grid grid-cols-2 gap-4 mb-6">
-                            <a href={imageUrl} download={`${currentMember.businessName.toLowerCase().replace(/ /g, '-')}-badge.png`}>
+                            <a href={imageUrl} download={`${businessNameSlug}-badge.png`}>
                                 <button className="w-full py-3 px-4 bg-[var(--bg-card)] text-[var(--text-main)] font-bold rounded-lg shadow-md border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] transition-all flex items-center justify-center gap-2"><ArrowDownTrayIcon className="w-5 h-5"/> PNG</button>
                             </a>
-                             <a href={imageUrl} download={`${currentMember.businessName.toLowerCase().replace(/ /g, '-')}-badge.svg`}>
+                             <a href={imageUrl} download={`${businessNameSlug}-badge.svg`}>
                                 <button className="w-full py-3 px-4 bg-[var(--bg-card)] text-[var(--text-main)] font-bold rounded-lg shadow-md border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] transition-all flex items-center justify-center gap-2"><ArrowDownTrayIcon className="w-5 h-5"/> SVG</button>
                             </a>
                         </div>
