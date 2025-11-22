@@ -1,17 +1,17 @@
 
 import React from 'react';
-import { 
-  Settings, 
-  Clipboard, 
-  ImageIcon, 
-  LayoutTemplate, 
-  Save, 
-  RefreshCw, 
+import {
+  Settings,
+  Clipboard,
+  ImageIcon,
+  LayoutTemplate,
+  Save,
+  RefreshCw,
   Code as CodeIcon,
   Loader2,
   CheckCircle2,
   Trash2,
-  HardDrive
+  HardDrive,
 } from 'lucide-react';
 import { DesignProvider, useDesign } from './context/DesignContext';
 import LayerControls from './components/LayerControls';
@@ -204,7 +204,7 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const App: React.FC = () => {
+const BadgeBuilder: React.FC = () => {
   return (
     <DesignProvider>
       <MainLayout />
@@ -212,4 +212,4 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
+export default BadgeBuilder;
