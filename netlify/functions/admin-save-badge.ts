@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { BadgeStatus } from '../../src/lib/badges';
+import { type BadgeDesignRow, type BadgeDesignStatus } from '../../src/lib/badges';
 import { supabase } from '../lib/supabaseServer';
 
 const jsonResponse = (statusCode: number, body: unknown) => ({
@@ -8,75 +8,75 @@ const jsonResponse = (statusCode: number, body: unknown) => ({
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
   },
   body: JSON.stringify(body),
 });
 
-type AdminSaveBadgePayload = {
+type SaveBadgePayload = {
   profileId: string;
   designConfig: unknown;
-  status?: BadgeStatus;
+  status?: BadgeDesignStatus;
   badgeLabel?: string | null;
   rating?: number | null;
+  imageLightUrl?: string | null;
+  imageDarkUrl?: string | null;
 };
 
 export const handler: Handler = async event => {
-  // CORS preflight
+  // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
-    return jsonResponse(200, {});
+    return jsonResponse(200, { ok: true });
   }
 
   if (event.httpMethod !== 'POST') {
-    return jsonResponse(405, { error: 'METHOD_NOT_ALLOWED' });
+    return jsonResponse(405, { error: 'Method Not Allowed' });
   }
 
   if (!event.body) {
-    return jsonResponse(400, { error: 'INVALID_PAYLOAD' });
+    return jsonResponse(400, { error: 'Missing request body' });
   }
 
-  let payload: AdminSaveBadgePayload;
+  let payload: SaveBadgePayload;
   try {
     payload = JSON.parse(event.body);
   } catch (error) {
-    console.error('[admin-save-badge] json_parse_error', error);
-    return jsonResponse(400, { error: 'INVALID_PAYLOAD' });
+    return jsonResponse(400, { error: 'Invalid JSON body' });
   }
 
-  const { profileId, designConfig, status, badgeLabel = null, rating = null } = payload;
+  const {
+    profileId,
+    designConfig,
+    status = 'draft',
+    badgeLabel = null,
+    rating = null,
+    imageLightUrl = null,
+    imageDarkUrl = null,
+  } = payload;
 
-  if (!profileId || typeof profileId !== 'string' || !designConfig) {
-    return jsonResponse(400, { error: 'MISSING_REQUIRED_FIELDS' });
+  if (!profileId || !designConfig) {
+    return jsonResponse(400, { error: 'profileId and designConfig are required' });
   }
 
-  const statusValue: BadgeStatus = status ?? 'draft';
+  const { data, error } = await supabase
+    .from<BadgeDesignRow>('badge_designs')
+    .insert({
+      profile_id: profileId,
+      status,
+      design_config: designConfig,
+      badge_label: badgeLabel ?? null,
+      rating: rating ?? null,
+      image_light_url: imageLightUrl ?? null,
+      image_dark_url: imageDarkUrl ?? null,
+      embed_code_version: 'v1',
+    })
+    .select('*')
+    .single();
 
-  try {
-    const { data, error } = await supabase
-      .from('badge_designs')
-      .upsert(
-        {
-          profile_id: profileId,
-          design_config: designConfig,
-          status: statusValue,
-          badge_label: badgeLabel,
-          rating,
-          version: 1,
-          // TODO: enforce single active badge per profile before setting status to "active".
-        },
-        { returning: 'representation' }
-      )
-      .select('*')
-      .single();
-
-    if (error) {
-      console.error('[admin-save-badge] upsert_error', error);
-      return jsonResponse(500, { error: 'DB_ERROR' });
-    }
-
-    return jsonResponse(200, { badge: data });
-  } catch (err) {
-    console.error('[admin-save-badge] unhandled_error', err);
-    return jsonResponse(500, { error: 'INTERNAL_ERROR' });
+  if (error) {
+    return jsonResponse(500, { error: 'Database error', details: error.message });
   }
+
+  // TODO: Add logic to update existing rows and enforce active transitions
+
+  return jsonResponse(200, { badge: data });
 };
