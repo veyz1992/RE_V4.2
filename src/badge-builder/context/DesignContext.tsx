@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { DesignState, TextLayer, Layer, Template } from '../types';
 import { INITIAL_LAYERS, DEFAULT_TEMPLATES } from '../constants';
 import { generateTemplateBackground } from '../utils/templateHelpers';
