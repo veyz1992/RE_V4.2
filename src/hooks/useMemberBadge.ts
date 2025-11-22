@@ -1,72 +1,80 @@
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
+import { FUNCTION_ENDPOINTS } from '../lib/functions';
 import { useAuth } from '../context/AuthContext';
-import { ADMIN_MEMBERS } from '../../lib/mockData';
+import type { MemberBadgeView } from '../lib/badges';
 
+// This hook now fetches the active badge for the current profile from the Netlify function
+// /.netlify/functions/member-badge, which reads from the Supabase badge_designs table.
 export type BadgeStatus = 'NONE' | 'PENDING' | 'ACTIVE' | 'REVOKED';
 
 export interface MemberBadgeData {
   status: BadgeStatus;
   badgeLabel: string;
-  imageLightUrl: string;
-  imageDarkUrl: string;
-  profileUrl: string;
+  imageLightUrl: string | null;
+  imageDarkUrl: string | null;
+  profileUrl: string | null;
   rating: number | null;
 }
 
-interface UseMemberBadgeOptions {
-  memberId?: string;
-  email?: string;
-}
-
-export function useMemberBadge(options?: UseMemberBadgeOptions): {
+interface UseMemberBadgeResult {
   badge: MemberBadgeData | null;
   isLoading: boolean;
   error: string | null;
-} {
+}
+
+export function useMemberBadge(): UseMemberBadgeResult {
   const { session } = useAuth();
+  const profileId = session?.user?.id;
+  const [badge, setBadge] = useState<MemberBadgeData | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const member = useMemo(() => {
-    const { memberId, email } = options ?? {};
-    const resolvedEmail = email ?? session?.user?.email;
+  useEffect(() => {
+    const fetchBadge = async () => {
+      if (!profileId) {
+        setBadge(null);
+        setIsLoading(false);
+        return;
+      }
 
-    if (memberId) {
-      const matchById = ADMIN_MEMBERS.find(({ id }) => id === memberId);
-      if (matchById) return matchById;
-    }
+      setIsLoading(true);
+      setError(null);
 
-    if (resolvedEmail) {
-      const matchByEmail = ADMIN_MEMBERS.find(({ email: memberEmail }) => memberEmail === resolvedEmail);
-      if (matchByEmail) return matchByEmail;
-    }
+      try {
+        const url = `${FUNCTION_ENDPOINTS.MEMBER_BADGE}?profileId=${encodeURIComponent(profileId)}`;
+        const res = await fetch(url, { method: 'GET' });
 
-    return ADMIN_MEMBERS[0] ?? null;
-  }, [options, session?.user?.email]);
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `Request failed with status ${res.status}`);
+        }
 
-  const badge = useMemo<MemberBadgeData | null>(() => {
-    if (!member?.badge) {
-      return null;
-    }
+        const data: { badge: MemberBadgeView | null } = await res.json();
 
-    const numericRating = typeof member.rating === 'number' ? member.rating : Number(member.rating);
-    const rating = Number.isFinite(numericRating) ? numericRating : null;
-
-    return {
-      status: member.badge.status ?? 'NONE',
-      badgeLabel: member.badge.badgeLabel ?? '',
-      imageLightUrl: member.badge.imageLightUrl ?? '',
-      imageDarkUrl: member.badge.imageDarkUrl ?? member.badge.imageLightUrl ?? '',
-      profileUrl: member.badge.profileUrl ?? '',
-      rating,
+        if (!data.badge) {
+          setBadge(null);
+        } else {
+          const mapped: MemberBadgeData = {
+            status: data.badge.status,
+            badgeLabel: data.badge.badgeLabel,
+            imageLightUrl: data.badge.imageLightUrl,
+            imageDarkUrl: data.badge.imageDarkUrl,
+            profileUrl: data.badge.profileUrl,
+            rating: data.badge.rating,
+          };
+          setBadge(mapped);
+        }
+      } catch (err: any) {
+        console.error('Failed to load member badge', err);
+        setError(err?.message ?? 'Failed to load badge');
+        setBadge(null);
+      } finally {
+        setIsLoading(false);
+      }
     };
-  }, [member]);
 
-  // TODO: Replace mock data lookup with Supabase query:
-  // - fetch active badge_designs row for the current profile
-  // - map to MemberBadgeData shape
+    fetchBadge();
+  }, [profileId]);
 
-  return {
-    badge,
-    isLoading: false,
-    error: null,
-  };
+  return { badge, isLoading, error };
 }
