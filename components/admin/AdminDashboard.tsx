@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { HomeIcon, UsersIcon, BriefcaseIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon, CurrencyDollarIcon, UserCircleIcon, ChevronDownIcon } from '../icons';
+import { HomeIcon, UsersIcon, BriefcaseIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon, CurrencyDollarIcon, UserCircleIcon, ChevronDownIcon, TrophyIcon } from '../icons';
 import { useAuth } from '@/context/AuthContext';
 import AdminOverview from './AdminOverview';
 import ClientManagement from './ClientManagement';
@@ -8,6 +8,7 @@ import AdminServiceRequests from './AdminServiceRequests';
 import AdminDocumentsView from './AdminDocumentsView';
 import AdminSubscriptionsView from './AdminSubscriptionsView';
 import ThemeToggle from '../ThemeToggle';
+import BadgeBuilder from '@/badge-builder/BadgeBuilder';
 
 const PlaceholderView: React.FC<{ title: string }> = ({ title }) => (
     <div className="p-8 animate-fade-in">
@@ -28,7 +29,7 @@ const SidebarLink: React.FC<{ icon: React.ReactNode; label: string; isActive: bo
 );
 
 // --- Main Dashboard Component ---
-type AdminView = 'overview' | 'members' | 'serviceRequests' | 'documents' | 'subscriptions' | 'settings';
+type AdminView = 'overview' | 'members' | 'serviceRequests' | 'documents' | 'subscriptions' | 'settings' | 'badgeBuilder';
 
 const AdminDashboard: React.FC = () => {
     const { currentUser, logout } = useAuth();
@@ -78,6 +79,12 @@ const AdminDashboard: React.FC = () => {
                 return <AdminSubscriptionsView showToast={showToast} />;
             case 'settings':
                 return <AdminSettings showToast={showToast} />;
+            case 'badgeBuilder':
+                return (
+                    <div className="p-4 md:p-6 lg:p-8 h-full overflow-auto">
+                        <BadgeBuilder />
+                    </div>
+                );
             default:
                 return <AdminOverview />;
         }
@@ -90,6 +97,7 @@ const AdminDashboard: React.FC = () => {
             <SidebarLink icon={<BriefcaseIcon className="w-6 h-6" />} label="Service Requests" isActive={activeView === 'serviceRequests'} onClick={() => handleViewChange('serviceRequests')} />
             <SidebarLink icon={<ShieldCheckIcon className="w-6 h-6" />} label="Documents" isActive={activeView === 'documents'} onClick={() => handleViewChange('documents')} />
             <SidebarLink icon={<CurrencyDollarIcon className="w-6 h-6" />} label="Subscriptions" isActive={activeView === 'subscriptions'} onClick={() => handleViewChange('subscriptions')} />
+            <SidebarLink icon={<TrophyIcon className="w-6 h-6" />} label="Badge Builder" isActive={activeView === 'badgeBuilder'} onClick={() => handleViewChange('badgeBuilder')} />
             <SidebarLink icon={<Cog6ToothIcon className="w-6 h-6" />} label="Settings" isActive={activeView === 'settings'} onClick={() => handleViewChange('settings')} />
         </>
     );
