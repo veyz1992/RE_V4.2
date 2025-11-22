@@ -5192,41 +5192,36 @@ const createSummaryFromSubscription = (subscription: BillingSubscriptionRow | nu
 
     const planLabel = formatTierLabel(subscription.tier);
     
-    // Price is sourced from Stripe subscription (primary) with MEMBERSHIP_PLANS fallback to keep Billing consistent
-    const unitAmountCents = subscription.unit_amount_cents;
-    const interval = subscription.billing_cycle?.toLowerCase();
-    let priceLabel = '$99 / month'; // fallback to prevent crashes
-    
-    if (unitAmountCents != null && unitAmountCents > 0) {
-        const priceMonthly = unitAmountCents / 100;
+    // Configuration-driven pricing: Use MEMBERSHIP_PLANS as primary source, with Stripe as fallback
+    // This ensures consistency across billing and benefits tabs while avoiding hard-coded prices
+    const subscriptionTier = subscription?.tier ?? 'founding';
+    const tierKey = subscriptionTier?.toLowerCase();
+    const membershipPlan = tierKey
+        ? MEMBERSHIP_PLANS.find(plan => {
+            const planTier = plan.tier?.toLowerCase();
+            return planTier === tierKey || 
+                   (planTier === 'founding' && (tierKey === 'founding-member' || tierKey.includes('founding'))) ||
+                   (tierKey === 'founding' && planTier === 'founding-member');
+        })
+        : undefined;
+
+    const interval = (subscription?.billing_cycle || 'month').toLowerCase();
+    let priceLabel: string;
+
+    if (membershipPlan?.defaultPriceCents) {
+        const basePrice = membershipPlan.defaultPriceCents / 100;
         if (interval === 'month') {
-            priceLabel = `$${priceMonthly} / month`;
+            priceLabel = `$${basePrice} / month`;
         } else if (interval === 'year') {
-            const priceYearly = priceMonthly;
-            priceLabel = `$${priceYearly} / year`;
+            priceLabel = `$${basePrice} / year`;
         } else {
-            priceLabel = `$${priceMonthly} / ${interval || 'period'}`;
+            priceLabel = `$${basePrice} / ${interval}`;
         }
+    } else if (subscription.unit_amount_cents && subscription.unit_amount_cents > 0) {
+        const priceFromStripe = subscription.unit_amount_cents / 100;
+        priceLabel = `$${priceFromStripe} / ${interval}`;
     } else {
-        // Fallback to membership config when no subscription unit amount
-        const membershipPlan = MEMBERSHIP_PLANS.find(plan => {
-            const normalizedTier = plan.tier?.toLowerCase();
-            const subscriptionTier = subscription.tier?.toLowerCase();
-            return normalizedTier === subscriptionTier || 
-                   (normalizedTier === 'founding' && subscriptionTier === 'founding-member') ||
-                   (normalizedTier === 'founding-member' && subscriptionTier === 'founding');
-        });
-        
-        if (membershipPlan?.defaultPriceCents) {
-            const planPriceMonthlyFromConfig = membershipPlan.defaultPriceCents / 100;
-            if (interval === 'month') {
-                priceLabel = `$${planPriceMonthlyFromConfig} / month`;
-            } else if (interval === 'year') {
-                priceLabel = `$${planPriceMonthlyFromConfig} / year`;
-            } else {
-                priceLabel = `$${planPriceMonthlyFromConfig} / ${interval || 'month'}`;
-            }
-        }
+        priceLabel = 'Price unavailable';
     }
     
     const billingCycleLabel = formatBillingCycleLabel(subscription.billing_cycle);
