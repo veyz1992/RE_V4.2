@@ -57,6 +57,18 @@ export const handler: Handler = async event => {
     return jsonResponse(400, { error: 'profileId and designConfig are required' });
   }
 
+  if (status === 'active') {
+    const { error: revokeError } = await supabase
+      .from<BadgeDesignRow>('badge_designs')
+      .update({ status: 'revoked' })
+      .eq('profile_id', profileId)
+      .eq('status', 'active');
+
+    if (revokeError) {
+      return jsonResponse(500, { error: 'Database error', details: revokeError.message });
+    }
+  }
+
   const { data, error } = await supabase
     .from<BadgeDesignRow>('badge_designs')
     .insert({
@@ -75,8 +87,6 @@ export const handler: Handler = async event => {
   if (error) {
     return jsonResponse(500, { error: 'Database error', details: error.message });
   }
-
-  // TODO: Add logic to update existing rows and enforce active transitions
 
   return jsonResponse(200, { badge: data });
 };

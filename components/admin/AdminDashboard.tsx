@@ -9,6 +9,7 @@ import AdminDocumentsView from './AdminDocumentsView';
 import AdminSubscriptionsView from './AdminSubscriptionsView';
 import ThemeToggle from '../ThemeToggle';
 import BadgeBuilder from '@/badge-builder/BadgeBuilder';
+import { ADMIN_MEMBERS, type AdminMember } from '../../lib/mockData';
 
 const PlaceholderView: React.FC<{ title: string }> = ({ title }) => (
     <div className="p-8 animate-fade-in">
@@ -38,6 +39,7 @@ const AdminDashboard: React.FC = () => {
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const userMenuRef = useRef<HTMLDivElement>(null);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const [selectedProfile, setSelectedProfile] = useState<AdminMember | null>(ADMIN_MEMBERS[0] ?? null);
 
      useEffect(() => {
         if (toast) {
@@ -70,7 +72,7 @@ const AdminDashboard: React.FC = () => {
             case 'overview':
                 return <AdminOverview />;
             case 'members':
-                return <ClientManagement showToast={showToast} />;
+                return <ClientManagement showToast={showToast} onSelectMember={setSelectedProfile} />;
             case 'serviceRequests':
                 return <AdminServiceRequests showToast={showToast} />;
             case 'documents':
@@ -82,7 +84,7 @@ const AdminDashboard: React.FC = () => {
             case 'badgeBuilder':
                 return (
                     <div className="p-4 md:p-6 lg:p-8 h-full overflow-auto">
-                        <BadgeBuilder />
+                        <BadgeBuilder profileId={selectedProfile?.id ?? null} companyName={selectedProfile?.businessName ?? null} />
                     </div>
                 );
             default:

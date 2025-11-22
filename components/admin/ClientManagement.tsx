@@ -6,9 +6,10 @@ import ImpersonateModal from './ImpersonateModal';
 
 interface ClientManagementProps {
     showToast: (message: string, type: 'success' | 'error') => void;
+    onSelectMember?: (member: AdminMember) => void;
 }
 
-const ClientManagement: React.FC<ClientManagementProps> = ({ showToast }) => {
+const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelectMember }) => {
     const [members, setMembers] = useState<AdminMember[]>(ADMIN_MEMBERS);
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({ tier: 'All', status: 'All', rating: 'All' });
@@ -34,7 +35,13 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast }) => {
     const handleUpdateMember = (updatedMember: AdminMember) => {
         setMembers(prev => prev.map(m => m.id === updatedMember.id ? updatedMember : m));
         setSelectedMember(updatedMember);
+        onSelectMember?.(updatedMember);
         showToast('Member updated successfully.', 'success');
+    };
+
+    const handleSelectMember = (member: AdminMember) => {
+        setSelectedMember(member);
+        onSelectMember?.(member);
     };
 
     const openImpersonateModal = (member: AdminMember) => {
@@ -99,8 +106,8 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast }) => {
     return (
         <>
             {selectedMember && (
-                <MemberDetailDrawer 
-                    member={selectedMember} 
+                <MemberDetailDrawer
+                    member={selectedMember}
                     onClose={() => setSelectedMember(null)}
                     onUpdate={handleUpdateMember}
                     showToast={showToast}
@@ -175,8 +182,8 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast }) => {
                                         <td className="p-4 whitespace-nowrap text-sm">{member.pendingDocs > 0 || member.openRequests > 0 ? `${member.pendingDocs} D / ${member.openRequests} R` : '—'}</td>
                                         <td className="p-4 whitespace-nowrap text-right text-sm font-medium">
                                             <div className="flex justify-end gap-1">
-                                                <button onClick={() => setSelectedMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="View"><EyeIcon className="w-5 h-5"/></button>
-                                                <button onClick={() => setSelectedMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Edit"><PencilSquareIcon className="w-5 h-5"/></button>
+                                                <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="View"><EyeIcon className="w-5 h-5"/></button>
+                                                <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Edit"><PencilSquareIcon className="w-5 h-5"/></button>
                                                 <button onClick={() => openImpersonateModal(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Impersonate"><UserCircleIcon className="w-5 h-5"/></button>
                                             </div>
                                         </td>
@@ -207,7 +214,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast }) => {
                                     <p className="text-sm text-gray-dark">MRR: <span className="font-semibold text-charcoal">${member.mrr.toLocaleString()}</span></p>
                                     <p className="text-sm text-gray-dark">Renews: <span className="font-semibold text-charcoal">{member.renewalDate}</span></p>
                                 </div>
-                                <button onClick={() => setSelectedMember(member)} className="py-2 px-4 bg-info/10 text-info font-bold rounded-lg">View</button>
+                                <button onClick={() => handleSelectMember(member)} className="py-2 px-4 bg-info/10 text-info font-bold rounded-lg">View</button>
                             </div>
                         </div>
                     ))}

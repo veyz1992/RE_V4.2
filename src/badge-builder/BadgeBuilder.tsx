@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Settings,
   Clipboard,
@@ -18,12 +18,107 @@ import LayerControls from './components/LayerControls';
 import PreviewArea from './components/PreviewArea';
 import CodeModal from './components/CodeModal';
 import StartupModal from './components/StartupModal';
+import { FUNCTION_ENDPOINTS } from '../lib/functions';
+import type { BadgeDesignStatus } from '../lib/badges';
 
-const MainLayout: React.FC = () => {
+interface BadgeBuilderProps {
+  profileId: string | null;
+  companyName?: string | null;
+}
+
+const saveBadge = async ({
+  profileId,
+  designConfig,
+  status,
+  badgeLabel,
+  rating,
+  imageLightUrl,
+  imageDarkUrl,
+}: {
+  profileId: string;
+  designConfig: unknown;
+  status: BadgeDesignStatus;
+  badgeLabel?: string | null;
+  rating?: number | null;
+  imageLightUrl?: string | null;
+  imageDarkUrl?: string | null;
+}) => {
+  const res = await fetch(FUNCTION_ENDPOINTS.ADMIN_SAVE_BADGE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      profileId,
+      designConfig,
+      status,
+      badgeLabel,
+      rating,
+      imageLightUrl,
+      imageDarkUrl,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed with status ${res.status}`);
+  }
+
+  return res.json();
+};
+
+type MainLayoutProps = {
+  profileId: string;
+  companyName?: string | null;
+};
+
+const MainLayout: React.FC<MainLayoutProps> = ({ profileId, companyName }) => {
   const { state, ui, actions, availableTemplates } = useDesign();
-  
+  const [isSaving, setIsSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   // Find active template from the combined list
   const activeTemplate = availableTemplates.find(t => t.id === state.templateId);
+
+  const currentDesignConfig = useMemo(() => {
+    return JSON.parse(JSON.stringify(state));
+  }, [state]);
+
+  const badgeLabel = useMemo(() => {
+    const base = companyName || state.companyName;
+    if (base) {
+      return `${base} – Restoration Expertise Badge`;
+    }
+    return 'Restoration Expertise Badge';
+  }, [companyName, state.companyName]);
+
+  const handleSave = async (status: BadgeDesignStatus) => {
+    if (!profileId) return;
+    setIsSaving(true);
+    setStatusMessage(null);
+    setErrorMessage(null);
+
+    try {
+      await saveBadge({
+        profileId,
+        designConfig: currentDesignConfig,
+        status,
+        badgeLabel,
+        rating: null,
+        imageLightUrl: null,
+        imageDarkUrl: null,
+      });
+
+      setStatusMessage(status === 'active' ? 'Badge published' : 'Draft saved');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save badge');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveDraft = () => void handleSave('draft');
+
+  const handlePublish = () => void handleSave('active');
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -196,6 +291,34 @@ const MainLayout: React.FC = () => {
 
       {/* Preview */}
       <div className="flex-1 h-full relative">
+        <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-2">
+          <div className="flex gap-2">
+            <button
+              onClick={handleSaveDraft}
+              disabled={isSaving}
+              className="px-4 py-2 bg-slate-900/80 border border-slate-700 text-sm rounded-lg hover:bg-slate-800 disabled:opacity-50"
+            >
+              Save draft
+            </button>
+            <button
+              onClick={handlePublish}
+              disabled={isSaving}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-sm font-semibold rounded-lg shadow-lg disabled:opacity-50"
+            >
+              {isSaving ? 'Saving…' : 'Publish badge'}
+            </button>
+          </div>
+          {statusMessage && (
+            <div className="text-xs text-green-300 bg-green-900/30 border border-green-700 px-3 py-1 rounded">
+              {statusMessage}
+            </div>
+          )}
+          {errorMessage && (
+            <div className="text-xs text-red-300 bg-red-900/30 border border-red-700 px-3 py-1 rounded">
+              {errorMessage}
+            </div>
+          )}
+        </div>
         <PreviewArea />
       </div>
 
@@ -204,10 +327,21 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const BadgeBuilder: React.FC = () => {
+const BadgeBuilder: React.FC<BadgeBuilderProps> = ({ profileId, companyName }) => {
+  if (!profileId) {
+    return (
+      <div className="p-6">
+        <h2 className="text-xl font-semibold mb-2">Select a member to edit their badge</h2>
+        <p className="text-sm text-slate-400">
+          Choose a member from the Members tab and then open the Badge Builder for that profile.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <DesignProvider>
-      <MainLayout />
+      <MainLayout profileId={profileId} companyName={companyName} />
     </DesignProvider>
   );
 };
