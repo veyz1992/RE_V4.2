@@ -12,4 +12,6 @@ export const FUNCTION_ENDPOINTS = {
   STRIPE_SESSION: FN('get-stripe-session'),
   SAVE_ASSESSMENT: FN('save-assessment'),
   SUCCESS_SUMMARY: FN('get-success-summary'),
+  MEMBER_BADGE: FN('member-badge'),
+  ADMIN_SAVE_BADGE: FN('admin-save-badge'),
 } as const;
