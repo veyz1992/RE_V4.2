@@ -273,7 +273,9 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                 {!isLoading && !error && filteredAndSortedMembers.map(member => {
                                     const tierLabel = member.tier || '—';
                                     const tierColor = tierColors[member.tier || ''] || 'bg-gray-200 text-gray-800';
-                                    const ratingLabel = member.badgeRating || '—';
+                                    const ratingContent = member.badgeRating
+                                        ? <span className="px-2 py-1 text-xs font-semibold rounded-full bg-info/10 text-charcoal">{member.badgeRating}</span>
+                                        : <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-dark">Not rated yet</span>;
                                     const statusLabel = member.status || '—';
                                     const statusColor = statusColors[member.status || ''] || 'bg-gray-200 text-gray-800';
                                     const mrrDisplay = member.mrr !== null ? `$${member.mrr.toLocaleString()}` : '—';
@@ -287,7 +289,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                         <tr key={member.id} className="hover:bg-gray-light/50">
                                             <td className="p-4 whitespace-nowrap"><p className="font-semibold text-charcoal">{member.businessName}</p><p className="text-sm text-gray-dark">{member.primaryContact || '—'}</p></td>
                                             <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${tierColor}`}>{tierLabel}</span></td>
-                                            <td className="p-4 whitespace-nowrap font-semibold">{ratingLabel}</td>
+                                            <td className="p-4 whitespace-nowrap">{ratingContent}</td>
                                             <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span></td>
                                             <td className="p-4 whitespace-nowrap">{mrrDisplay}</td>
                                             <td className="p-4 whitespace-nowrap text-sm">{renewalDisplay}</td>
