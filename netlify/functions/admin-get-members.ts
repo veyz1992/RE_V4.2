@@ -24,12 +24,27 @@ interface ProfileRow {
   verification_status: string | null;
   badge_rating: string | null;
   created_at: string | null;
-  memberships?: {
-    tier: string | null;
-    status: string | null;
-    activated_at: string | null;
-    badge_rating?: string | null;
-  }[];
+}
+
+interface MembershipRow {
+  profile_id: string;
+  tier: string | null;
+  status: string | null;
+  badge_rating: string | null;
+  created_at: string | null;
+}
+
+interface BadgeDesignRow {
+  profile_id: string;
+  status: string | null;
+  rating: string | null;
+  created_at: string | null;
+}
+
+interface AssessmentRow {
+  profile_id: string;
+  pci_rating: string | null;
+  created_at: string | null;
 }
 
 interface AdminMember {
@@ -45,36 +60,6 @@ interface AdminMember {
   joinDate: string | null;
 }
 
-const selectFields =
-  'id, company_name, full_name, email, city, state, membership_tier, member_status, verification_status, badge_rating, created_at, memberships(tier, status, activated_at, badge_rating)';
-
-const mapProfileToAdminMember = (profile: ProfileRow): AdminMember => {
-  const membership = Array.isArray(profile.memberships)
-    ? [...profile.memberships].sort((a, b) => {
-        const aDate = a.activated_at ? new Date(a.activated_at).getTime() : 0;
-        const bDate = b.activated_at ? new Date(b.activated_at).getTime() : 0;
-        return bDate - aDate;
-      })[0]
-    : undefined;
-
-  const location = profile.city && profile.state
-    ? `${profile.city}, ${profile.state}`
-    : profile.city || profile.state || null;
-
-  return {
-    id: profile.id,
-    businessName: profile.company_name ?? 'Unknown',
-    primaryContact: profile.full_name ?? null,
-    email: profile.email ?? null,
-    location,
-    tier: membership?.tier ?? profile.membership_tier ?? null,
-    status: membership?.status ?? profile.member_status ?? null,
-    verificationStatus: profile.verification_status ?? null,
-    badgeRating: membership?.badge_rating ?? profile.badge_rating ?? null,
-    joinDate: profile.created_at ?? null,
-  };
-};
-
 export const handler: Handler = async event => {
   if (event.httpMethod === 'OPTIONS') {
     return jsonResponse(200, { ok: true });
@@ -87,16 +72,124 @@ export const handler: Handler = async event => {
   // Placeholder: later we can validate admin auth from the Authorization header
   // const authHeader = event.headers.authorization || event.headers.Authorization;
 
-  const { data, error } = await supabase
+  const { data: profiles, error: profilesError } = await supabase
     .from<ProfileRow>('profiles')
-    .select(selectFields);
+    .select('id, company_name, full_name, email, city, state, membership_tier, member_status, verification_status, badge_rating, created_at');
 
-  if (error) {
-    console.error('[admin-get-members] failed to fetch profiles', error);
+  if (profilesError) {
+    console.error('[admin-get-members] failed to fetch profiles', profilesError);
     return jsonResponse(500, { error: 'Failed to fetch members' });
   }
 
-  const members: AdminMember[] = (data ?? []).map(mapProfileToAdminMember);
+  if (!profiles || profiles.length === 0) {
+    return jsonResponse(200, { members: [] });
+  }
+
+  const profileIds = profiles.map(profile => profile.id);
+
+  const { data: memberships, error: membershipsError } = await supabase
+    .from<MembershipRow>('memberships')
+    .select('profile_id, tier, status, badge_rating, created_at')
+    .in('profile_id', profileIds);
+
+  if (membershipsError) {
+    console.error('[admin-get-members] failed to fetch memberships', membershipsError);
+  }
+
+  const { data: badgeDesigns, error: badgeDesignsError } = await supabase
+    .from<BadgeDesignRow>('badge_designs')
+    .select('profile_id, status, rating, created_at')
+    .in('profile_id', profileIds);
+
+  if (badgeDesignsError) {
+    console.error('[admin-get-members] failed to fetch badge designs', badgeDesignsError);
+  }
+
+  const { data: assessments, error: assessmentsError } = await supabase
+    .from<AssessmentRow>('assessments')
+    .select('profile_id, pci_rating, created_at')
+    .in('profile_id', profileIds);
+
+  if (assessmentsError) {
+    console.error('[admin-get-members] failed to fetch assessments', assessmentsError);
+  }
+
+  const membershipByProfileId = (memberships ?? []).reduce<Record<string, MembershipRow>>((acc, membership) => {
+    const existing = acc[membership.profile_id];
+    const existingDate = existing?.created_at ? new Date(existing.created_at).getTime() : 0;
+    const currentDate = membership.created_at ? new Date(membership.created_at).getTime() : 0;
+
+    if (!existing || currentDate > existingDate) {
+      acc[membership.profile_id] = membership;
+    }
+
+    return acc;
+  }, {});
+
+  const badgeDesignByProfileId = (badgeDesigns ?? []).reduce<Record<string, BadgeDesignRow>>((acc, badgeDesign) => {
+    const existing = acc[badgeDesign.profile_id];
+
+    const isCurrentActive = badgeDesign.status === 'active';
+    const existingIsActive = existing?.status === 'active';
+
+    const existingDate = existing?.created_at ? new Date(existing.created_at).getTime() : 0;
+    const currentDate = badgeDesign.created_at ? new Date(badgeDesign.created_at).getTime() : 0;
+
+    const shouldReplace =
+      (!existing && badgeDesign) ||
+      (isCurrentActive && !existingIsActive) ||
+      (isCurrentActive === existingIsActive && currentDate > existingDate);
+
+    if (shouldReplace) {
+      acc[badgeDesign.profile_id] = badgeDesign;
+    }
+
+    return acc;
+  }, {});
+
+  const assessmentByProfileId = (assessments ?? []).reduce<Record<string, AssessmentRow>>((acc, assessment) => {
+    const existing = acc[assessment.profile_id];
+    const existingDate = existing?.created_at ? new Date(existing.created_at).getTime() : 0;
+    const currentDate = assessment.created_at ? new Date(assessment.created_at).getTime() : 0;
+
+    if (!existing || currentDate > existingDate) {
+      acc[assessment.profile_id] = assessment;
+    }
+
+    return acc;
+  }, {});
+
+  const members: AdminMember[] = profiles.map(profile => {
+    const membership = membershipByProfileId[profile.id];
+    const badgeDesign = badgeDesignByProfileId[profile.id];
+    const assessment = assessmentByProfileId[profile.id];
+
+    const location = profile.city && profile.state
+      ? `${profile.city}, ${profile.state}`
+      : profile.city || profile.state || null;
+
+    const tier = membership?.tier || profile.membership_tier || null;
+    const status = membership?.status || profile.member_status || null;
+    const badgeRating =
+      membership?.badge_rating ||
+      badgeDesign?.rating ||
+      assessment?.pci_rating ||
+      profile.badge_rating ||
+      null;
+
+    return {
+      id: profile.id,
+      businessName: profile.company_name ?? 'Unknown',
+      primaryContact: profile.full_name ?? null,
+      email: profile.email ?? null,
+      location,
+      tier,
+      status,
+      verificationStatus: profile.verification_status ?? null,
+      badgeRating,
+      joinDate: profile.created_at ?? null,
+    };
+  });
 
   return jsonResponse(200, { members });
 };
