@@ -110,6 +110,7 @@ export interface MemberServiceRequest {
     id: string;
     profileId: string;
     requestType: string;
+    requestTypeValue?: string | null;
     title: string;
     description: string | null;
     priority: ServiceRequestPriority;

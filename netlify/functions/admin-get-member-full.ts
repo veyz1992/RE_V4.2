@@ -115,6 +115,20 @@ export const handler: Handler = async event => {
     console.error('[admin-get-member-full] failed to load service requests', serviceRequestsError);
   }
 
+  const { data: recheckRequests, error: recheckError } = await supabase
+    .from('service_requests')
+    .select('*')
+    .eq('profile_id', profileId)
+    .eq('request_type', 'assessment_recheck')
+    .in('status', ['open', 'in_progress'])
+    .order('created_at', { ascending: false });
+
+  if (recheckError) {
+    console.error('[admin-get-member-full] failed to load assessment recheck requests', recheckError);
+  }
+
+  const openRecheckRequest = recheckRequests?.[0] ?? null;
+
   const summary = {
     pciRating: latestAssessment?.pci_rating ?? null,
     initialPciRating: firstAssessment?.pci_rating ?? null,
@@ -137,5 +151,7 @@ export const handler: Handler = async event => {
     badgeDesigns: badgeDesigns ?? [],
     documents: documents ?? [],
     serviceRequests: serviceRequests ?? [],
+    openRecheckRequest,
+    openRecheckCount: recheckRequests?.length ?? 0,
   });
 };
