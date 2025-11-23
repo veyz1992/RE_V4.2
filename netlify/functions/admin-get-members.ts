@@ -19,6 +19,7 @@ interface ProfileRow {
   email: string | null;
   city: string | null;
   state: string | null;
+  membership_tier: string | null;
   member_status: string | null;
   verification_status: string | null;
   badge_rating: string | null;
@@ -45,7 +46,7 @@ interface AdminMember {
 }
 
 const selectFields =
-  'id, company_name, full_name, email, city, state, member_status, verification_status, badge_rating, created_at, memberships(tier, status, activated_at, badge_rating)';
+  'id, company_name, full_name, email, city, state, membership_tier, member_status, verification_status, badge_rating, created_at, memberships(tier, status, activated_at, badge_rating)';
 
 const mapProfileToAdminMember = (profile: ProfileRow): AdminMember => {
   const membership = Array.isArray(profile.memberships)
@@ -63,10 +64,10 @@ const mapProfileToAdminMember = (profile: ProfileRow): AdminMember => {
   return {
     id: profile.id,
     businessName: profile.company_name ?? 'Unknown',
-    primaryContact: profile.full_name,
-    email: profile.email,
+    primaryContact: profile.full_name ?? null,
+    email: profile.email ?? null,
     location,
-    tier: membership?.tier ?? null,
+    tier: membership?.tier ?? profile.membership_tier ?? null,
     status: membership?.status ?? profile.member_status ?? null,
     verificationStatus: profile.verification_status ?? null,
     badgeRating: membership?.badge_rating ?? profile.badge_rating ?? null,
