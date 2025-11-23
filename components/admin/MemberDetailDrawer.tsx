@@ -233,6 +233,13 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
 
     if (!member) return null;
 
+    const summary = memberDetail?.summary;
+    const openRecheckRequest = memberDetail?.openRecheckRequest;
+    const hasOpenRecheck = !!memberDetail?.openRecheckCount && memberDetail.openRecheckCount > 0;
+    const initialScore = memberDetail?.firstAssessment?.total_score ?? null;
+    const latestScore = memberDetail?.latestAssessment?.total_score ?? null;
+    const scoreDelta = initialScore !== null && latestScore !== null ? latestScore - initialScore : null;
+
     const renderAssessmentDetails = (title: string, rating: string | number | null, assessment: AssessmentRow | null) => (
         <div className="border border-gray-border rounded-lg p-3 space-y-2">
             <div className="flex justify-between items-center">
@@ -301,23 +308,32 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-lg font-semibold text-charcoal">Overview</h3>
-                                    <span className="text-xs text-gray-dark">Joined: {memberDetail.summary.joinDate ? new Date(memberDetail.summary.joinDate).toLocaleDateString() : 'N/A'}</span>
+                                    <span className="text-xs text-gray-dark">Joined: {summary?.joinDate ? new Date(summary.joinDate).toLocaleDateString() : 'N/A'}</span>
                                 </div>
                                 <div className="flex flex-wrap gap-2 text-xs">
-                                    <span className="px-2 py-1 rounded-full bg-info/10 text-info font-semibold">Tier: {memberDetail.summary.membershipTier ?? 'Unknown'}</span>
-                                    <span className="px-2 py-1 rounded-full bg-success/10 text-success font-semibold">Status: {memberDetail.summary.memberStatus ?? 'Unknown'}</span>
-                                    <span className="px-2 py-1 rounded-full bg-warning/10 text-warning font-semibold">Verification: {memberDetail.summary.verificationStatus ?? 'Unknown'}</span>
-                                    <span className="px-2 py-1 rounded-full bg-purple-100 text-purple-700 font-semibold">Badge: {memberDetail.summary.badgeRating ?? 'Not rated yet'}</span>
-                                    <span className="px-2 py-1 rounded-full bg-gray-light text-charcoal font-semibold">PCI rating: {memberDetail.summary.pciRating ?? 'No assessment yet'}</span>
-                                    {(memberDetail.openRecheckCount ?? 0) > 0 && (
-                                        <span className="px-2 py-1 rounded-full bg-warning/20 text-warning font-semibold">
-                                            Recheck requested{memberDetail.openRecheckRequest?.created_at ? ` · ${new Date(memberDetail.openRecheckRequest.created_at).toLocaleDateString()}` : ''}
-                                        </span>
+                                    <span className="px-2 py-1 rounded-full bg-info/10 text-info font-semibold">Tier: {summary?.membershipTier || 'Unknown'}</span>
+                                    <span className="px-2 py-1 rounded-full bg-success/10 text-success font-semibold">Status: {summary?.memberStatus || 'Unknown'}</span>
+                                    <span className="px-2 py-1 rounded-full bg-warning/10 text-warning font-semibold">Verification: {summary?.verificationStatus || 'Unknown'}</span>
+                                    <span className="px-2 py-1 rounded-full bg-purple-100 text-purple-700 font-semibold">Badge: {summary?.badgeRating ? summary.badgeRating : 'Not rated yet'}</span>
+                                    <span className="px-2 py-1 rounded-full bg-gray-light text-charcoal font-semibold">PCI rating: {summary?.pciRating ? summary.pciRating : 'No assessment yet'}</span>
+                                    {hasOpenRecheck && (
+                                        <span className="px-2 py-1 rounded-full bg-warning/20 text-warning font-semibold">Recheck requested</span>
                                     )}
                                 </div>
 
+                                {openRecheckRequest && (
+                                    <p className="text-[11px] text-warning">Latest recheck request: {openRecheckRequest.created_at ? new Date(openRecheckRequest.created_at).toLocaleDateString() : 'Pending'}</p>
+                                )}
+
                                 <div className="space-y-2">
                                     <h4 className="text-md font-semibold text-charcoal">Assessments</h4>
+                                    {scoreDelta !== null && scoreDelta !== 0 && (
+                                        <p className="text-xs text-gray-dark">
+                                            {scoreDelta > 0
+                                                ? `Improvement since first assessment: +${scoreDelta} points.`
+                                                : `Change since first assessment: ${scoreDelta} points.`}
+                                        </p>
+                                    )}
                                     <div className="space-y-2">
                                         {renderAssessmentDetails('Initial PCI rating', memberDetail.summary.initialPciRating, memberDetail.firstAssessment)}
                                         {renderAssessmentDetails('Latest PCI rating', memberDetail.summary.pciRating, memberDetail.latestAssessment)}
