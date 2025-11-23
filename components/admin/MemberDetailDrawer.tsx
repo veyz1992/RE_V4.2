@@ -72,6 +72,8 @@ interface MemberFullData {
     badgeDesigns: any[];
     documents: any[];
     serviceRequests: any[];
+    openRecheckRequest?: any | null;
+    openRecheckCount?: number;
 }
 
 const membershipTierOptions = ['free', 'founding', 'bronze', 'silver', 'gold'] as const;
@@ -307,6 +309,11 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
                                     <span className="px-2 py-1 rounded-full bg-warning/10 text-warning font-semibold">Verification: {memberDetail.summary.verificationStatus ?? 'Unknown'}</span>
                                     <span className="px-2 py-1 rounded-full bg-purple-100 text-purple-700 font-semibold">Badge: {memberDetail.summary.badgeRating ?? 'Not rated yet'}</span>
                                     <span className="px-2 py-1 rounded-full bg-gray-light text-charcoal font-semibold">PCI rating: {memberDetail.summary.pciRating ?? 'No assessment yet'}</span>
+                                    {(memberDetail.openRecheckCount ?? 0) > 0 && (
+                                        <span className="px-2 py-1 rounded-full bg-warning/20 text-warning font-semibold">
+                                            Recheck requested{memberDetail.openRecheckRequest?.created_at ? ` · ${new Date(memberDetail.openRecheckRequest.created_at).toLocaleDateString()}` : ''}
+                                        </span>
+                                    )}
                                 </div>
 
                                 <div className="space-y-2">
@@ -315,6 +322,11 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
                                         {renderAssessmentDetails('Initial PCI rating', memberDetail.summary.initialPciRating, memberDetail.firstAssessment)}
                                         {renderAssessmentDetails('Latest PCI rating', memberDetail.summary.pciRating, memberDetail.latestAssessment)}
                                     </div>
+                                    {(memberDetail.openRecheckCount ?? 0) > 0 && (
+                                        <p className="text-xs text-warning">
+                                            Latest assessment is awaiting admin review due to a member recheck request.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         )}

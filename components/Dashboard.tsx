@@ -95,6 +95,12 @@ interface OverviewState {
     }>;
 
     hasDocuments: boolean;
+
+    lastPciScore?: number | string | null;
+    lastAssessmentId?: string | number | null;
+    lastAssessmentDate?: string | null;
+    hasOpenRecheck?: boolean;
+    openRecheckCreatedAt?: string | null;
 }
 
 const PLAN_LABELS: Record<string, string> = Object.values(PLAN_BENEFITS).reduce(
@@ -205,6 +211,11 @@ const DEFAULT_OVERVIEW_STATE: OverviewState = {
     benefits: BENEFITS_BY_TIER.free,
     recentActivity: [],
     hasDocuments: false,
+    lastPciScore: null,
+    lastAssessmentId: null,
+    lastAssessmentDate: null,
+    hasOpenRecheck: false,
+    openRecheckCreatedAt: null,
 };
 
 type DocumentStatus = 'approved' | 'underReview' | 'rejected' | 'needsReplacement' | 'notUploaded';
@@ -294,6 +305,14 @@ interface SupabaseSubscription {
     created_at?: string | null;
     updated_at?: string | null;
     [key: string]: unknown;
+}
+
+interface SupabaseAssessment {
+    id?: string | number;
+    profile_id?: string | null;
+    pci_rating?: string | number | null;
+    total_score?: number | null;
+    created_at?: string | null;
 }
 
 interface SupabaseMemberDocument {
@@ -766,6 +785,7 @@ const mapMemberServiceRequestRow = (request: SupabaseServiceRequest): MemberServ
     id: String(request.id),
     profileId: request.profile_id ?? '',
     requestType: getServiceRequestTypeLabel(request.request_type),
+    requestTypeValue: request.request_type ?? null,
     title: request.title ?? 'Untitled Request',
     description: request.description ?? null,
     priority: normalizeServiceRequestPriority(request.priority),
@@ -893,7 +913,22 @@ const StatCard: React.FC<{ icon: React.ReactNode, title: string, value: string, 
     );
 }
 
-const MemberOverview: React.FC<{ data: OverviewState | null; onNavigate: (view: MemberView) => void; onNewRequest: () => void; }> = ({ data, onNavigate, onNewRequest }) => {
+const MemberOverview: React.FC<{
+    data: OverviewState | null;
+    onNavigate: (view: MemberView) => void;
+    onNewRequest: () => void;
+    assessmentInfo?: {
+        lastPciRating?: number | string | null;
+        lastUpdated?: string | null;
+        hasAssessment?: boolean;
+        hasOpenRecheck?: boolean;
+        openRecheckCreatedAt?: string | null;
+        onRetake?: () => void;
+        onRequestReview?: () => void;
+        isRequestingReview?: boolean;
+        requestDisabled?: boolean;
+    };
+}> = ({ data, onNavigate, onNewRequest, assessmentInfo }) => {
     const QuickActionButton: React.FC<{ icon: React.ElementType, label: string, onClick: () => void }> = ({ icon: Icon, label, onClick }) => (
         <button onClick={onClick} className="bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg p-4 flex flex-col items-center justify-center text-center transition-colors hover:bg-[var(--accent-dark)] h-28">
             <Icon className="w-8 h-8 mb-2" />
@@ -919,6 +954,9 @@ const MemberOverview: React.FC<{ data: OverviewState | null; onNavigate: (view: 
         }
         return formatRelativeTime(timestamp);
     };
+
+    const hasAssessment = assessmentInfo?.hasAssessment ?? Boolean(assessmentInfo?.lastPciRating || assessmentInfo?.lastUpdated);
+    const requestReviewDisabled = assessmentInfo?.requestDisabled || !hasAssessment || assessmentInfo?.hasOpenRecheck;
 
     return (
         <div className="space-y-8 animate-fade-in">
@@ -991,6 +1029,74 @@ const MemberOverview: React.FC<{ data: OverviewState | null; onNavigate: (view: 
                     </div>
                 </Card>
             </div>
+
+            <Card>
+                <div className="flex items-start justify-between">
+                    <div>
+                        <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)]">Assessments</h2>
+                        <p className="text-[var(--text-muted)] mt-1">Stay on top of your PCI rating.</p>
+                    </div>
+                    {assessmentInfo?.hasOpenRecheck && (
+                        <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">
+                            Recheck requested
+                        </span>
+                    )}
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)]">
+                        <p className="text-sm text-[var(--text-muted)]">Latest PCI rating</p>
+                        <p className="text-3xl font-playfair font-bold text-[var(--text-main)]">
+                            {assessmentInfo?.lastPciRating ?? 'No assessment yet'}
+                        </p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)]">
+                        <p className="text-sm text-[var(--text-muted)]">Last updated</p>
+                        <p className="text-xl font-semibold text-[var(--text-main)]">
+                            {assessmentInfo?.lastUpdated
+                                ? new Date(assessmentInfo.lastUpdated).toLocaleDateString()
+                                : 'Not available'}
+                        </p>
+                        {assessmentInfo?.hasOpenRecheck && assessmentInfo.openRecheckCreatedAt && (
+                            <p className="text-xs text-[var(--text-muted)] mt-1">
+                                Requested on {new Date(assessmentInfo.openRecheckCreatedAt).toLocaleDateString()}
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                {assessmentInfo?.hasOpenRecheck && (
+                    <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4">
+                        Review already requested. We’ll get back to you soon.
+                    </p>
+                )}
+
+                <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                    <button
+                        onClick={assessmentInfo?.onRetake}
+                        className="w-full sm:w-auto px-4 py-3 bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg shadow-sm hover:bg-[var(--accent-dark)]"
+                    >
+                        Retake assessment
+                    </button>
+                    <button
+                        onClick={assessmentInfo?.onRequestReview}
+                        disabled={requestReviewDisabled || assessmentInfo?.isRequestingReview}
+                        className="w-full sm:w-auto px-4 py-3 border border-[var(--border-subtle)] rounded-lg font-semibold text-[var(--text-main)] hover:bg-[var(--bg-subtle)] disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        {assessmentInfo?.hasOpenRecheck
+                            ? 'Review requested'
+                            : assessmentInfo?.isRequestingReview
+                                ? 'Requesting...'
+                                : 'Request review'}
+                    </button>
+                </div>
+
+                {!hasAssessment && (
+                    <p className="text-sm text-[var(--text-muted)] mt-3">
+                        Complete your first assessment to unlock review requests.
+                    </p>
+                )}
+            </Card>
 
             <Card>
                 <h2 className="font-playfair text-2xl font-bold text-[var(--text-main)] mb-4">Recent Activity</h2>
@@ -6442,6 +6548,9 @@ const MemberDashboard: React.FC = () => {
     const [serviceRequestsLoadedOnce, setServiceRequestsLoadedOnce] = useState(false);
     const [isDashboardLoading, setIsDashboardLoading] = useState(false);
     const [dashboardError, setDashboardError] = useState<string | null>(null);
+    const [latestAssessment, setLatestAssessment] = useState<SupabaseAssessment | null>(null);
+    const [openAssessmentRecheck, setOpenAssessmentRecheck] = useState<SupabaseServiceRequest | null>(null);
+    const [isRequestingRecheck, setIsRequestingRecheck] = useState(false);
 
     const refetchDocuments = useCallback(async (): Promise<DashboardDocument[]> => {
         if (!session?.user?.id) {
@@ -6471,6 +6580,7 @@ const MemberDashboard: React.FC = () => {
             setServiceRequests([]);
             setServiceRequestActivities({});
             setServiceRequestsLoadedOnce(true);
+            setOpenAssessmentRecheck(null);
             return;
         }
 
@@ -6499,12 +6609,20 @@ const MemberDashboard: React.FC = () => {
                 setServiceRequestsError('We were unable to load your service requests. Please try again.');
                 setServiceRequests([]);
                 setServiceRequestActivities({});
+                setOpenAssessmentRecheck(null);
                 setServiceRequestsLoading(false);
                 setServiceRequestsLoadedOnce(true);
                 return;
             }
 
             const rows = (data as SupabaseServiceRequest[] | null) ?? [];
+
+            const openRecheck = rows.find(
+                (row) =>
+                    row.request_type === 'assessment_recheck' &&
+                    (row.status === 'open' || row.status === 'in_progress'),
+            );
+            setOpenAssessmentRecheck(openRecheck ?? null);
 
             const assignedAdminIds = Array.from(
                 new Set(
@@ -6668,6 +6786,7 @@ const MemberDashboard: React.FC = () => {
                 { data: memberships, error: membershipsError },
                 { data: subscriptions, error: subscriptionsError },
                 { data: documents, error: documentsError },
+                { data: assessments, error: assessmentsError },
             ] = await Promise.all([
                 supabase
                     .from('profiles')
@@ -6691,6 +6810,12 @@ const MemberDashboard: React.FC = () => {
                     .select('*')
                     .eq('profile_id', profileId)
                     .order('uploaded_at', { ascending: false }),
+                supabase
+                    .from('assessments')
+                    .select('*')
+                    .eq('profile_id', profileId)
+                    .order('created_at', { ascending: false })
+                    .limit(1),
             ]);
 
             if (profileError) {
@@ -6705,14 +6830,24 @@ const MemberDashboard: React.FC = () => {
             if (documentsError) {
                 console.error('Failed to load documents for overview:', documentsError);
             }
+            if (assessmentsError) {
+                console.error('Failed to load assessments for overview:', assessmentsError);
+            }
 
             const membershipRows = (memberships as SupabaseMembership[] | null) ?? [];
             const subscriptionRows = (subscriptions as SupabaseSubscription[] | null) ?? [];
             const documentRows = (documents as SupabaseMemberDocument[] | null) ?? [];
             const profileRecord = (profile as SupabaseProfile | null) ?? null;
+            const assessmentRows = (assessments as SupabaseAssessment[] | null) ?? [];
+            const latestAssessmentRow = assessmentRows[0] ?? null;
 
             const membershipRecord = membershipRows[0] ?? null;
             const subscriptionRecord = subscriptionRows[0] ?? null;
+            const lastPciScore = latestAssessmentRow?.pci_rating ?? profileRecord?.last_pci_score ?? null;
+            const lastAssessmentId = latestAssessmentRow?.id ?? profileRecord?.last_assessment_id ?? null;
+            const lastAssessmentDate = latestAssessmentRow?.created_at ?? null;
+
+            setLatestAssessment(latestAssessmentRow ?? null);
 
             const tierRaw = membershipRecord?.tier ?? profileRecord?.membership_tier ?? 'free';
             const tierKey = normalizeTierKey(String(tierRaw ?? 'free'));
@@ -6791,6 +6926,9 @@ const MemberDashboard: React.FC = () => {
                 benefits,
                 recentActivity,
                 hasDocuments,
+                lastPciScore,
+                lastAssessmentId,
+                lastAssessmentDate,
             };
 
             setOverviewData(overview);
@@ -6849,9 +6987,69 @@ const MemberDashboard: React.FC = () => {
         }
     }, [toast]);
     
-    const showToast = (message: string, type: 'success' | 'error') => {
+    const showToast = useCallback((message: string, type: 'success' | 'error') => {
         setToast({ message, type });
-    };
+    }, []);
+
+    const handleRetakeAssessment = useCallback(() => {
+        if (typeof window !== 'undefined') {
+            window.location.href = '/assessment?scenario=retake';
+        }
+    }, []);
+
+    const handleRequestAssessmentReview = useCallback(async () => {
+        if (isRequestingRecheck) {
+            return;
+        }
+
+        if (!profile?.id) {
+            showToast('We could not find your profile. Please refresh and try again.', 'error');
+            return;
+        }
+
+        if (openAssessmentRecheck) {
+            showToast('Review already requested. We will notify you when it is updated.', 'error');
+            return;
+        }
+
+        setIsRequestingRecheck(true);
+
+        try {
+            const assessmentId = computedOverviewData.lastAssessmentId ?? (await resolveBenefitAssessmentId());
+
+            if (!assessmentId) {
+                throw new Error('We could not find your last assessment. Please contact support to continue.');
+            }
+
+            const response = await fetch('/.netlify/functions/member-request-assessment-review', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    profileId: profile.id,
+                    assessmentId,
+                }),
+            });
+
+            const body = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                const errorMessage = body.details || body.error || `Request failed with status ${response.status}`;
+                throw new Error(errorMessage);
+            }
+
+            if (body.serviceRequest) {
+                setOpenAssessmentRecheck(body.serviceRequest);
+            }
+
+            showToast('Thanks. We’ll review your latest assessment and update your membership if needed.', 'success');
+            void fetchServiceRequests();
+        } catch (requestError: any) {
+            console.error('Failed to request assessment review', requestError);
+            showToast(requestError?.message ?? 'Unable to request assessment review right now.', 'error');
+        } finally {
+            setIsRequestingRecheck(false);
+        }
+    }, [computedOverviewData.lastAssessmentId, fetchServiceRequests, isRequestingRecheck, openAssessmentRecheck, profile?.id, resolveBenefitAssessmentId, showToast]);
 
     // Fetch service requests on first "my-requests" view
     useEffect(() => {
@@ -6894,6 +7092,8 @@ const MemberDashboard: React.FC = () => {
             setSubscription(null);
             setDocuments([]);
             setRecentRequests([]);
+            setLatestAssessment(null);
+            setOpenAssessmentRecheck(null);
             return;
         }
 
@@ -7014,14 +7214,57 @@ const MemberDashboard: React.FC = () => {
         setIsSidebarOpen(false);
     };
 
-    const computedOverviewData = useMemo<OverviewState>(() => overviewData ?? DEFAULT_OVERVIEW_STATE, [overviewData]);
+    const computedOverviewData = useMemo<OverviewState>(() => {
+        const base = overviewData ?? DEFAULT_OVERVIEW_STATE;
+
+        return {
+            ...base,
+            lastPciScore: base.lastPciScore ?? latestAssessment?.pci_rating ?? profile?.last_pci_score ?? null,
+            lastAssessmentId: base.lastAssessmentId ?? latestAssessment?.id ?? profile?.last_assessment_id ?? null,
+            lastAssessmentDate: base.lastAssessmentDate ?? latestAssessment?.created_at ?? null,
+            hasOpenRecheck: base.hasOpenRecheck ?? Boolean(openAssessmentRecheck),
+            openRecheckCreatedAt: base.openRecheckCreatedAt ?? openAssessmentRecheck?.created_at ?? null,
+        };
+    }, [latestAssessment, openAssessmentRecheck, overviewData, profile?.last_assessment_id, profile?.last_pci_score]);
+
+    const assessmentInfo = useMemo(
+        () => ({
+            lastPciRating: computedOverviewData.lastPciScore ?? null,
+            lastUpdated: computedOverviewData.lastAssessmentDate ?? null,
+            hasAssessment: Boolean(computedOverviewData.lastAssessmentId),
+            hasOpenRecheck: Boolean(computedOverviewData.hasOpenRecheck ?? openAssessmentRecheck),
+            openRecheckCreatedAt: computedOverviewData.openRecheckCreatedAt ?? openAssessmentRecheck?.created_at ?? null,
+            onRetake: handleRetakeAssessment,
+            onRequestReview: handleRequestAssessmentReview,
+            isRequestingReview: isRequestingRecheck,
+            requestDisabled: !computedOverviewData.lastAssessmentId,
+        }),
+        [
+            computedOverviewData.hasOpenRecheck,
+            computedOverviewData.lastAssessmentDate,
+            computedOverviewData.lastAssessmentId,
+            computedOverviewData.lastPciScore,
+            computedOverviewData.openRecheckCreatedAt,
+            handleRequestAssessmentReview,
+            handleRetakeAssessment,
+            isRequestingRecheck,
+            openAssessmentRecheck?.created_at,
+        ],
+    );
 
     const docsNeedAttention = documents.some(doc => ['notUploaded', 'needsReplacement', 'rejected'].includes(doc.status));
 
     const renderView = () => {
         switch (activeView) {
             case 'overview':
-                return <MemberOverview data={computedOverviewData} onNavigate={setActiveView} onNewRequest={() => setNewRequestModalOpen(true)} />;
+                return (
+                    <MemberOverview
+                        data={computedOverviewData}
+                        onNavigate={setActiveView}
+                        onNewRequest={() => setNewRequestModalOpen(true)}
+                        assessmentInfo={assessmentInfo}
+                    />
+                );
             case 'my-requests':
                 return (
                     <MyRequests
