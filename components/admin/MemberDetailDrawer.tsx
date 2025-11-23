@@ -5,7 +5,7 @@ import { AdminMember } from './types';
 interface MemberDetailDrawerProps {
     member: AdminMember | null;
     onClose: () => void;
-    onMemberUpdated?: (member: AdminMember) => void;
+    onMemberUpdated?: (profile: ProfileRow) => void;
 }
 
 interface ProfileRow {
@@ -102,33 +102,13 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
             if (!response.ok) {
                 const body = await response.json().catch(() => ({}));
                 const errorMessage = body.details || body.error || `Request failed with status ${response.status}`;
-                throw new Error(errorMessage);
+                throw new Error(`Failed to update profile: ${errorMessage}`);
             }
 
             const body: { profile?: ProfileRow } = await response.json();
 
             if (body.profile) {
-                const updatedProfile = body.profile;
-                const location = updatedProfile.city && updatedProfile.state
-                    ? `${updatedProfile.city}, ${updatedProfile.state}`
-                    : updatedProfile.city || updatedProfile.state || null;
-
-                const updatedMember: AdminMember = {
-                    ...member,
-                    businessName: updatedProfile.company_name ?? companyName,
-                    primaryContact: updatedProfile.full_name,
-                    email: updatedProfile.email,
-                    city: updatedProfile.city,
-                    state: updatedProfile.state,
-                    location,
-                    tier: updatedProfile.membership_tier,
-                    status: updatedProfile.member_status,
-                    verificationStatus: updatedProfile.verification_status,
-                    badgeRating: updatedProfile.badge_rating,
-                    joinDate: updatedProfile.created_at,
-                };
-
-                onMemberUpdated?.(updatedMember);
+                onMemberUpdated?.(body.profile);
             }
         } catch (err: any) {
             setError(err?.message ?? 'Failed to save changes');
