@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AdminMember, MemberStatus, BadgeRating, PackageTier } from '../../lib/mockData';
 import { MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, UserCircleIcon } from '../icons';
 import MemberDetailDrawer from './MemberDetailDrawer';
 import ImpersonateModal from './ImpersonateModal';
+import { AdminMember } from './types';
 
 interface ClientManagementProps {
     showToast: (message: string, type: 'success' | 'error') => void;
@@ -34,36 +34,6 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
         joinDate: string | null;
     };
 
-    const normalizeStatus = (status: string | null): MemberStatus => {
-        const normalized = status?.toLowerCase();
-        switch (normalized) {
-            case 'active':
-                return 'Active';
-            case 'suspended':
-                return 'Suspended';
-            case 'canceled':
-            case 'cancelled':
-                return 'Canceled';
-            default:
-                return 'Pending';
-        }
-    };
-
-    const normalizeTier = (tier: string | null): PackageTier => {
-        if (!tier) return 'Bronze';
-        const formatted = tier.toLowerCase();
-        if (formatted === 'silver') return 'Silver';
-        if (formatted === 'gold') return 'Gold';
-        if (formatted === 'founding member') return 'Founding Member';
-        if (formatted === 'platinum') return 'Platinum';
-        return 'Bronze';
-    };
-
-    const normalizeRating = (rating: string | null): BadgeRating => {
-        if (rating === 'A+' || rating === 'A' || rating === 'B+') return rating;
-        return 'B+';
-    };
-
     useEffect(() => {
         let isMounted = true;
 
@@ -82,35 +52,32 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                 const data: { members: ApiAdminMember[] } = await res.json();
 
                 if (isMounted && data?.members) {
-                    const mappedMembers: AdminMember[] = data.members.map(member => ({
-                        id: member.id,
-                        businessName: member.businessName,
-                        primaryContact: member.primaryContact,
-                        city: member.location || '—',
-                        location: member.location || '—',
-                        email: member.email || '—',
-                        tier: normalizeTier(member.tier),
-                        rating: normalizeRating(member.badgeRating),
-                        status: normalizeStatus(member.status),
-                        verificationStatus: member.verificationStatus || 'Pending',
-                        renewalDate: member.joinDate || '—',
-                        joinDate: member.joinDate || '—',
-                        mrr: 0,
-                        pendingDocs: 0,
-                        openRequests: 0,
-                        documents: [],
-                        activityLog: [],
-                        billingInfo: { stripeId: '', lastPayment: '', plan: '' },
-                        stats: { profileViews: 0, badgeClicks: 0 },
-                        badge: member.badgeRating
-                            ? {
-                                status: 'ACTIVE',
-                                badgeLabel: member.badgeRating,
-                                imageLightUrl: '',
-                                profileUrl: '',
-                            }
-                            : undefined,
-                    }));
+                    const mappedMembers: AdminMember[] = data.members.map(member => {
+                        const location = member.location ?? null;
+                        const normalizedTier = member.tier?.trim() || null;
+                        const normalizedStatus = member.status?.trim() || null;
+                        const normalizedBadgeRating = member.badgeRating?.trim() || null;
+                        const normalizedVerificationStatus = member.verificationStatus?.trim() || null;
+
+                        return {
+                            id: member.id,
+                            businessName: member.businessName,
+                            primaryContact: member.primaryContact,
+                            city: location,
+                            state: null,
+                            location,
+                            email: member.email,
+                            tier: normalizedTier,
+                            status: normalizedStatus,
+                            verificationStatus: normalizedVerificationStatus,
+                            badgeRating: normalizedBadgeRating,
+                            renewalDate: null,
+                            joinDate: member.joinDate,
+                            mrr: null,
+                            pendingDocs: null,
+                            openRequests: null,
+                        };
+                    });
 
                     setMembers(mappedMembers);
                 }
@@ -169,10 +136,10 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
 
         // Filtering
         sortedMembers = sortedMembers.filter(member => {
-            const searchMatch = member.businessName.toLowerCase().includes(searchTerm.toLowerCase()) || member.email.toLowerCase().includes(searchTerm.toLowerCase());
-            const tierMatch = filters.tier === 'All' || member.tier === filters.tier;
-            const statusMatch = filters.status === 'All' || member.status === filters.status;
-            const ratingMatch = filters.rating === 'All' || member.rating === filters.rating;
+            const searchMatch = member.businessName.toLowerCase().includes(searchTerm.toLowerCase()) || (member.email?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+            const tierMatch = filters.tier === 'All' || (member.tier ?? '—') === filters.tier;
+            const statusMatch = filters.status === 'All' || (member.status ?? '—') === filters.status;
+            const ratingMatch = filters.rating === 'All' || (member.badgeRating ?? '—') === filters.rating;
             return searchMatch && tierMatch && statusMatch && ratingMatch;
         });
 
@@ -182,8 +149,17 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                 const aValue = a[sortConfig.key!];
                 const bValue = b[sortConfig.key!];
 
-                if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
-                if (aValue > bValue) return sortConfig.direction === 'ascending' ? 1 : -1;
+                const normalizeValue = (value: unknown) => {
+                    if (value === null || value === undefined) return '';
+                    if (typeof value === 'number') return value;
+                    return value.toString().toLowerCase();
+                };
+
+                const normalizedA = normalizeValue(aValue);
+                const normalizedB = normalizeValue(bValue);
+
+                if (normalizedA < normalizedB) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (normalizedA > normalizedB) return sortConfig.direction === 'ascending' ? 1 : -1;
                 return 0;
             });
         }
@@ -191,14 +167,14 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
         return sortedMembers;
     }, [members, searchTerm, filters, sortConfig]);
 
-    const statusColors: { [key in MemberStatus]: string } = {
+    const statusColors: Record<string, string> = {
         Active: 'bg-success/20 text-success',
         Suspended: 'bg-error/20 text-error',
         Pending: 'bg-info/20 text-info',
         Canceled: 'bg-gray-200 text-gray-800',
     };
-    
-    const tierColors: { [key in PackageTier]: string } = {
+
+    const tierColors: Record<string, string> = {
         Bronze: 'bg-yellow-700/20 text-yellow-800',
         Silver: 'bg-gray-300/60 text-gray-800',
         Gold: 'bg-gold/20 text-gold-dark',
@@ -223,6 +199,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                 <MemberDetailDrawer
                     member={selectedMember}
                     onClose={() => setSelectedMember(null)}
+                    onMemberUpdated={handleUpdateMember}
                 />
             )}
             <ImpersonateModal 
@@ -274,7 +251,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                 <tr>
                                     <SortableHeader sortKey="businessName" label="Business" />
                                     <SortableHeader sortKey="tier" label="Tier" />
-                                    <SortableHeader sortKey="rating" label="Rating" />
+                                    <SortableHeader sortKey="badgeRating" label="Rating" />
                                     <SortableHeader sortKey="status" label="Status" />
                                     <SortableHeader sortKey="mrr" label="MRR" />
                                     <SortableHeader sortKey="renewalDate" label="Renewal" />
@@ -293,24 +270,38 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                         <td colSpan={8} className="p-4 text-center text-error font-semibold">Could not load members: {error}</td>
                                     </tr>
                                 )}
-                                {!isLoading && !error && filteredAndSortedMembers.map(member => (
-                                    <tr key={member.id} className="hover:bg-gray-light/50">
-                                        <td className="p-4 whitespace-nowrap"><p className="font-semibold text-charcoal">{member.businessName}</p><p className="text-sm text-gray-dark">{member.city}</p></td>
-                                        <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${tierColors[member.tier]}`}>{member.tier}</span></td>
-                                        <td className="p-4 whitespace-nowrap font-semibold">{member.rating}</td>
-                                        <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColors[member.status]}`}>{member.status}</span></td>
-                                        <td className="p-4 whitespace-nowrap">${member.mrr.toLocaleString()}</td>
-                                        <td className="p-4 whitespace-nowrap text-sm">{member.renewalDate}</td>
-                                        <td className="p-4 whitespace-nowrap text-sm">{member.pendingDocs > 0 || member.openRequests > 0 ? `${member.pendingDocs} D / ${member.openRequests} R` : '—'}</td>
-                                        <td className="p-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <div className="flex justify-end gap-1">
-                                                <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="View"><EyeIcon className="w-5 h-5"/></button>
-                                                <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Edit"><PencilSquareIcon className="w-5 h-5"/></button>
-                                                <button onClick={() => openImpersonateModal(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Impersonate"><UserCircleIcon className="w-5 h-5"/></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+                                {!isLoading && !error && filteredAndSortedMembers.map(member => {
+                                    const tierLabel = member.tier || '—';
+                                    const tierColor = tierColors[member.tier || ''] || 'bg-gray-200 text-gray-800';
+                                    const ratingLabel = member.badgeRating || '—';
+                                    const statusLabel = member.status || '—';
+                                    const statusColor = statusColors[member.status || ''] || 'bg-gray-200 text-gray-800';
+                                    const mrrDisplay = member.mrr !== null ? `$${member.mrr.toLocaleString()}` : '—';
+                                    const renewalDisplay = member.renewalDate || '—';
+                                    const pendingDisplay =
+                                        member.pendingDocs !== null || member.openRequests !== null
+                                            ? `${member.pendingDocs ?? 0} D / ${member.openRequests ?? 0} R`
+                                            : '—';
+
+                                    return (
+                                        <tr key={member.id} className="hover:bg-gray-light/50">
+                                            <td className="p-4 whitespace-nowrap"><p className="font-semibold text-charcoal">{member.businessName}</p><p className="text-sm text-gray-dark">{member.primaryContact || '—'}</p></td>
+                                            <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${tierColor}`}>{tierLabel}</span></td>
+                                            <td className="p-4 whitespace-nowrap font-semibold">{ratingLabel}</td>
+                                            <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span></td>
+                                            <td className="p-4 whitespace-nowrap">{mrrDisplay}</td>
+                                            <td className="p-4 whitespace-nowrap text-sm">{renewalDisplay}</td>
+                                            <td className="p-4 whitespace-nowrap text-sm">{pendingDisplay}</td>
+                                            <td className="p-4 whitespace-nowrap text-right text-sm font-medium">
+                                                <div className="flex justify-end gap-1">
+                                                    <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="View"><EyeIcon className="w-5 h-5"/></button>
+                                                    <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Edit"><PencilSquareIcon className="w-5 h-5"/></button>
+                                                    <button onClick={() => openImpersonateModal(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Impersonate"><UserCircleIcon className="w-5 h-5"/></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
@@ -324,31 +315,40 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                     {!isLoading && error && (
                         <div className="bg-white rounded-xl shadow-lg border border-gray-border p-4 text-center text-error font-semibold">Could not load members: {error}</div>
                     )}
-                    {!isLoading && !error && filteredAndSortedMembers.map(member => (
-                        <div key={member.id} className="bg-white rounded-xl shadow-lg border border-gray-border p-4">
-                             <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="font-bold text-charcoal">{member.businessName}</p>
-                                    <p className="text-sm text-gray-dark">{member.email}</p>
-                                    <p className="text-sm text-gray-dark">{member.city}</p>
+                    {!isLoading && !error && filteredAndSortedMembers.map(member => {
+                        const tierLabel = member.tier || '—';
+                        const tierColor = tierColors[member.tier || ''] || 'bg-gray-200 text-gray-800';
+                        const statusLabel = member.status || '—';
+                        const statusColor = statusColors[member.status || ''] || 'bg-gray-200 text-gray-800';
+                        const mrrDisplay = member.mrr !== null ? `$${member.mrr.toLocaleString()}` : '—';
+                        const renewalDisplay = member.renewalDate || '—';
+
+                        return (
+                            <div key={member.id} className="bg-white rounded-xl shadow-lg border border-gray-border p-4">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-bold text-charcoal">{member.businessName}</p>
+                                        <p className="text-sm text-gray-dark">{member.email || '—'}</p>
+                                        <p className="text-sm text-gray-dark">{member.primaryContact || '—'}</p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${tierColor}`}>{tierLabel}</span>
+                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col items-end gap-1">
-                                     <span className={`px-2 py-1 text-xs font-bold rounded-full ${tierColors[member.tier]}`}>{member.tier}</span>
-                                     <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColors[member.status]}`}>{member.status}</span>
+                                <div className="mt-4 pt-3 border-t border-gray-border flex justify-between items-center">
+                                    <div>
+                                        <p className="text-sm text-gray-dark">MRR: <span className="font-semibold text-charcoal">{mrrDisplay}</span></p>
+                                        <p className="text-sm text-gray-dark">Renews: <span className="font-semibold text-charcoal">{renewalDisplay}</span></p>
+                                    </div>
+                                    <button onClick={() => handleSelectMember(member)} className="py-2 px-4 bg-info/10 text-info font-bold rounded-lg">View</button>
                                 </div>
                             </div>
-                            <div className="mt-4 pt-3 border-t border-gray-border flex justify-between items-center">
-                                <div>
-                                    <p className="text-sm text-gray-dark">MRR: <span className="font-semibold text-charcoal">${member.mrr.toLocaleString()}</span></p>
-                                    <p className="text-sm text-gray-dark">Renews: <span className="font-semibold text-charcoal">{member.renewalDate}</span></p>
-                                </div>
-                                <button onClick={() => handleSelectMember(member)} className="py-2 px-4 bg-info/10 text-info font-bold rounded-lg">View</button>
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
-                 {!isLoading && !error && filteredAndSortedMembers.length === 0 && (
+                {!isLoading && !error && filteredAndSortedMembers.length === 0 && (
                     <div className="text-center py-16 bg-white rounded-2xl shadow-lg border border-gray-border">
                         <h3 className="text-xl font-bold text-charcoal">No members found</h3>
                         <p className="text-gray-dark mt-1">Try adjusting your search or filters.</p>
