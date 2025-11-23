@@ -85,11 +85,14 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                     const mappedMembers: AdminMember[] = data.members.map(member => ({
                         id: member.id,
                         businessName: member.businessName,
+                        primaryContact: member.primaryContact,
                         city: member.location || '—',
+                        location: member.location || '—',
                         email: member.email || '—',
                         tier: normalizeTier(member.tier),
                         rating: normalizeRating(member.badgeRating),
                         status: normalizeStatus(member.status),
+                        verificationStatus: member.verificationStatus || 'Pending',
                         renewalDate: member.joinDate || '—',
                         joinDate: member.joinDate || '—',
                         mrr: 0,
@@ -220,8 +223,6 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                 <MemberDetailDrawer
                     member={selectedMember}
                     onClose={() => setSelectedMember(null)}
-                    onUpdate={handleUpdateMember}
-                    showToast={showToast}
                 />
             )}
             <ImpersonateModal 
