@@ -51,7 +51,7 @@ export const handler: Handler = async event => {
   if ('email' in payload) update.email = toNullIfEmpty(payload.email);
   if ('city' in payload) update.city = toNullIfEmpty(payload.city);
   if ('state' in payload) update.state = toNullIfEmpty(payload.state);
-  if ('phone' in payload) update.phone = toNullIfEmpty(payload.phone);
+  if ('phone' in payload) update.phone_number = toNullIfEmpty(payload.phone);
   if ('membershipTier' in payload) update.membership_tier = toNullIfEmpty(payload.membershipTier);
   if ('memberStatus' in payload) update.member_status = toNullIfEmpty(payload.memberStatus);
   if ('verificationStatus' in payload) update.verification_status = toNullIfEmpty(payload.verificationStatus);
