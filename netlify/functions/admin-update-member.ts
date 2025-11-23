@@ -70,6 +70,7 @@ export const handler: Handler = async event => {
   const { data, error } = await supabase
     .from('profiles')
     .update(update)
+    .select()
     .eq('id', payload.profileId)
     .single();
 

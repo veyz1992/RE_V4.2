@@ -21,6 +21,20 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
     const [isImpersonateModalOpen, setImpersonateModalOpen] = useState(false);
     const [impersonatedMemberName, setImpersonatedMemberName] = useState('');
 
+    interface ProfileRow {
+        id: string;
+        company_name: string | null;
+        full_name: string | null;
+        email: string | null;
+        city: string | null;
+        state: string | null;
+        membership_tier: string | null;
+        member_status: string | null;
+        verification_status: string | null;
+        badge_rating: string | null;
+        created_at: string | null;
+    }
+
     type ApiAdminMember = {
         id: string;
         businessName: string;
@@ -100,6 +114,48 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
         };
     }, []);
 
+    const mapProfileToAdminMember = (profile: ProfileRow, existing?: AdminMember): AdminMember => {
+        const location = profile.city && profile.state
+            ? `${profile.city}, ${profile.state}`
+            : profile.city || profile.state || existing?.location || null;
+
+        return {
+            ...(existing ?? {
+                id: profile.id,
+                businessName: profile.company_name ?? 'Unknown',
+                primaryContact: profile.full_name ?? null,
+                email: profile.email ?? null,
+                city: profile.city ?? null,
+                state: profile.state ?? null,
+                location,
+                tier: profile.membership_tier ?? null,
+                status: profile.member_status ?? null,
+                verificationStatus: profile.verification_status ?? null,
+                badgeRating: profile.badge_rating ?? null,
+                joinDate: profile.created_at ?? null,
+                mrr: null,
+                renewalDate: null,
+                pendingDocs: null,
+                openRequests: null,
+            }),
+            businessName: profile.company_name ?? existing?.businessName ?? 'Unknown',
+            primaryContact: profile.full_name ?? existing?.primaryContact ?? null,
+            email: profile.email ?? existing?.email ?? null,
+            city: profile.city ?? existing?.city ?? null,
+            state: profile.state ?? existing?.state ?? null,
+            location,
+            tier: profile.membership_tier ?? existing?.tier ?? null,
+            status: profile.member_status ?? existing?.status ?? null,
+            verificationStatus: profile.verification_status ?? existing?.verificationStatus ?? null,
+            badgeRating: profile.badge_rating ?? existing?.badgeRating ?? null,
+            joinDate: profile.created_at ?? existing?.joinDate ?? null,
+            mrr: existing?.mrr ?? null,
+            renewalDate: existing?.renewalDate ?? null,
+            pendingDocs: existing?.pendingDocs ?? null,
+            openRequests: existing?.openRequests ?? null,
+        };
+    };
+
     const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFilters(prev => ({ ...prev, [name]: value }));
@@ -113,9 +169,22 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
         setSortConfig({ key, direction });
     };
     
-    const handleUpdateMember = (updatedMember: AdminMember) => {
-        setMembers(prev => prev.map(m => m.id === updatedMember.id ? updatedMember : m));
-        setSelectedMember(updatedMember);
+    const handleUpdateMember = (updatedProfile: ProfileRow) => {
+        let updatedMember: AdminMember | null = null;
+
+        setMembers(prev => prev.map(member => {
+            if (member.id === updatedProfile.id) {
+                updatedMember = mapProfileToAdminMember(updatedProfile, member);
+                return updatedMember;
+            }
+            return member;
+        }));
+
+        if (!updatedMember) {
+            updatedMember = mapProfileToAdminMember(updatedProfile, selectedMember ?? undefined);
+        }
+
+        setSelectedMember(prev => (prev?.id === updatedProfile.id ? updatedMember : prev));
         onSelectMember?.(updatedMember);
         showToast('Member updated successfully.', 'success');
     };
