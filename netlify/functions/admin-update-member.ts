@@ -2,34 +2,18 @@ import type { Handler } from '@netlify/functions';
 import { supabase } from '../lib/supabaseServer';
 
 // TODO: Validate admin auth from Authorization header before allowing updates
+const headers = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Methods': 'PUT, OPTIONS',
+};
+
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
-  headers: {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'PUT, OPTIONS',
-  },
+  headers,
   body: JSON.stringify(body),
 });
-
-interface UpdateMemberPayload {
-  profileId: string;
-  companyName?: string | null;
-  fullName?: string | null;
-  email?: string | null;
-  city?: string | null;
-  state?: string | null;
-  phone?: string | null;
-  membershipTier?: string | null;
-  memberStatus?: string | null;
-  verificationStatus?: string | null;
-  badgeRating?: string | null;
-  websiteUrl?: string | null;
-}
-
-const selectFields =
-  'id, company_name, full_name, email, city, state, membership_tier, member_status, verification_status, badge_rating, created_at, phone_number, website_url';
 
 export const handler: Handler = async event => {
   if (event.httpMethod === 'OPTIONS') {
@@ -40,67 +24,79 @@ export const handler: Handler = async event => {
     return jsonResponse(405, { error: 'Method Not Allowed' });
   }
 
-  if (!event.body) {
-    return jsonResponse(400, { error: 'Missing request body' });
-  }
-
-  let payload: UpdateMemberPayload;
+  let payload: any = {};
   try {
-    payload = JSON.parse(event.body);
-  } catch (error) {
-    return jsonResponse(400, { error: 'Invalid JSON body' });
+    payload = event.body ? JSON.parse(event.body) : {};
+  } catch (err) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: 'Invalid JSON body' }),
+    };
   }
 
-  const {
-    profileId,
-    companyName,
-    fullName,
-    email,
-    city,
-    state,
-    phone,
-    membershipTier,
-    memberStatus,
-    verificationStatus,
-    badgeRating,
-    websiteUrl,
-  } = payload;
-
-  if (!profileId) {
-    return jsonResponse(400, { error: 'profileId is required' });
+  if (!payload.profileId) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: 'profileId is required' }),
+    };
   }
 
-  const update: Record<string, string | null> = {};
+  const update: any = {};
+  const toNullIfEmpty = (v: any) => (v === '' || v === undefined ? null : v);
 
-  const addIfDefined = (key: string, value: string | null | undefined) => {
-    if (value !== undefined) {
-      update[key] = value;
+  if ('companyName' in payload) update.company_name = toNullIfEmpty(payload.companyName);
+  if ('fullName' in payload) update.full_name = toNullIfEmpty(payload.fullName);
+  if ('email' in payload) update.email = toNullIfEmpty(payload.email);
+  if ('city' in payload) update.city = toNullIfEmpty(payload.city);
+  if ('state' in payload) update.state = toNullIfEmpty(payload.state);
+  if ('phone' in payload) update.phone = toNullIfEmpty(payload.phone);
+  if ('membershipTier' in payload) update.membership_tier = toNullIfEmpty(payload.membershipTier);
+  if ('memberStatus' in payload) update.member_status = toNullIfEmpty(payload.memberStatus);
+  if ('verificationStatus' in payload) update.verification_status = toNullIfEmpty(payload.verificationStatus);
+  if ('badgeRating' in payload) update.badge_rating = toNullIfEmpty(payload.badgeRating);
+  if ('websiteUrl' in payload) update.website_url = toNullIfEmpty(payload.websiteUrl);
+
+  if (Object.keys(update).length === 0) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: 'No fields to update' }),
+    };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(update)
+      .eq('id', payload.profileId)
+      .single();
+
+    if (error) {
+      console.error('admin-update-member supabase error', error);
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({
+          error: 'Failed to update profile',
+          details: error.message,
+          code: error.code,
+        }),
+      };
     }
-  };
 
-  addIfDefined('company_name', companyName ?? null);
-  addIfDefined('full_name', fullName ?? null);
-  addIfDefined('email', email ?? null);
-  addIfDefined('city', city ?? null);
-  addIfDefined('state', state ?? null);
-  addIfDefined('phone_number', phone ?? null);
-  addIfDefined('membership_tier', membershipTier ?? null);
-  addIfDefined('member_status', memberStatus ?? null);
-  addIfDefined('verification_status', verificationStatus ?? null);
-  addIfDefined('badge_rating', badgeRating ?? null);
-  addIfDefined('website_url', websiteUrl ?? null);
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .update(update)
-    .eq('id', profileId)
-    .select(selectFields)
-    .single();
-
-  if (error) {
-    console.error('[admin-update-member] failed to update profile', error);
-    return jsonResponse(500, { error: 'Failed to update profile' });
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ profile: data }),
+    };
+  } catch (err) {
+    console.error('admin-update-member supabase error', err);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'Failed to update profile' }),
+    };
   }
-
-  return jsonResponse(200, { profile: data });
 };
