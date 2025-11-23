@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { ADMIN_MEMBERS, AdminMember, MemberStatus, BadgeRating, PackageTier } from '../../lib/mockData';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AdminMember, MemberStatus, BadgeRating, PackageTier } from '../../lib/mockData';
 import { MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, UserCircleIcon } from '../icons';
 import MemberDetailDrawer from './MemberDetailDrawer';
 import ImpersonateModal from './ImpersonateModal';
@@ -10,7 +10,9 @@ interface ClientManagementProps {
 }
 
 const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelectMember }) => {
-    const [members, setMembers] = useState<AdminMember[]>(ADMIN_MEMBERS);
+    const [members, setMembers] = useState<AdminMember[]>([]);
+    const [isLoading, setIsLoading] = useState<boolean>(true);
+    const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({ tier: 'All', status: 'All', rating: 'All' });
     const [sortConfig, setSortConfig] = useState<{ key: keyof AdminMember | null; direction: 'ascending' | 'descending' }>({ key: 'joinDate', direction: 'descending' });
@@ -18,6 +20,115 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
     const [selectedMember, setSelectedMember] = useState<AdminMember | null>(null);
     const [isImpersonateModalOpen, setImpersonateModalOpen] = useState(false);
     const [impersonatedMemberName, setImpersonatedMemberName] = useState('');
+
+    type ApiAdminMember = {
+        id: string;
+        businessName: string;
+        primaryContact: string | null;
+        email: string | null;
+        location: string | null;
+        tier: string | null;
+        status: string | null;
+        verificationStatus: string | null;
+        badgeRating: string | null;
+        joinDate: string | null;
+    };
+
+    const normalizeStatus = (status: string | null): MemberStatus => {
+        const normalized = status?.toLowerCase();
+        switch (normalized) {
+            case 'active':
+                return 'Active';
+            case 'suspended':
+                return 'Suspended';
+            case 'canceled':
+            case 'cancelled':
+                return 'Canceled';
+            default:
+                return 'Pending';
+        }
+    };
+
+    const normalizeTier = (tier: string | null): PackageTier => {
+        if (!tier) return 'Bronze';
+        const formatted = tier.toLowerCase();
+        if (formatted === 'silver') return 'Silver';
+        if (formatted === 'gold') return 'Gold';
+        if (formatted === 'founding member') return 'Founding Member';
+        if (formatted === 'platinum') return 'Platinum';
+        return 'Bronze';
+    };
+
+    const normalizeRating = (rating: string | null): BadgeRating => {
+        if (rating === 'A+' || rating === 'A' || rating === 'B+') return rating;
+        return 'B+';
+    };
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const fetchMembers = async () => {
+            setIsLoading(true);
+            setError(null);
+
+            try {
+                const res = await fetch('/.netlify/functions/admin-get-members');
+
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    throw new Error(body.error || `Request failed with status ${res.status}`);
+                }
+
+                const data: { members: ApiAdminMember[] } = await res.json();
+
+                if (isMounted && data?.members) {
+                    const mappedMembers: AdminMember[] = data.members.map(member => ({
+                        id: member.id,
+                        businessName: member.businessName,
+                        city: member.location || '—',
+                        email: member.email || '—',
+                        tier: normalizeTier(member.tier),
+                        rating: normalizeRating(member.badgeRating),
+                        status: normalizeStatus(member.status),
+                        renewalDate: member.joinDate || '—',
+                        joinDate: member.joinDate || '—',
+                        mrr: 0,
+                        pendingDocs: 0,
+                        openRequests: 0,
+                        documents: [],
+                        activityLog: [],
+                        billingInfo: { stripeId: '', lastPayment: '', plan: '' },
+                        stats: { profileViews: 0, badgeClicks: 0 },
+                        badge: member.badgeRating
+                            ? {
+                                status: 'ACTIVE',
+                                badgeLabel: member.badgeRating,
+                                imageLightUrl: '',
+                                profileUrl: '',
+                            }
+                            : undefined,
+                    }));
+
+                    setMembers(mappedMembers);
+                }
+            } catch (err: any) {
+                console.error('Failed to load admin members', err);
+                if (isMounted) {
+                    setError(err?.message ?? 'Failed to load members');
+                }
+            } finally {
+                if (isMounted) {
+                    setIsLoading(false);
+                }
+            }
+        };
+
+        fetchMembers();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -171,7 +282,17 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-border">
-                                {filteredAndSortedMembers.map(member => (
+                                {isLoading && (
+                                    <tr>
+                                        <td colSpan={8} className="p-4 text-center text-gray-dark">Loading members…</td>
+                                    </tr>
+                                )}
+                                {!isLoading && error && (
+                                    <tr>
+                                        <td colSpan={8} className="p-4 text-center text-error font-semibold">Could not load members: {error}</td>
+                                    </tr>
+                                )}
+                                {!isLoading && !error && filteredAndSortedMembers.map(member => (
                                     <tr key={member.id} className="hover:bg-gray-light/50">
                                         <td className="p-4 whitespace-nowrap"><p className="font-semibold text-charcoal">{member.businessName}</p><p className="text-sm text-gray-dark">{member.city}</p></td>
                                         <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${tierColors[member.tier]}`}>{member.tier}</span></td>
@@ -196,7 +317,13 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
 
                 {/* Mobile Cards */}
                 <div className="md:hidden space-y-4">
-                    {filteredAndSortedMembers.map(member => (
+                    {isLoading && (
+                        <div className="bg-white rounded-xl shadow-lg border border-gray-border p-4 text-center text-gray-dark">Loading members…</div>
+                    )}
+                    {!isLoading && error && (
+                        <div className="bg-white rounded-xl shadow-lg border border-gray-border p-4 text-center text-error font-semibold">Could not load members: {error}</div>
+                    )}
+                    {!isLoading && !error && filteredAndSortedMembers.map(member => (
                         <div key={member.id} className="bg-white rounded-xl shadow-lg border border-gray-border p-4">
                              <div className="flex justify-between items-start">
                                 <div>
@@ -220,7 +347,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                     ))}
                 </div>
 
-                 {filteredAndSortedMembers.length === 0 && (
+                 {!isLoading && !error && filteredAndSortedMembers.length === 0 && (
                     <div className="text-center py-16 bg-white rounded-2xl shadow-lg border border-gray-border">
                         <h3 className="text-xl font-bold text-charcoal">No members found</h3>
                         <p className="text-gray-dark mt-1">Try adjusting your search or filters.</p>
