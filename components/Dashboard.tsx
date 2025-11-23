@@ -6986,10 +6986,23 @@ const MemberDashboard: React.FC = () => {
             return () => clearTimeout(timer);
         }
     }, [toast]);
-    
+
     const showToast = useCallback((message: string, type: 'success' | 'error') => {
         setToast({ message, type });
     }, []);
+
+    const computedOverviewData = useMemo<OverviewState>(() => {
+        const base = overviewData ?? DEFAULT_OVERVIEW_STATE;
+
+        return {
+            ...base,
+            lastPciScore: base.lastPciScore ?? latestAssessment?.pci_rating ?? profile?.last_pci_score ?? null,
+            lastAssessmentId: base.lastAssessmentId ?? latestAssessment?.id ?? profile?.last_assessment_id ?? null,
+            lastAssessmentDate: base.lastAssessmentDate ?? latestAssessment?.created_at ?? null,
+            hasOpenRecheck: base.hasOpenRecheck ?? Boolean(openAssessmentRecheck),
+            openRecheckCreatedAt: base.openRecheckCreatedAt ?? openAssessmentRecheck?.created_at ?? null,
+        };
+    }, [latestAssessment, openAssessmentRecheck, overviewData, profile?.last_assessment_id, profile?.last_pci_score]);
 
     const handleRetakeAssessment = useCallback(() => {
         if (typeof window !== 'undefined') {
@@ -7050,6 +7063,31 @@ const MemberDashboard: React.FC = () => {
             setIsRequestingRecheck(false);
         }
     }, [computedOverviewData.lastAssessmentId, fetchServiceRequests, isRequestingRecheck, openAssessmentRecheck, profile?.id, resolveBenefitAssessmentId, showToast]);
+
+    const assessmentInfo = useMemo(
+        () => ({
+            lastPciRating: computedOverviewData.lastPciScore ?? null,
+            lastUpdated: computedOverviewData.lastAssessmentDate ?? null,
+            hasAssessment: Boolean(computedOverviewData.lastAssessmentId),
+            hasOpenRecheck: Boolean(computedOverviewData.hasOpenRecheck ?? openAssessmentRecheck),
+            openRecheckCreatedAt: computedOverviewData.openRecheckCreatedAt ?? openAssessmentRecheck?.created_at ?? null,
+            onRetake: handleRetakeAssessment,
+            onRequestReview: handleRequestAssessmentReview,
+            isRequestingReview: isRequestingRecheck,
+            requestDisabled: !computedOverviewData.lastAssessmentId,
+        }),
+        [
+            computedOverviewData.hasOpenRecheck,
+            computedOverviewData.lastAssessmentDate,
+            computedOverviewData.lastAssessmentId,
+            computedOverviewData.lastPciScore,
+            computedOverviewData.openRecheckCreatedAt,
+            handleRequestAssessmentReview,
+            handleRetakeAssessment,
+            isRequestingRecheck,
+            openAssessmentRecheck?.created_at,
+        ],
+    );
 
     // Fetch service requests on first "my-requests" view
     useEffect(() => {
@@ -7213,44 +7251,6 @@ const MemberDashboard: React.FC = () => {
         setActiveView(view);
         setIsSidebarOpen(false);
     };
-
-    const computedOverviewData = useMemo<OverviewState>(() => {
-        const base = overviewData ?? DEFAULT_OVERVIEW_STATE;
-
-        return {
-            ...base,
-            lastPciScore: base.lastPciScore ?? latestAssessment?.pci_rating ?? profile?.last_pci_score ?? null,
-            lastAssessmentId: base.lastAssessmentId ?? latestAssessment?.id ?? profile?.last_assessment_id ?? null,
-            lastAssessmentDate: base.lastAssessmentDate ?? latestAssessment?.created_at ?? null,
-            hasOpenRecheck: base.hasOpenRecheck ?? Boolean(openAssessmentRecheck),
-            openRecheckCreatedAt: base.openRecheckCreatedAt ?? openAssessmentRecheck?.created_at ?? null,
-        };
-    }, [latestAssessment, openAssessmentRecheck, overviewData, profile?.last_assessment_id, profile?.last_pci_score]);
-
-    const assessmentInfo = useMemo(
-        () => ({
-            lastPciRating: computedOverviewData.lastPciScore ?? null,
-            lastUpdated: computedOverviewData.lastAssessmentDate ?? null,
-            hasAssessment: Boolean(computedOverviewData.lastAssessmentId),
-            hasOpenRecheck: Boolean(computedOverviewData.hasOpenRecheck ?? openAssessmentRecheck),
-            openRecheckCreatedAt: computedOverviewData.openRecheckCreatedAt ?? openAssessmentRecheck?.created_at ?? null,
-            onRetake: handleRetakeAssessment,
-            onRequestReview: handleRequestAssessmentReview,
-            isRequestingReview: isRequestingRecheck,
-            requestDisabled: !computedOverviewData.lastAssessmentId,
-        }),
-        [
-            computedOverviewData.hasOpenRecheck,
-            computedOverviewData.lastAssessmentDate,
-            computedOverviewData.lastAssessmentId,
-            computedOverviewData.lastPciScore,
-            computedOverviewData.openRecheckCreatedAt,
-            handleRequestAssessmentReview,
-            handleRetakeAssessment,
-            isRequestingRecheck,
-            openAssessmentRecheck?.created_at,
-        ],
-    );
 
     const docsNeedAttention = documents.some(doc => ['notUploaded', 'needsReplacement', 'rejected'].includes(doc.status));
 
