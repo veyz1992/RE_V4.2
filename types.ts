@@ -210,11 +210,14 @@ export type BadgeRating = 'A+' | 'A' | 'B+';
 export interface AdminMember {
   id: string;
   businessName: string;
+  primaryContact?: string | null;
   city: string;
+  location?: string | null;
   email: string;
   tier: PackageTier;
   rating: BadgeRating;
   status: MemberStatus;
+  verificationStatus?: string | null;
   renewalDate: string;
   joinDate: string;
   mrr: number;
