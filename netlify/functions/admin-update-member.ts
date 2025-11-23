@@ -15,6 +15,8 @@ const jsonResponse = (statusCode: number, body: unknown) => ({
   body: JSON.stringify(body),
 });
 
+const toNullIfEmpty = (v: any) => (v === '' || v === undefined ? null : v);
+
 export const handler: Handler = async event => {
   if (event.httpMethod === 'OPTIONS') {
     return jsonResponse(200, { ok: true });
@@ -44,14 +46,13 @@ export const handler: Handler = async event => {
   }
 
   const update: any = {};
-  const toNullIfEmpty = (v: any) => (v === '' || v === undefined ? null : v);
 
   if ('companyName' in payload) update.company_name = toNullIfEmpty(payload.companyName);
   if ('fullName' in payload) update.full_name = toNullIfEmpty(payload.fullName);
   if ('email' in payload) update.email = toNullIfEmpty(payload.email);
   if ('city' in payload) update.city = toNullIfEmpty(payload.city);
   if ('state' in payload) update.state = toNullIfEmpty(payload.state);
-  if ('phone' in payload) update.phone_number = toNullIfEmpty(payload.phone);
+  if ('phone' in payload) update.phone = toNullIfEmpty(payload.phone);
   if ('membershipTier' in payload) update.membership_tier = toNullIfEmpty(payload.membershipTier);
   if ('memberStatus' in payload) update.member_status = toNullIfEmpty(payload.memberStatus);
   if ('verificationStatus' in payload) update.verification_status = toNullIfEmpty(payload.verificationStatus);
@@ -66,37 +67,28 @@ export const handler: Handler = async event => {
     };
   }
 
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(update)
-      .eq('id', payload.profileId)
-      .single();
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(update)
+    .eq('id', payload.profileId)
+    .single();
 
-    if (error) {
-      console.error('admin-update-member supabase error', error);
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({
-          error: 'Failed to update profile',
-          details: error.message,
-          code: error.code,
-        }),
-      };
-    }
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({ profile: data }),
-    };
-  } catch (err) {
-    console.error('admin-update-member supabase error', err);
+  if (error) {
+    console.error('admin-update-member supabase error', error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: 'Failed to update profile' }),
+      body: JSON.stringify({
+        error: 'Failed to update profile',
+        details: error.message,
+        code: error.code,
+      }),
     };
   }
+
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({ profile: data }),
+  };
 };

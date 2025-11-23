@@ -22,6 +22,11 @@ interface ProfileRow {
     created_at: string | null;
 }
 
+const membershipTierOptions = ['free', 'founding', 'bronze', 'silver', 'gold'] as const;
+const memberStatusOptions = ['pending', 'active', 'inactive', 'canceled'] as const;
+const verificationStatusOptions = ['pending', 'verified', 'rejected'] as const;
+const badgeRatingOptions = ['A+', 'A', 'B+', 'B', 'C'] as const;
+
 const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose, onMemberUpdated }) => {
     const [companyName, setCompanyName] = useState('');
     const [primaryContact, setPrimaryContact] = useState('');
@@ -35,6 +40,9 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const normalizeOption = <T extends readonly string[]>(value: string | null | undefined, options: T) =>
+        options.includes((value ?? '') as T[number]) ? (value as T[number]) : '';
+
     useEffect(() => {
         if (member) {
             setCompanyName(member.businessName || '');
@@ -42,13 +50,26 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
             setEmail(member.email || '');
             setCity(member.city || '');
             setState(member.state || '');
-            setMembershipTier(member.tier || '');
-            setMemberStatus(member.status || '');
-            setVerificationStatus(member.verificationStatus || '');
-            setBadgeRating(member.badgeRating || '');
+            setMembershipTier(normalizeOption(member.tier, membershipTierOptions));
+            setMemberStatus(normalizeOption(member.status, memberStatusOptions));
+            setVerificationStatus(normalizeOption(member.verificationStatus, verificationStatusOptions));
+            setBadgeRating(normalizeOption(member.badgeRating, badgeRatingOptions));
             setError(null);
         }
     }, [member]);
+
+    const handleSelectChange = <T extends string>(setter: (value: T) => void, options: readonly T[]) =>
+        (e: React.ChangeEvent<HTMLSelectElement>) => {
+            const value = e.target.value as T;
+            if (value === '') {
+                setter('' as T);
+                return;
+            }
+
+            if (options.includes(value)) {
+                setter(value);
+            }
+        };
 
     const handleSave = async () => {
         if (!member) return;
@@ -56,6 +77,11 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
         setError(null);
 
         try {
+            const sanitizedMembershipTier = membershipTierOptions.includes(membershipTier as typeof membershipTierOptions[number]) ? membershipTier : null;
+            const sanitizedMemberStatus = memberStatusOptions.includes(memberStatus as typeof memberStatusOptions[number]) ? memberStatus : null;
+            const sanitizedVerificationStatus = verificationStatusOptions.includes(verificationStatus as typeof verificationStatusOptions[number]) ? verificationStatus : null;
+            const sanitizedBadgeRating = badgeRatingOptions.includes(badgeRating as typeof badgeRatingOptions[number]) ? badgeRating : null;
+
             const response = await fetch('/.netlify/functions/admin-update-member', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -66,16 +92,17 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
                     email: email || null,
                     city: city || null,
                     state: state || null,
-                    membershipTier: membershipTier || null,
-                    memberStatus: memberStatus || null,
-                    verificationStatus: verificationStatus || null,
-                    badgeRating: badgeRating || null,
+                    membershipTier: sanitizedMembershipTier,
+                    memberStatus: sanitizedMemberStatus,
+                    verificationStatus: sanitizedVerificationStatus,
+                    badgeRating: sanitizedBadgeRating,
                 }),
             });
 
             if (!response.ok) {
                 const body = await response.json().catch(() => ({}));
-                throw new Error(body.error || `Request failed with status ${response.status}`);
+                const errorMessage = body.details || body.error || `Request failed with status ${response.status}`;
+                throw new Error(errorMessage);
             }
 
             const body: { profile?: ProfileRow } = await response.json();
@@ -181,39 +208,55 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                                 <label className="block text-sm font-medium text-gray-dark mb-1">Membership tier</label>
-                                <input
-                                    type="text"
+                                <select
                                     value={membershipTier}
-                                    onChange={e => setMembershipTier(e.target.value)}
-                                    className="w-full border border-gray-border rounded-lg px-3 py-2 focus:ring-info focus:border-info"
-                                />
+                                    onChange={handleSelectChange(setMembershipTier, membershipTierOptions)}
+                                    className="w-full border border-gray-border rounded-lg px-3 py-2 focus:ring-info focus:border-info bg-white"
+                                >
+                                    <option value="">Select tier</option>
+                                    {membershipTierOptions.map(option => (
+                                        <option key={option} value={option}>{option}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-dark mb-1">Member status</label>
-                                <input
-                                    type="text"
+                                <select
                                     value={memberStatus}
-                                    onChange={e => setMemberStatus(e.target.value)}
-                                    className="w-full border border-gray-border rounded-lg px-3 py-2 focus:ring-info focus:border-info"
-                                />
+                                    onChange={handleSelectChange(setMemberStatus, memberStatusOptions)}
+                                    className="w-full border border-gray-border rounded-lg px-3 py-2 focus:ring-info focus:border-info bg-white"
+                                >
+                                    <option value="">Select status</option>
+                                    {memberStatusOptions.map(option => (
+                                        <option key={option} value={option}>{option}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-dark mb-1">Verification status</label>
-                                <input
-                                    type="text"
+                                <select
                                     value={verificationStatus}
-                                    onChange={e => setVerificationStatus(e.target.value)}
-                                    className="w-full border border-gray-border rounded-lg px-3 py-2 focus:ring-info focus:border-info"
-                                />
+                                    onChange={handleSelectChange(setVerificationStatus, verificationStatusOptions)}
+                                    className="w-full border border-gray-border rounded-lg px-3 py-2 focus:ring-info focus:border-info bg-white"
+                                >
+                                    <option value="">Select verification</option>
+                                    {verificationStatusOptions.map(option => (
+                                        <option key={option} value={option}>{option}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-dark mb-1">Badge rating</label>
-                                <input
-                                    type="text"
+                                <select
                                     value={badgeRating}
-                                    onChange={e => setBadgeRating(e.target.value)}
-                                    className="w-full border border-gray-border rounded-lg px-3 py-2 focus:ring-info focus:border-info"
-                                />
+                                    onChange={handleSelectChange(setBadgeRating, badgeRatingOptions)}
+                                    className="w-full border border-gray-border rounded-lg px-3 py-2 focus:ring-info focus:border-info bg-white"
+                                >
+                                    <option value="">Select rating</option>
+                                    {badgeRatingOptions.map(option => (
+                                        <option key={option} value={option}>{option}</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
 
