@@ -1,3 +1,4 @@
+// Admin verification queue for member_documents; keep column usage in sync with Supabase schema.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -12,24 +13,29 @@ interface AdminDocumentsViewProps {
 interface SupabaseDocumentRow {
     id: string | number;
     profile_id?: string | null;
-    document_name?: string | null;
     doc_type?: string | null;
+    file_url?: string | null;
     status?: string | null;
-    admin_note?: string | null;
+    admin_notes?: string | null;
     uploaded_at?: string | null;
+    approved_at?: string | null;
+    rejected_at?: string | null;
+    expires_at?: string | null;
     created_at?: string | null;
-    updated_at?: string | null;
     [key: string]: unknown;
 }
 
 interface AdminDocument {
     id: string;
     profileId: string;
-    name: string;
-    type: string | null;
+    docType: string | null;
     status: string;
-    adminNote: string | null;
+    adminNotes: string | null;
     uploadedAt: string | null;
+    approvedAt: string | null;
+    rejectedAt: string | null;
+    expiresAt: string | null;
+    createdAt: string | null;
 }
 
 const formatDateTime = (value?: string | null): string => {
@@ -53,14 +59,32 @@ const formatDateTime = (value?: string | null): string => {
 
 const normalizeStatus = (status?: string | null): string => status?.toLowerCase() ?? 'pending';
 
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+    id_card: 'ID Card',
+    passport: 'Passport',
+    utility_bill: 'Utility Bill',
+    business_license: 'Business License',
+};
+
+const getDocumentLabel = (docType?: string | null): string => {
+    if (!docType) {
+        return 'Document';
+    }
+
+    return DOCUMENT_TYPE_LABELS[docType] ?? docType;
+};
+
 const mapDocumentRow = (row: SupabaseDocumentRow): AdminDocument => ({
     id: String(row.id),
     profileId: row.profile_id ?? '',
-    name: row.document_name ?? 'Document',
-    type: row.doc_type ?? null,
+    docType: row.doc_type ?? null,
     status: normalizeStatus(row.status),
-    adminNote: row.admin_note ?? null,
+    adminNotes: row.admin_notes ?? null,
     uploadedAt: row.uploaded_at ?? row.created_at ?? null,
+    approvedAt: row.approved_at ?? null,
+    rejectedAt: row.rejected_at ?? null,
+    expiresAt: row.expires_at ?? null,
+    createdAt: row.created_at ?? null,
 });
 
 const PENDING_STATUSES = ['pending', 'submitted', 'under_review'];
@@ -85,7 +109,9 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
         try {
             let query = supabase
                 .from('member_documents')
-                .select('id, profile_id, document_name, doc_type, status, admin_note, uploaded_at, created_at, updated_at')
+                .select(
+                    'id, profile_id, doc_type, file_url, status, admin_notes, uploaded_at, approved_at, rejected_at, expires_at, created_at'
+                )
                 .in('status', PENDING_STATUSES)
                 .order('created_at', { ascending: false });
 
@@ -105,8 +131,8 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
             setNotesByDocument(() => {
                 const initial: Record<string, string> = {};
                 mapped.forEach((doc) => {
-                    if (doc.adminNote) {
-                        initial[doc.id] = doc.adminNote;
+                    if (doc.adminNotes) {
+                        initial[doc.id] = doc.adminNotes;
                     }
                 });
                 return initial;
@@ -177,7 +203,9 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
                 .from('member_documents')
                 .update({
                     status,
-                    admin_note: notesByDocument[document.id] ?? null,
+                    admin_notes: notesByDocument[document.id] ?? null,
+                    approved_at: status === 'approved' ? new Date().toISOString() : null,
+                    rejected_at: status === 'rejected' ? new Date().toISOString() : null,
                 })
                 .eq('id', document.id);
 
@@ -260,8 +288,8 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
                                         <p className="text-sm text-gray-dark uppercase tracking-wide">{document.status}</p>
                                     </td>
                                     <td className="p-4">
-                                        <p className="font-semibold text-charcoal">{document.name}</p>
-                                        <p className="text-sm text-gray-dark">{document.type ?? '—'}</p>
+                                        <p className="font-semibold text-charcoal">{getDocumentLabel(document.docType)}</p>
+                                        <p className="text-sm text-gray-dark">{document.docType ?? '—'}</p>
                                     </td>
                                     <td className="p-4 text-sm text-gray-dark">{formatDateTime(document.uploadedAt)}</td>
                                     <td className="p-4">
@@ -304,8 +332,8 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
                         <div key={document.id} className="p-4 space-y-3">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <p className="font-semibold text-charcoal">{document.name}</p>
-                                    <p className="text-sm text-gray-dark">{document.type ?? '—'}</p>
+                                    <p className="font-semibold text-charcoal">{getDocumentLabel(document.docType)}</p>
+                                    <p className="text-sm text-gray-dark">{document.docType ?? '—'}</p>
                                 </div>
                                 <span className="px-3 py-1 text-xs font-bold rounded-full bg-gray-light text-gray-dark uppercase">
                                     {document.status}
