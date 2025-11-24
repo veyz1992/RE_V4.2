@@ -20,5 +20,7 @@ export interface AdminMember {
     segment?: MemberSegment;
     hasActiveSubscription?: boolean;
     hasAnyAssessment?: boolean;
+    lastAssessmentDate?: string | null;
+    hasNewAssessment?: boolean;
     pendingItems?: number;
 }

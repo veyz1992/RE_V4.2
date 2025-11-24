@@ -16,6 +16,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({ tier: 'All', status: 'All', rating: 'All' });
     const [sortConfig, setSortConfig] = useState<{ key: keyof AdminMember | null; direction: 'ascending' | 'descending' }>({ key: 'joinDate', direction: 'descending' });
+    const [memberFilter, setMemberFilter] = useState<'all' | 'new' | 'pending_verification' | 'active'>('all');
     
     const [selectedMember, setSelectedMember] = useState<AdminMember | null>(null);
     const [isImpersonateModalOpen, setImpersonateModalOpen] = useState(false);
@@ -46,6 +47,11 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
         verificationStatus: string | null;
         badgeRating: string | null;
         joinDate: string | null;
+        segment?: string;
+        hasNewAssessment?: boolean;
+        lastAssessmentDate?: string | null;
+        pendingItems?: number;
+        hasAnyAssessment?: boolean;
     };
 
     useEffect(() => {
@@ -90,6 +96,11 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                             mrr: null,
                             pendingDocs: null,
                             openRequests: null,
+                            segment: member.segment ?? undefined,
+                            hasAnyAssessment: member.hasAnyAssessment,
+                            lastAssessmentDate: member.lastAssessmentDate ?? null,
+                            hasNewAssessment: !!member.hasNewAssessment,
+                            pendingItems: member.pendingItems,
                         };
                     });
 
@@ -137,6 +148,9 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                 renewalDate: null,
                 pendingDocs: null,
                 openRequests: null,
+                lastAssessmentDate: existing?.lastAssessmentDate ?? null,
+                hasNewAssessment: existing?.hasNewAssessment ?? false,
+                pendingItems: existing?.pendingItems,
             }),
             businessName: profile.company_name ?? existing?.businessName ?? 'Unknown',
             primaryContact: profile.full_name ?? existing?.primaryContact ?? null,
@@ -215,17 +229,43 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
         );
     };
 
+    const formatDate = (dateString: string | null | undefined) => {
+        if (!dateString) return '—';
+        const parsed = new Date(dateString);
+        if (Number.isNaN(parsed.getTime())) return '—';
+        return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    const filterCounts = useMemo(() => {
+        const newAssessments = members.filter(member => member.hasNewAssessment).length;
+        const pendingVerification = members.filter(member => member.segment === 'pending_verification').length;
+        const activeMembers = members.filter(member => member.segment === 'active').length;
+
+        return {
+            all: members.length,
+            new: newAssessments,
+            pending_verification: pendingVerification,
+            active: activeMembers,
+        };
+    }, [members]);
+
 
     const filteredAndSortedMembers = useMemo(() => {
         let sortedMembers = [...members];
 
         // Filtering
         sortedMembers = sortedMembers.filter(member => {
+            const matchesMemberFilter =
+                memberFilter === 'all' ||
+                (memberFilter === 'new' && !!member.hasNewAssessment) ||
+                (memberFilter === 'pending_verification' && member.segment === 'pending_verification') ||
+                (memberFilter === 'active' && member.segment === 'active');
+
             const searchMatch = member.businessName.toLowerCase().includes(searchTerm.toLowerCase()) || (member.email?.toLowerCase() || '').includes(searchTerm.toLowerCase());
             const tierMatch = filters.tier === 'All' || (member.tier ?? '—') === filters.tier;
             const statusMatch = filters.status === 'All' || (member.status ?? '—') === filters.status;
             const ratingMatch = filters.rating === 'All' || (deriveBadgeRating(member) ?? '—') === filters.rating;
-            return searchMatch && tierMatch && statusMatch && ratingMatch;
+            return matchesMemberFilter && searchMatch && tierMatch && statusMatch && ratingMatch;
         });
 
         // Sorting
@@ -248,9 +288,9 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                 return 0;
             });
         }
-        
+
         return sortedMembers;
-    }, [members, searchTerm, filters, sortConfig]);
+    }, [members, searchTerm, filters, sortConfig, memberFilter]);
 
     const statusColors: Record<string, string> = {
         Active: 'bg-success/20 text-success',
@@ -301,6 +341,24 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                     </div>
                 </div>
 
+                <div className="flex flex-wrap gap-2 mb-4">
+                    {[
+                        { key: 'all' as const, label: 'All', count: filterCounts.all },
+                        { key: 'new' as const, label: 'New assessments', count: filterCounts.new },
+                        { key: 'pending_verification' as const, label: 'Pending verification', count: filterCounts.pending_verification },
+                        { key: 'active' as const, label: 'Active members', count: filterCounts.active },
+                    ].map(filter => (
+                        <button
+                            key={filter.key}
+                            onClick={() => setMemberFilter(filter.key)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border transition ${memberFilter === filter.key ? 'bg-info/10 text-info border-info' : 'bg-white text-charcoal border-gray-border hover:bg-gray-light/50'}`}
+                        >
+                            <span>{filter.label}</span>
+                            <span className="px-2 py-1 rounded-full bg-gray-light text-charcoal text-xs font-bold">{filter.count}</span>
+                        </button>
+                    ))}
+                </div>
+
                 <div className="bg-white p-4 rounded-2xl shadow-lg border border-gray-border mb-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="relative">
@@ -337,6 +395,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                     <SortableHeader sortKey="businessName" label="Business" />
                                     <SortableHeader sortKey="tier" label="Tier" />
                                     <SortableHeader sortKey="badgeRating" label="Rating" />
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-charcoal uppercase tracking-wider">Last assessment</th>
                                     <SortableHeader sortKey="status" label="Status" />
                                     <SortableHeader sortKey="mrr" label="MRR" />
                                     <SortableHeader sortKey="renewalDate" label="Renewal" />
@@ -347,12 +406,12 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                             <tbody className="divide-y divide-gray-border">
                                 {isLoading && (
                                     <tr>
-                                        <td colSpan={8} className="p-4 text-center text-gray-dark">Loading members…</td>
+                                        <td colSpan={9} className="p-4 text-center text-gray-dark">Loading members…</td>
                                     </tr>
                                 )}
                                 {!isLoading && error && (
                                     <tr>
-                                        <td colSpan={8} className="p-4 text-center text-error font-semibold">Could not load members: {error}</td>
+                                        <td colSpan={9} className="p-4 text-center text-error font-semibold">Could not load members: {error}</td>
                                     </tr>
                                 )}
                                 {!isLoading && !error && filteredAndSortedMembers.map(member => {
@@ -366,16 +425,20 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                     const statusColor = statusColors[member.status || ''] || 'bg-gray-200 text-gray-800';
                                     const mrrDisplay = member.mrr !== null ? `$${member.mrr.toLocaleString()}` : '—';
                                     const renewalDisplay = member.renewalDate || '—';
-                                    const pendingDisplay =
-                                        member.pendingDocs !== null || member.openRequests !== null
-                                            ? `${member.pendingDocs ?? 0} D / ${member.openRequests ?? 0} R`
-                                            : '—';
+                                    const lastAssessmentDisplay = formatDate(member.lastAssessmentDate ?? null);
+                                    const pendingDisplay = member.pendingItems ?? 0;
 
                                     return (
                                         <tr key={member.id} className="hover:bg-gray-light/50">
                                             <td className="p-4 whitespace-nowrap"><p className="font-semibold text-charcoal">{member.businessName}</p><p className="text-sm text-gray-dark">{member.primaryContact || '—'}</p></td>
                                             <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${tierColor}`}>{tierLabel}</span></td>
                                             <td className="p-4 whitespace-nowrap">{ratingContent}</td>
+                                            <td className="p-4 whitespace-nowrap text-sm">
+                                                <div className="flex items-center gap-2">
+                                                    {member.hasNewAssessment && <span className="w-2 h-2 rounded-full bg-success" aria-label="New assessment" />}
+                                                    <span>{lastAssessmentDisplay}</span>
+                                                </div>
+                                            </td>
                                             <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span></td>
                                             <td className="p-4 whitespace-nowrap">{mrrDisplay}</td>
                                             <td className="p-4 whitespace-nowrap text-sm">{renewalDisplay}</td>
@@ -410,6 +473,8 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                         const statusColor = statusColors[member.status || ''] || 'bg-gray-200 text-gray-800';
                         const mrrDisplay = member.mrr !== null ? `$${member.mrr.toLocaleString()}` : '—';
                         const renewalDisplay = member.renewalDate || '—';
+                        const lastAssessmentDisplay = formatDate(member.lastAssessmentDate ?? null);
+                        const pendingDisplay = member.pendingItems ?? 0;
 
                         return (
                             <div key={member.id} className="bg-white rounded-xl shadow-lg border border-gray-border p-4">
@@ -428,6 +493,8 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                     <div>
                                         <p className="text-sm text-gray-dark">MRR: <span className="font-semibold text-charcoal">{mrrDisplay}</span></p>
                                         <p className="text-sm text-gray-dark">Renews: <span className="font-semibold text-charcoal">{renewalDisplay}</span></p>
+                                        <p className="text-sm text-gray-dark">Last assessment: <span className="font-semibold text-charcoal">{lastAssessmentDisplay}</span></p>
+                                        <p className="text-sm text-gray-dark">Pending: <span className="font-semibold text-charcoal">{pendingDisplay}</span></p>
                                     </div>
                                     <button onClick={() => handleSelectMember(member)} className="py-2 px-4 bg-info/10 text-info font-bold rounded-lg">View</button>
                                 </div>
