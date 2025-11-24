@@ -372,9 +372,10 @@ interface SupabaseServiceRequest {
 
 interface SupabaseAdminProfileRow {
     id: string | number;
-    user_id?: string | null;
-    display_name?: string | null;
     email?: string | null;
+    name?: string | null;
+    role?: string | null;
+    is_active?: boolean | null;
     [key: string]: unknown;
 }
 
@@ -382,10 +383,12 @@ interface SupabaseServiceRequestActivity {
     id: string | number;
     service_request_id?: string | number | null;
     actor_user_id?: string | null;
-    action?: string | null;
-    description?: string | null;
+    actor_is_admin?: boolean | null;
+    event_type?: string | null;
+    from_status?: string | null;
+    to_status?: string | null;
+    note?: string | null;
     created_at?: string | null;
-    actor_name?: string | null;
     [key: string]: unknown;
 }
 
@@ -804,7 +807,6 @@ const mapMemberServiceRequestRow = (request: SupabaseServiceRequest): MemberServ
     id: String(request.id),
     profileId: request.profile_id ?? '',
     requestType: getServiceRequestTypeLabel(request.request_type),
-    requestTypeValue: request.request_type ?? null,
     title: request.title ?? 'Untitled Request',
     description: request.description ?? null,
     priority: normalizeServiceRequestPriority(request.priority),
@@ -824,10 +826,13 @@ const mapServiceRequestActivityRow = (
     id: String(activity.id),
     serviceRequestId: String(activity.service_request_id ?? ''),
     actorUserId: activity.actor_user_id ?? null,
-    action: activity.action ?? null,
-    description: activity.description ?? null,
+    actorIsAdmin: activity.actor_is_admin ?? null,
+    eventType: activity.event_type ?? null,
+    fromStatus: activity.from_status ?? null,
+    toStatus: activity.to_status ?? null,
+    note: activity.note ?? null,
     createdAt: activity.created_at ?? new Date().toISOString(),
-    actorName: activity.actor_name ?? null,
+    actorName: null,
 });
 
 const STATUS_BADGE_CLASSES: Record<ServiceRequestStatus, string> = {
@@ -6655,7 +6660,7 @@ const MemberDashboard: React.FC = () => {
             if (assignedAdminIds.length > 0) {
                 const { data: adminData, error: adminError } = await supabase
                     .from('admin_profiles')
-                    .select('id, user_id, display_name, email')
+                    .select('id, name, email, role, is_active')
                     .in('id', assignedAdminIds);
 
                 if (adminError || !adminData) {
@@ -6666,18 +6671,10 @@ const MemberDashboard: React.FC = () => {
             }
 
             const adminNameById = new Map<string, string>(
-                adminProfiles.map((admin) => [String(admin.id), admin.display_name ?? admin.email ?? String(admin.id)] as const),
+                adminProfiles.map((admin) => [String(admin.id), admin.name ?? admin.email ?? String(admin.id)] as const),
             );
             const adminNameByUserId = new Map<string, string>(
-                adminProfiles
-                    .filter((admin) => Boolean(admin.user_id))
-                    .map(
-                        (admin) =>
-                            [
-                                admin.user_id as string,
-                                admin.display_name ?? admin.email ?? (admin.user_id as string),
-                            ] as const,
-                    ),
+                adminProfiles.map((admin) => [String(admin.id), admin.name ?? admin.email ?? String(admin.id)] as const),
             );
 
             const mappedRequests = rows.map((row) => {
@@ -6699,7 +6696,7 @@ const MemberDashboard: React.FC = () => {
             if (requestIds.length > 0) {
                 const { data: activityData, error: activityError } = await supabase
                     .from('service_request_activity')
-                    .select('*')
+                    .select('id, service_request_id, actor_user_id, actor_is_admin, event_type, from_status, to_status, note, created_at')
                     .in('service_request_id', requestIds)
                     .order('created_at', { ascending: false });
 
@@ -6721,10 +6718,10 @@ const MemberDashboard: React.FC = () => {
                     });
 
                     if (missingActorUserIds.size > 0) {
-                        const { data: actorData, error: actorError } = await supabase
-                            .from('admin_profiles')
-                            .select('user_id, display_name, email')
-                            .in('user_id', Array.from(missingActorUserIds));
+                            const { data: actorData, error: actorError } = await supabase
+                                .from('admin_profiles')
+                                .select('id, name, email')
+                                .in('id', Array.from(missingActorUserIds));
 
                         if (actorError) {
                             console.error('Failed to load activity actor details', actorError);
@@ -6734,12 +6731,7 @@ const MemberDashboard: React.FC = () => {
                                 : [];
 
                             actorRows.forEach((actor) => {
-                                if (actor.user_id) {
-                                    adminNameByUserId.set(
-                                        actor.user_id,
-                                        actor.display_name ?? actor.email ?? actor.user_id,
-                                    );
-                                }
+                                adminNameByUserId.set(String(actor.id), actor.name ?? actor.email ?? String(actor.id));
                             });
                         }
                     }
@@ -7535,7 +7527,7 @@ const RequestDetailModal: React.FC<{
                                                 <div className="flex items-start justify-between gap-4">
                                                     <div>
                                                         <p className="font-semibold text-[var(--text-main)]">
-                                                            {activity.description ?? activity.action ?? 'Activity recorded'}
+                                                            {activity.note ?? activity.eventType ?? 'Activity recorded'}
                                                         </p>
                                                         {(activity.actorName || activity.actorUserId) && (
                                                             <p className="text-xs text-[var(--text-muted)] mt-1">

@@ -110,7 +110,6 @@ export interface MemberServiceRequest {
     id: string;
     profileId: string;
     requestType: string;
-    requestTypeValue?: string | null;
     title: string;
     description: string | null;
     priority: ServiceRequestPriority;
@@ -128,8 +127,11 @@ export interface ServiceRequestActivityLog {
     id: string;
     serviceRequestId: string;
     actorUserId: string | null;
-    action: string | null;
-    description: string | null;
+    actorIsAdmin?: boolean | null;
+    eventType: string | null;
+    fromStatus?: string | null;
+    toStatus?: string | null;
+    note: string | null;
     createdAt: string;
     actorName?: string | null;
 }

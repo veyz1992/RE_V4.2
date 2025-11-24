@@ -1,5 +1,4 @@
 import type { Handler } from '@netlify/functions';
-import { type BadgeDesignRow, type BadgeDesignStatus } from '../../src/lib/badges';
 import { supabase } from '../lib/supabaseServer';
 
 const jsonResponse = (statusCode: number, body: unknown) => ({
@@ -14,12 +13,8 @@ const jsonResponse = (statusCode: number, body: unknown) => ({
 
 type SaveBadgePayload = {
   profileId: string;
-  designConfig: unknown;
-  status?: BadgeDesignStatus;
   badgeLabel?: string | null;
-  rating?: number | null;
-  imageLightUrl?: string | null;
-  imageDarkUrl?: string | null;
+  rating?: string | number | null;
 };
 
 export const handler: Handler = async event => {
@@ -43,50 +38,44 @@ export const handler: Handler = async event => {
     return jsonResponse(400, { error: 'Invalid JSON body' });
   }
 
-  const {
-    profileId,
-    designConfig,
-    status = 'draft',
-    badgeLabel = null,
-    rating = null,
-    imageLightUrl = null,
-    imageDarkUrl = null,
-  } = payload;
+  const { profileId, badgeLabel = null, rating = null } = payload;
 
-  if (!profileId || !designConfig) {
-    return jsonResponse(400, { error: 'profileId and designConfig are required' });
+  if (!profileId) {
+    return jsonResponse(400, { error: 'profileId is required' });
   }
 
-  if (status === 'active') {
-    const { error: revokeError } = await supabase
-      .from<BadgeDesignRow>('badge_designs')
-      .update({ status: 'revoked' })
+  const badgeRating = badgeLabel ?? (rating !== null && rating !== undefined ? String(rating) : null);
+
+  const [membershipResult, profileResult] = await Promise.all([
+    supabase
+      .from('memberships')
+      .update({ badge_rating: badgeRating })
       .eq('profile_id', profileId)
-      .eq('status', 'active');
+      .select('id, badge_rating')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('profiles')
+      .update({ badge_rating: badgeRating })
+      .eq('id', profileId)
+      .select('id, badge_rating')
+      .maybeSingle(),
+  ]);
 
-    if (revokeError) {
-      return jsonResponse(500, { error: 'Database error', details: revokeError.message });
-    }
+  if (membershipResult.error) {
+    return jsonResponse(500, { error: 'Database error', details: membershipResult.error.message });
   }
 
-  const { data, error } = await supabase
-    .from<BadgeDesignRow>('badge_designs')
-    .insert({
+  if (profileResult.error) {
+    return jsonResponse(500, { error: 'Database error', details: profileResult.error.message });
+  }
+
+  return jsonResponse(200, {
+    badge: {
       profile_id: profileId,
-      status,
-      design_config: designConfig,
-      badge_label: badgeLabel ?? null,
-      rating: rating ?? null,
-      image_light_url: imageLightUrl ?? null,
-      image_dark_url: imageDarkUrl ?? null,
-      embed_code_version: 'v1',
-    })
-    .select('*')
-    .single();
-
-  if (error) {
-    return jsonResponse(500, { error: 'Database error', details: error.message });
-  }
-
-  return jsonResponse(200, { badge: data });
+      badge_rating: badgeRating,
+      membership_id: membershipResult.data?.id ?? null,
+    },
+  });
 };

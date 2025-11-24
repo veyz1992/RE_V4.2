@@ -10,12 +10,14 @@ interface AdminDocumentsViewProps {
     profileIdFilter?: string | null;
 }
 
+type DocumentStatus = 'pending' | 'approved' | 'rejected' | 'expired';
+
 interface SupabaseDocumentRow {
     id: string | number;
     profile_id?: string | null;
     doc_type?: string | null;
     file_url?: string | null;
-    status?: string | null;
+    status?: DocumentStatus | null;
     admin_notes?: string | null;
     uploaded_at?: string | null;
     approved_at?: string | null;
@@ -57,7 +59,7 @@ const formatDateTime = (value?: string | null): string => {
     }).format(date);
 };
 
-const normalizeStatus = (status?: string | null): string => status?.toLowerCase() ?? 'pending';
+const normalizeStatus = (status?: DocumentStatus | null): DocumentStatus => status ?? 'pending';
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
     id_card: 'ID Card',
@@ -87,7 +89,7 @@ const mapDocumentRow = (row: SupabaseDocumentRow): AdminDocument => ({
     createdAt: row.created_at ?? null,
 });
 
-const PENDING_STATUSES = ['pending', 'submitted', 'under_review'];
+const PENDING_STATUSES: DocumentStatus[] = ['pending'];
 
 const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, profileIdFilter }) => {
     const { session } = useAuth();

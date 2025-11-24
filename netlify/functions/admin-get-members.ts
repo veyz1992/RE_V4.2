@@ -24,6 +24,7 @@ interface ProfileRow {
   verification_status: string | null;
   badge_rating: string | null;
   created_at: string | null;
+  last_assessment_id?: string | null;
 }
 
 interface MembershipRow {
@@ -32,17 +33,12 @@ interface MembershipRow {
   status: string | null;
   badge_rating: string | null;
   created_at: string | null;
-}
-
-interface BadgeDesignRow {
-  profile_id: string;
-  status: string | null;
-  rating: string | null;
-  created_at: string | null;
+  verification_status?: string | null;
 }
 
 interface AssessmentRow {
-  profile_id: string;
+  id: string;
+  profile_id: string | null;
   pci_rating: string | null;
   created_at: string | null;
 }
@@ -74,8 +70,8 @@ interface AdminMember {
   segment?: MemberSegment;
   hasActiveSubscription?: boolean;
   hasAnyAssessment?: boolean;
-   lastAssessmentDate: string | null;
-   hasNewAssessment: boolean;
+  lastAssessmentDate: string | null;
+  hasNewAssessment: boolean;
   pendingItems?: number;
 }
 
@@ -93,7 +89,7 @@ export const handler: Handler = async event => {
 
   const { data: profiles, error: profilesError } = await supabase
     .from<ProfileRow>('profiles')
-    .select('id, company_name, full_name, email, city, state, membership_tier, member_status, verification_status, badge_rating, created_at');
+    .select('id, company_name, full_name, email, city, state, membership_tier, member_status, verification_status, badge_rating, created_at, last_assessment_id');
 
   if (profilesError) {
     console.error('[admin-get-members] failed to fetch profiles', profilesError);
@@ -115,19 +111,14 @@ export const handler: Handler = async event => {
     console.error('[admin-get-members] failed to fetch memberships', membershipsError);
   }
 
-  const { data: badgeDesigns, error: badgeDesignsError } = await supabase
-    .from<BadgeDesignRow>('badge_designs')
-    .select('profile_id, status, rating, created_at')
-    .in('profile_id', profileIds);
-
-  if (badgeDesignsError) {
-    console.error('[admin-get-members] failed to fetch badge designs', badgeDesignsError);
-  }
+  const lastAssessmentIds = profiles
+    .map(profile => profile.last_assessment_id)
+    .filter((id): id is string => Boolean(id));
 
   const { data: assessments, error: assessmentsError } = await supabase
     .from<AssessmentRow>('assessments')
-    .select('profile_id, pci_rating, created_at')
-    .in('profile_id', profileIds);
+    .select('id, profile_id, pci_rating, created_at')
+    .in('id', lastAssessmentIds);
 
   if (assessmentsError) {
     console.error('[admin-get-members] failed to fetch assessments', assessmentsError);
@@ -164,36 +155,8 @@ export const handler: Handler = async event => {
     return acc;
   }, {});
 
-  const badgeDesignByProfileId = (badgeDesigns ?? []).reduce<Record<string, BadgeDesignRow>>((acc, badgeDesign) => {
-    const existing = acc[badgeDesign.profile_id];
-
-    const isCurrentActive = badgeDesign.status === 'active';
-    const existingIsActive = existing?.status === 'active';
-
-    const existingDate = existing?.created_at ? new Date(existing.created_at).getTime() : 0;
-    const currentDate = badgeDesign.created_at ? new Date(badgeDesign.created_at).getTime() : 0;
-
-    const shouldReplace =
-      (!existing && badgeDesign) ||
-      (isCurrentActive && !existingIsActive) ||
-      (isCurrentActive === existingIsActive && currentDate > existingDate);
-
-    if (shouldReplace) {
-      acc[badgeDesign.profile_id] = badgeDesign;
-    }
-
-    return acc;
-  }, {});
-
-  const assessmentByProfileId = (assessments ?? []).reduce<Record<string, AssessmentRow>>((acc, assessment) => {
-    const existing = acc[assessment.profile_id];
-    const existingDate = existing?.created_at ? new Date(existing.created_at).getTime() : 0;
-    const currentDate = assessment.created_at ? new Date(assessment.created_at).getTime() : 0;
-
-    if (!existing || currentDate > existingDate) {
-      acc[assessment.profile_id] = assessment;
-    }
-
+  const assessmentById = (assessments ?? []).reduce<Record<string, AssessmentRow>>((acc, assessment) => {
+    acc[assessment.id] = assessment;
     return acc;
   }, {});
 
@@ -215,10 +178,9 @@ export const handler: Handler = async event => {
 
   const members: AdminMember[] = profiles.map(profile => {
     const membership = membershipByProfileId[profile.id];
-    const badgeDesign = badgeDesignByProfileId[profile.id];
-    const assessment = assessmentByProfileId[profile.id];
-    const hasAnyAssessment = !!assessment;
-    const lastAssessmentDate = assessment?.created_at ?? null;
+    const lastAssessment = profile.last_assessment_id ? assessmentById[profile.last_assessment_id] : null;
+    const hasAnyAssessment = !!lastAssessment;
+    const lastAssessmentDate = lastAssessment?.created_at ?? null;
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const hasNewAssessment = !!(
       lastAssessmentDate &&
@@ -236,8 +198,7 @@ export const handler: Handler = async event => {
     const status = membership?.status || profile.member_status || null;
     const badgeRating =
       membership?.badge_rating ||
-      badgeDesign?.rating ||
-      assessment?.pci_rating ||
+      lastAssessment?.pci_rating ||
       profile.badge_rating ||
       null;
 

@@ -16,16 +16,17 @@ interface AdminServiceRequestsProps {
 
 interface SupabaseProfileRow {
     id: string;
-    business_name?: string | null;
-    contact_email?: string | null;
+    company_name?: string | null;
+    email?: string | null;
     [key: string]: unknown;
 }
 
 interface SupabaseAdminProfileRow {
     id: string;
-    user_id?: string | null;
-    display_name?: string | null;
+    name?: string | null;
     email?: string | null;
+    role?: string | null;
+    is_active?: boolean | null;
     [key: string]: unknown;
 }
 
@@ -52,10 +53,12 @@ interface SupabaseActivityRow {
     id: string | number;
     service_request_id?: string | number | null;
     actor_user_id?: string | null;
-    action?: string | null;
-    description?: string | null;
+    actor_is_admin?: boolean | null;
+    event_type?: string | null;
+    from_status?: string | null;
+    to_status?: string | null;
+    note?: string | null;
     created_at?: string | null;
-    actor_name?: string | null;
     [key: string]: unknown;
 }
 
@@ -143,10 +146,13 @@ const mapActivityRow = (row: SupabaseActivityRow): ServiceRequestActivityLog => 
     id: String(row.id),
     serviceRequestId: String(row.service_request_id ?? ''),
     actorUserId: row.actor_user_id ?? null,
-    action: row.action ?? null,
-    description: row.description ?? null,
+    actorIsAdmin: row.actor_is_admin ?? null,
+    eventType: row.event_type ?? null,
+    fromStatus: row.from_status ?? null,
+    toStatus: row.to_status ?? null,
+    note: row.note ?? null,
     createdAt: row.created_at ?? new Date().toISOString(),
-    actorName: row.actor_name ?? null,
+    actorName: null,
 });
 
 const STATUS_LABELS: Record<ServiceRequestStatus, string> = {
@@ -182,8 +188,9 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
     const fetchAdminProfiles = useCallback(async () => {
         const { data, error: adminError } = await supabase
             .from('admin_profiles')
-            .select('id, user_id, display_name, email')
-            .order('display_name', { ascending: true });
+            .select('id, name, email, role, is_active')
+            .eq('is_active', true)
+            .order('name', { ascending: true });
 
         if (adminError) {
             console.error('Failed to load admin profiles', adminError);
@@ -217,15 +224,10 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
 
             const rows = (data as SupabaseServiceRequestRow[] | null) ?? [];
             const adminMap = new Map(
-                adminResult.map((admin) => [String(admin.id), admin.display_name ?? admin.email ?? String(admin.id)] as const),
+                adminResult.map((admin) => [String(admin.id), admin.name ?? admin.email ?? String(admin.id)] as const),
             );
             const adminUserMap = new Map(
-                adminResult
-                    .filter((admin) => Boolean(admin.user_id))
-                    .map((admin) => [
-                        admin.user_id as string,
-                        admin.display_name ?? admin.email ?? (admin.user_id as string) ?? 'Admin',
-                    ] as const),
+                adminResult.map((admin) => [admin.id as string, admin.name ?? admin.email ?? (admin.id as string)] as const),
             );
 
             const mapped = rows.map((row) => {
@@ -245,7 +247,7 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
             if (profileIds.length > 0) {
                 const { data: profileData, error: profileError } = await supabase
                     .from('profiles')
-                    .select('id, business_name, contact_email')
+                    .select('id, company_name, email')
                     .in('id', profileIds);
 
                 if (profileError) {
@@ -259,8 +261,8 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
                             const profile = profileMap.get(request.profileId);
                             return {
                                 ...request,
-                                profileName: profile?.business_name ?? null,
-                                profileEmail: profile?.contact_email ?? null,
+                                profileName: profile?.company_name ?? null,
+                                profileEmail: profile?.email ?? null,
                             };
                         }),
                     );
@@ -274,7 +276,7 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
             if (requestIds.length > 0) {
                 const { data: activityData, error: activityError } = await supabase
                     .from('service_request_activity')
-                    .select('*')
+                    .select('id, service_request_id, actor_user_id, actor_is_admin, event_type, from_status, to_status, note, created_at')
                     .in('service_request_id', requestIds)
                     .order('created_at', { ascending: false });
 
@@ -330,7 +332,7 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
             { id: '', label: 'Unassigned' },
             ...adminProfiles.map((admin) => ({
                 id: String(admin.id),
-                label: admin.display_name ?? admin.email ?? String(admin.id),
+                label: admin.name ?? admin.email ?? String(admin.id),
             })),
         ];
     }, [adminProfiles]);
@@ -383,37 +385,24 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
                 throw updateError;
             }
 
-            let actorName: string | null = null;
-            const actorProfile = adminProfiles.find((admin) => admin.user_id === session.user.id);
-            if (actorProfile) {
-                actorName = actorProfile.display_name ?? actorProfile.email ?? null;
-            } else {
-                const { data: actorRow, error: actorLookupError } = await supabase
-                    .from('admin_profiles')
-                    .select('display_name, email')
-                    .eq('user_id', session.user.id)
-                    .maybeSingle();
+            const actorProfile = adminProfiles.find((admin) => admin.id === session.user.id);
+            const actorName = actorProfile?.name ?? actorProfile?.email ?? null;
 
-                if (actorLookupError) {
-                    console.error('Failed to resolve admin display name for activity log', actorLookupError);
-                } else {
-                    const actorProfileRow = (actorRow as SupabaseAdminProfileRow | null) ?? null;
-                    if (actorProfileRow) {
-                        actorName = actorProfileRow.display_name ?? actorProfileRow.email ?? null;
-                    }
-                }
-            }
+            const previousRequest = requests.find((request) => request.id === requestId);
+            const previousStatus = previousRequest?.status ?? null;
 
             const { data: activityData, error: activityError } = await supabase
                 .from('service_request_activity')
                 .insert({
                     service_request_id: requestId,
                     actor_user_id: session.user.id,
-                    action: activity.action,
-                    description: activity.description,
-                    actor_name: actorName,
+                    actor_is_admin: true,
+                    event_type: activity.action,
+                    from_status: previousStatus,
+                    to_status: updates.status ?? null,
+                    note: activity.description,
                 })
-                .select('*')
+                .select('id, service_request_id, actor_user_id, actor_is_admin, event_type, from_status, to_status, note, created_at')
                 .single();
 
             if (activityError) {
@@ -421,9 +410,7 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
             }
 
             const newActivity = mapActivityRow(activityData as SupabaseActivityRow);
-            if (!newActivity.actorName && newActivity.actorUserId && actorName) {
-                newActivity.actorName = actorName;
-            }
+            newActivity.actorName = actorName ?? adminOptions.find((option) => option.id === (newActivity.actorUserId ?? ''))?.label ?? null;
             addActivity(requestId, newActivity);
 
             setRequests((current) =>
@@ -709,7 +696,7 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
                                             <div className="flex justify-between items-start gap-4">
                                                 <div>
                                                     <p className="font-semibold text-charcoal">
-                                                        {activity.description ?? activity.action ?? 'Activity recorded'}
+                                                        {activity.note ?? activity.eventType ?? 'Activity recorded'}
                                                     </p>
                                                     {(activity.actorName || activity.actorUserId) && (
                                                         <p className="text-xs text-gray-dark mt-1">
