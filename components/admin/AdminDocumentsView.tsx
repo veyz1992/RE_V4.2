@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { ClipboardIcon, CheckCircleIcon, XMarkIcon } from '../icons';
 
 interface AdminDocumentsViewProps {
     showToast: (message: string, type: 'success' | 'error') => void;
+    profileIdFilter?: string | null;
 }
 
 interface SupabaseDocumentRow {
@@ -63,22 +65,35 @@ const mapDocumentRow = (row: SupabaseDocumentRow): AdminDocument => ({
 
 const PENDING_STATUSES = ['pending', 'submitted', 'under_review'];
 
-const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast }) => {
+const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, profileIdFilter }) => {
     const { session } = useAuth();
+    const location = useLocation();
+    const navigate = useNavigate();
     const [documents, setDocuments] = useState<AdminDocument[]>([]);
     const [notesByDocument, setNotesByDocument] = useState<Record<string, string>>({});
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [updatingId, setUpdatingId] = useState<string | null>(null);
+    const [profileName, setProfileName] = useState<string | null>(null);
+
+    const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+    const profileIdFromQuery = searchParams.get('profileId');
+    const activeProfileFilter = profileIdFilter ?? profileIdFromQuery ?? null;
 
     const fetchDocuments = useCallback(async () => {
         setIsLoading(true);
         try {
-            const { data, error: fetchError } = await supabase
+            let query = supabase
                 .from('member_documents')
                 .select('id, profile_id, document_name, doc_type, status, admin_note, uploaded_at, created_at, updated_at')
                 .in('status', PENDING_STATUSES)
                 .order('created_at', { ascending: false });
+
+            if (activeProfileFilter) {
+                query = query.eq('profile_id', activeProfileFilter);
+            }
+
+            const { data, error: fetchError } = await query;
 
             if (fetchError) {
                 throw fetchError;
@@ -104,11 +119,43 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast }) =>
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [activeProfileFilter]);
 
     useEffect(() => {
         void fetchDocuments();
     }, [fetchDocuments]);
+
+    useEffect(() => {
+        if (!activeProfileFilter) {
+            setProfileName(null);
+            return;
+        }
+
+        const fetchProfileName = async () => {
+            const { data, error: profileError } = await supabase
+                .from('profiles')
+                .select('company_name')
+                .eq('id', activeProfileFilter)
+                .maybeSingle();
+
+            if (profileError) {
+                console.error('Failed to fetch profile for documents filter', profileError);
+                setProfileName(null);
+                return;
+            }
+
+            setProfileName(data?.company_name ?? null);
+        };
+
+        void fetchProfileName();
+    }, [activeProfileFilter]);
+
+    const clearProfileFilter = () => {
+        const params = new URLSearchParams(location.search);
+        params.delete('profileId');
+        params.set('view', 'documents');
+        navigate({ pathname: location.pathname, search: `?${params.toString()}` });
+    };
 
     const handleNoteChange = (id: string, value: string) => {
         setNotesByDocument((previous) => ({
@@ -170,6 +217,24 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast }) =>
                     </button>
                 </div>
             </div>
+
+            {activeProfileFilter && (
+                <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-info/5 border border-info/30 text-sm text-charcoal">
+                    <span className="inline-flex items-center gap-2 font-semibold">
+                        Filtered by member:
+                        <span className="px-2 py-1 rounded-full bg-white border border-info/30 text-info text-xs font-bold">
+                            {profileName ?? activeProfileFilter}
+                        </span>
+                    </span>
+                    <button
+                        type="button"
+                        onClick={clearProfileFilter}
+                        className="text-info underline underline-offset-2 hover:text-info-dark font-semibold"
+                    >
+                        Clear filter
+                    </button>
+                </div>
+            )}
 
             {error && (
                 <div className="rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">{error}</div>

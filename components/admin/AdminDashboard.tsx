@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { HomeIcon, UsersIcon, BriefcaseIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon, CurrencyDollarIcon, UserCircleIcon, ChevronDownIcon, TrophyIcon } from '../icons';
 import { useAuth } from '@/context/AuthContext';
 import AdminOverview from './AdminOverview';
@@ -34,12 +35,27 @@ type AdminView = 'overview' | 'members' | 'serviceRequests' | 'documents' | 'sub
 
 const AdminDashboard: React.FC = () => {
     const { currentUser, logout } = useAuth();
-    const [activeView, setActiveView] = useState<AdminView>('overview');
+    const navigate = useNavigate();
+    const location = useLocation();
+    const searchParams = new URLSearchParams(location.search);
+    const initialViewParam = searchParams.get('view');
+    const parsedInitialView: AdminView =
+        initialViewParam === 'members' ||
+        initialViewParam === 'serviceRequests' ||
+        initialViewParam === 'documents' ||
+        initialViewParam === 'subscriptions' ||
+        initialViewParam === 'settings' ||
+        initialViewParam === 'badgeBuilder'
+            ? initialViewParam
+            : 'overview';
+
+    const [activeView, setActiveView] = useState<AdminView>(parsedInitialView);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const userMenuRef = useRef<HTMLDivElement>(null);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [selectedProfile, setSelectedProfile] = useState<AdminMember | null>(ADMIN_MEMBERS[0] ?? null);
+    const [documentsProfileFilter, setDocumentsProfileFilter] = useState<string | null>(searchParams.get('profileId'));
 
      useEffect(() => {
         if (toast) {
@@ -62,9 +78,42 @@ const AdminDashboard: React.FC = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const handleViewChange = (view: AdminView) => {
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const viewParam = params.get('view');
+        const derivedView: AdminView =
+            viewParam === 'members' ||
+            viewParam === 'serviceRequests' ||
+            viewParam === 'documents' ||
+            viewParam === 'subscriptions' ||
+            viewParam === 'settings' ||
+            viewParam === 'badgeBuilder'
+                ? viewParam
+                : 'overview';
+
+        setActiveView(derivedView);
+        setDocumentsProfileFilter(derivedView === 'documents' ? params.get('profileId') : null);
+    }, [location.search]);
+
+    const handleViewChange = (view: AdminView, profileId?: string | null) => {
+        const params = new URLSearchParams(location.search);
+        params.set('view', view);
+
+        if (view === 'documents' && profileId) {
+            params.set('profileId', profileId);
+            setDocumentsProfileFilter(profileId);
+        } else {
+            params.delete('profileId');
+            setDocumentsProfileFilter(null);
+        }
+
+        navigate({ pathname: location.pathname, search: `?${params.toString()}` }, { replace: false });
         setActiveView(view);
         setIsSidebarOpen(false);
+    };
+
+    const handleNavigateToDocuments = (profileId: string) => {
+        handleViewChange('documents', profileId);
     };
 
     const renderView = () => {
@@ -72,11 +121,17 @@ const AdminDashboard: React.FC = () => {
             case 'overview':
                 return <AdminOverview />;
             case 'members':
-                return <ClientManagement showToast={showToast} onSelectMember={setSelectedProfile} />;
+                return (
+                    <ClientManagement
+                        showToast={showToast}
+                        onSelectMember={setSelectedProfile}
+                        onNavigateToDocuments={handleNavigateToDocuments}
+                    />
+                );
             case 'serviceRequests':
                 return <AdminServiceRequests showToast={showToast} />;
             case 'documents':
-                return <AdminDocumentsView showToast={showToast} />;
+                return <AdminDocumentsView showToast={showToast} profileIdFilter={documentsProfileFilter} />;
             case 'subscriptions':
                 return <AdminSubscriptionsView showToast={showToast} />;
             case 'settings':
@@ -97,7 +152,7 @@ const AdminDashboard: React.FC = () => {
             <SidebarLink icon={<HomeIcon className="w-6 h-6" />} label="Overview" isActive={activeView === 'overview'} onClick={() => handleViewChange('overview')} />
             <SidebarLink icon={<UsersIcon className="w-6 h-6" />} label="Members" isActive={activeView === 'members'} onClick={() => handleViewChange('members')} />
             <SidebarLink icon={<BriefcaseIcon className="w-6 h-6" />} label="Service Requests" isActive={activeView === 'serviceRequests'} onClick={() => handleViewChange('serviceRequests')} />
-            <SidebarLink icon={<ShieldCheckIcon className="w-6 h-6" />} label="Documents" isActive={activeView === 'documents'} onClick={() => handleViewChange('documents')} />
+            <SidebarLink icon={<ShieldCheckIcon className="w-6 h-6" />} label="Documents" isActive={activeView === 'documents'} onClick={() => handleViewChange('documents', documentsProfileFilter)} />
             <SidebarLink icon={<CurrencyDollarIcon className="w-6 h-6" />} label="Subscriptions" isActive={activeView === 'subscriptions'} onClick={() => handleViewChange('subscriptions')} />
             <SidebarLink icon={<TrophyIcon className="w-6 h-6" />} label="Badge Builder" isActive={activeView === 'badgeBuilder'} onClick={() => handleViewChange('badgeBuilder')} />
             <SidebarLink icon={<Cog6ToothIcon className="w-6 h-6" />} label="Settings" isActive={activeView === 'settings'} onClick={() => handleViewChange('settings')} />
