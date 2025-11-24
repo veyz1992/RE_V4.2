@@ -43,7 +43,9 @@ export const handler: Handler = async event => {
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('*')
+    .select(
+      'id, email, full_name, company_name, role, membership_tier, created_at, phone, city, state, country, address_line1, postal_code, years_in_business, services, verification_status, member_status, badge_rating, stripe_customer_id, stripe_subscription_id, next_billing_date, last_pci_score, last_assessment_id, has_license, has_insurance, updated_at'
+    )
     .eq('id', profileId)
     .single();
 
@@ -99,21 +101,6 @@ export const handler: Handler = async event => {
 
   const hasAssessments = !!assessments && assessments.length > 0;
   const firstAssessment = hasAssessments ? assessments[0] : null;
-  const latestAssessment = hasAssessments ? assessments[assessments.length - 1] : null;
-  const firstAssessmentDate = firstAssessment?.created_at ?? null;
-  const latestAssessmentDate = latestAssessment?.created_at ?? null;
-  const lastPciScore = latestAssessment?.total_score ?? null;
-  const latestPciRating = latestAssessment?.pci_rating ?? null;
-  const summaryPciRating = latestPciRating ?? mapPciScoreToRating(lastPciScore);
-
-  const { data: badgeDesigns, error: badgeDesignsError } = await supabase
-    .from('badge_designs')
-    .select('*')
-    .eq('profile_id', profileId);
-
-  if (badgeDesignsError) {
-    console.error('[admin-get-member-full] failed to load badge designs', badgeDesignsError);
-  }
 
   const { data: documents, error: documentsError } = await supabase
     .from('member_documents')
@@ -149,6 +136,14 @@ export const handler: Handler = async event => {
 
   const openRecheckRequest = recheckRequests?.[0] ?? null;
 
+  const latestAssessmentFromProfile = assessments?.find((assessment) => assessment.id === profile.last_assessment_id);
+  const latestAssessment = latestAssessmentFromProfile ?? (hasAssessments ? assessments[assessments.length - 1] : null);
+  const firstAssessmentDate = firstAssessment?.created_at ?? null;
+  const latestAssessmentDate = latestAssessment?.created_at ?? null;
+  const lastPciScore = latestAssessment?.total_score ?? null;
+  const latestPciRating = latestAssessment?.pci_rating ?? null;
+  const summaryPciRating = latestPciRating ?? mapPciScoreToRating(lastPciScore);
+
   const summary = {
     pciRating: summaryPciRating,
     initialPciRating: firstAssessment?.pci_rating ?? null,
@@ -172,7 +167,6 @@ export const handler: Handler = async event => {
     firstAssessment,
     latestAssessment,
     summary,
-    badgeDesigns: badgeDesigns ?? [],
     documents: documents ?? [],
     serviceRequests: serviceRequests ?? [],
     openRecheckRequest,

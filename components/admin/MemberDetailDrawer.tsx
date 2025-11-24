@@ -73,7 +73,6 @@ interface MemberFullData {
     firstAssessment: AssessmentRow | null;
     latestAssessment: AssessmentRow | null;
     summary: MemberSummary;
-    badgeDesigns: any[];
     documents: any[];
     serviceRequests: any[];
     openRecheckRequest?: any | null;
