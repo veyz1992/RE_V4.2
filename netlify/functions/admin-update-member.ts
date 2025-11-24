@@ -87,6 +87,27 @@ export const handler: Handler = async event => {
     };
   }
 
+  if ('badgeRating' in payload) {
+    const badgeRating = toNullIfEmpty(payload.badgeRating);
+    const { data: memberships, error: membershipError } = await supabase
+      .from('memberships')
+      .select('id')
+      .eq('profile_id', payload.profileId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (!membershipError && memberships && memberships.length > 0) {
+      const latestMembershipId = memberships[0].id;
+      const { error: updateMembershipError } = await supabase
+        .from('memberships')
+        .update({ badge_rating: badgeRating })
+        .eq('id', latestMembershipId);
+      if (updateMembershipError) {
+        console.error('Failed to update membership badge_rating', updateMembershipError);
+      }
+    }
+  }
+
   return {
     statusCode: 200,
     headers,
