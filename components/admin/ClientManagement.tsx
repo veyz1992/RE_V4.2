@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, UserCircleIcon } from '../icons';
+import { MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, UserCircleIcon, DocumentTextIcon } from '../icons';
 import MemberDetailDrawer from './MemberDetailDrawer';
 import ImpersonateModal from './ImpersonateModal';
 import { AdminMember } from './types';
@@ -473,6 +473,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                                 <div className="flex justify-end gap-1">
                                                     <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="View"><EyeIcon className="w-5 h-5"/></button>
                                                     <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Edit"><PencilSquareIcon className="w-5 h-5"/></button>
+                                                    <button onClick={() => navigateToDocuments(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Documents"><DocumentTextIcon className="w-5 h-5"/></button>
                                                     <button onClick={() => openImpersonateModal(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Impersonate"><UserCircleIcon className="w-5 h-5"/></button>
                                                 </div>
                                             </td>
@@ -526,14 +527,17 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                         <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span>
                                     </div>
                                 </div>
-                                <div className="mt-4 pt-3 border-t border-gray-border flex justify-between items-center">
+                                <div className="mt-4 pt-3 border-t border-gray-border flex justify-between items-center gap-3">
                                     <div>
                                         <p className="text-sm text-gray-dark">MRR: <span className="font-semibold text-charcoal">{mrrDisplay}</span></p>
                                         <p className="text-sm text-gray-dark">Renews: <span className="font-semibold text-charcoal">{renewalDisplay}</span></p>
                                         <p className="text-sm text-gray-dark">Last assessment: <span className="font-semibold text-charcoal">{lastAssessmentDisplay}</span></p>
                                         <p className="text-sm text-gray-dark">Pending: <span className="font-semibold text-charcoal">{pendingBadge}</span></p>
                                     </div>
-                                    <button onClick={() => handleSelectMember(member)} className="py-2 px-4 bg-info/10 text-info font-bold rounded-lg">View</button>
+                                    <div className="flex flex-col items-end gap-2">
+                                        <button onClick={() => navigateToDocuments(member)} className="py-2 px-4 bg-white border border-gray-border text-info font-bold rounded-lg shadow-sm">Docs</button>
+                                        <button onClick={() => handleSelectMember(member)} className="py-2 px-4 bg-info/10 text-info font-bold rounded-lg">View</button>
+                                    </div>
                                 </div>
                             </div>
                         );

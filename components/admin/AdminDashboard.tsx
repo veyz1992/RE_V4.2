@@ -64,10 +64,18 @@ const AdminDashboard: React.FC = () => {
 
     useEffect(() => {
         const viewParam = searchParams.get('view');
+        const profileIdParam = searchParams.get('profileId');
+        const profileNameParam = searchParams.get('profileName');
         const validViews: AdminView[] = ['overview', 'members', 'serviceRequests', 'documents', 'subscriptions', 'settings', 'badgeBuilder'];
 
         if (viewParam && (validViews as string[]).includes(viewParam)) {
             setActiveView(viewParam as AdminView);
+            return;
+        }
+
+        if (profileIdParam) {
+            setActiveView('documents');
+            updateSearchParams('documents', { profileId: profileIdParam, profileName: profileNameParam });
         }
     }, [searchParams]);
 
