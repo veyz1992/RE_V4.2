@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, UserCircleIcon } from '../icons';
 import MemberDetailDrawer from './MemberDetailDrawer';
 import ImpersonateModal from './ImpersonateModal';
@@ -17,6 +18,8 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
     const [filters, setFilters] = useState({ tier: 'All', status: 'All', rating: 'All' });
     const [sortConfig, setSortConfig] = useState<{ key: keyof AdminMember | null; direction: 'ascending' | 'descending' }>({ key: 'joinDate', direction: 'descending' });
     const [memberFilter, setMemberFilter] = useState<'all' | 'new' | 'pending_verification' | 'active'>('all');
+
+    const [searchParams, setSearchParams] = useSearchParams();
     
     const [selectedMember, setSelectedMember] = useState<AdminMember | null>(null);
     const [isImpersonateModalOpen, setImpersonateModalOpen] = useState(false);
@@ -168,6 +171,18 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
             pendingDocs: existing?.pendingDocs ?? null,
             openRequests: existing?.openRequests ?? null,
         };
+    };
+
+    const navigateToDocuments = (member: AdminMember) => {
+        const next = new URLSearchParams(searchParams);
+        next.set('view', 'documents');
+        next.set('profileId', member.id);
+
+        if (member.businessName) {
+            next.set('profileName', member.businessName);
+        }
+
+        setSearchParams(next);
     };
 
     const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -427,6 +442,17 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                     const renewalDisplay = member.renewalDate || '—';
                                     const lastAssessmentDisplay = formatDate(member.lastAssessmentDate ?? null);
                                     const pendingDisplay = member.pendingItems ?? 0;
+                                    const pendingBadge = pendingDisplay > 0
+                                        ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => navigateToDocuments(member)}
+                                                className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-info/10 text-info hover:bg-info/20 transition"
+                                            >
+                                                {pendingDisplay}
+                                            </button>
+                                        )
+                                        : <span>—</span>;
 
                                     return (
                                         <tr key={member.id} className="hover:bg-gray-light/50">
@@ -442,7 +468,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                             <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span></td>
                                             <td className="p-4 whitespace-nowrap">{mrrDisplay}</td>
                                             <td className="p-4 whitespace-nowrap text-sm">{renewalDisplay}</td>
-                                            <td className="p-4 whitespace-nowrap text-sm">{pendingDisplay}</td>
+                                            <td className="p-4 whitespace-nowrap text-sm">{pendingBadge}</td>
                                             <td className="p-4 whitespace-nowrap text-right text-sm font-medium">
                                                 <div className="flex justify-end gap-1">
                                                     <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="View"><EyeIcon className="w-5 h-5"/></button>
@@ -475,6 +501,17 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                         const renewalDisplay = member.renewalDate || '—';
                         const lastAssessmentDisplay = formatDate(member.lastAssessmentDate ?? null);
                         const pendingDisplay = member.pendingItems ?? 0;
+                        const pendingBadge = pendingDisplay > 0
+                            ? (
+                                <button
+                                    type="button"
+                                    onClick={() => navigateToDocuments(member)}
+                                    className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-info/10 text-info hover:bg-info/20 transition"
+                                >
+                                    {pendingDisplay}
+                                </button>
+                            )
+                            : <span className="text-charcoal">—</span>;
 
                         return (
                             <div key={member.id} className="bg-white rounded-xl shadow-lg border border-gray-border p-4">
@@ -494,7 +531,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                         <p className="text-sm text-gray-dark">MRR: <span className="font-semibold text-charcoal">{mrrDisplay}</span></p>
                                         <p className="text-sm text-gray-dark">Renews: <span className="font-semibold text-charcoal">{renewalDisplay}</span></p>
                                         <p className="text-sm text-gray-dark">Last assessment: <span className="font-semibold text-charcoal">{lastAssessmentDisplay}</span></p>
-                                        <p className="text-sm text-gray-dark">Pending: <span className="font-semibold text-charcoal">{pendingDisplay}</span></p>
+                                        <p className="text-sm text-gray-dark">Pending: <span className="font-semibold text-charcoal">{pendingBadge}</span></p>
                                     </div>
                                     <button onClick={() => handleSelectMember(member)} className="py-2 px-4 bg-info/10 text-info font-bold rounded-lg">View</button>
                                 </div>

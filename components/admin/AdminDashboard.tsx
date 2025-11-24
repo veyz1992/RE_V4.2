@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { HomeIcon, UsersIcon, BriefcaseIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon, CurrencyDollarIcon, UserCircleIcon, ChevronDownIcon, TrophyIcon } from '../icons';
 import { useAuth } from '@/context/AuthContext';
 import AdminOverview from './AdminOverview';
@@ -34,12 +35,41 @@ type AdminView = 'overview' | 'members' | 'serviceRequests' | 'documents' | 'sub
 
 const AdminDashboard: React.FC = () => {
     const { currentUser, logout } = useAuth();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [activeView, setActiveView] = useState<AdminView>('overview');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const userMenuRef = useRef<HTMLDivElement>(null);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [selectedProfile, setSelectedProfile] = useState<AdminMember | null>(ADMIN_MEMBERS[0] ?? null);
+
+    const updateSearchParams = (view: AdminView, extras?: { profileId?: string | null; profileName?: string | null }) => {
+        const next = new URLSearchParams(searchParams);
+        next.set('view', view);
+
+        if (extras?.profileId) {
+            next.set('profileId', extras.profileId);
+        } else {
+            next.delete('profileId');
+        }
+
+        if (extras?.profileName) {
+            next.set('profileName', extras.profileName);
+        } else {
+            next.delete('profileName');
+        }
+
+        setSearchParams(next);
+    };
+
+    useEffect(() => {
+        const viewParam = searchParams.get('view');
+        const validViews: AdminView[] = ['overview', 'members', 'serviceRequests', 'documents', 'subscriptions', 'settings', 'badgeBuilder'];
+
+        if (viewParam && (validViews as string[]).includes(viewParam)) {
+            setActiveView(viewParam as AdminView);
+        }
+    }, [searchParams]);
 
      useEffect(() => {
         if (toast) {
@@ -64,6 +94,7 @@ const AdminDashboard: React.FC = () => {
 
     const handleViewChange = (view: AdminView) => {
         setActiveView(view);
+        updateSearchParams(view);
         setIsSidebarOpen(false);
     };
 

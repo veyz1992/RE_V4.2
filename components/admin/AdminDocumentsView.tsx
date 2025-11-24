@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { ClipboardIcon, CheckCircleIcon, XMarkIcon } from '../icons';
@@ -65,20 +66,68 @@ const PENDING_STATUSES = ['pending', 'submitted', 'under_review'];
 
 const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast }) => {
     const { session } = useAuth();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const profileId = searchParams.get('profileId');
+    const profileNameParam = searchParams.get('profileName');
     const [documents, setDocuments] = useState<AdminDocument[]>([]);
     const [notesByDocument, setNotesByDocument] = useState<Record<string, string>>({});
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [updatingId, setUpdatingId] = useState<string | null>(null);
+    const [profileName, setProfileName] = useState<string | null>(profileNameParam);
+
+    useEffect(() => {
+        setProfileName(profileNameParam);
+    }, [profileNameParam]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadProfileName = async () => {
+            if (!profileId || profileNameParam) {
+                return;
+            }
+
+            const { data, error: profileError } = await supabase
+                .from('profiles')
+                .select('company_name')
+                .eq('id', profileId)
+                .maybeSingle();
+
+            if (!isMounted) {
+                return;
+            }
+
+            if (profileError) {
+                console.error('Failed to fetch profile for documents filter', profileError);
+                setProfileName(profileId);
+                return;
+            }
+
+            setProfileName(data?.company_name ?? profileId);
+        };
+
+        void loadProfileName();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [profileId, profileNameParam]);
 
     const fetchDocuments = useCallback(async () => {
         setIsLoading(true);
         try {
-            const { data, error: fetchError } = await supabase
+            let query = supabase
                 .from('member_documents')
                 .select('id, profile_id, document_name, doc_type, status, admin_note, uploaded_at, created_at, updated_at')
                 .in('status', PENDING_STATUSES)
                 .order('created_at', { ascending: false });
+
+            if (profileId) {
+                query = query.eq('profile_id', profileId);
+            }
+
+            const { data, error: fetchError } = await query;
 
             if (fetchError) {
                 throw fetchError;
@@ -104,7 +153,7 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast }) =>
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [profileId]);
 
     useEffect(() => {
         void fetchDocuments();
@@ -115,6 +164,13 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast }) =>
             ...previous,
             [id]: value,
         }));
+    };
+
+    const clearProfileFilter = () => {
+        const next = new URLSearchParams(searchParams);
+        next.delete('profileId');
+        next.delete('profileName');
+        setSearchParams(next);
     };
 
     const updateDocumentStatus = async (document: AdminDocument, status: 'approved' | 'rejected') => {
@@ -170,6 +226,21 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast }) =>
                     </button>
                 </div>
             </div>
+
+            {profileId && (
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-info/10 text-info font-semibold">
+                        Filtered by member: {profileName ?? profileId}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={clearProfileFilter}
+                        className="px-3 py-1 rounded-full border border-gray-border text-charcoal hover:bg-gray-light/50"
+                    >
+                        Clear member filter
+                    </button>
+                </div>
+            )}
 
             {error && (
                 <div className="rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">{error}</div>
