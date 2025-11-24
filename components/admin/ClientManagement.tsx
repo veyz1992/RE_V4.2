@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, UserCircleIcon } from '../icons';
+import { MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, UserCircleIcon, ClipboardIcon } from '../icons';
 import MemberDetailDrawer from './MemberDetailDrawer';
 import ImpersonateModal from './ImpersonateModal';
 import { AdminMember } from './types';
@@ -7,9 +7,10 @@ import { AdminMember } from './types';
 interface ClientManagementProps {
     showToast: (message: string, type: 'success' | 'error') => void;
     onSelectMember?: (member: AdminMember) => void;
+    onNavigateToDocuments?: (profileId: string) => void;
 }
 
-const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelectMember }) => {
+const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelectMember, onNavigateToDocuments }) => {
     const [members, setMembers] = useState<AdminMember[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
@@ -442,11 +443,30 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                             <td className="p-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span></td>
                                             <td className="p-4 whitespace-nowrap">{mrrDisplay}</td>
                                             <td className="p-4 whitespace-nowrap text-sm">{renewalDisplay}</td>
-                                            <td className="p-4 whitespace-nowrap text-sm">{pendingDisplay}</td>
+                                            <td className="p-4 whitespace-nowrap text-sm">
+                                                {pendingDisplay > 0 ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onNavigateToDocuments?.(member.id)}
+                                                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-info/10 text-info border border-info/40 hover:bg-info/20 hover:text-info-dark transition cursor-pointer"
+                                                    >
+                                                        {pendingDisplay}
+                                                    </button>
+                                                ) : (
+                                                    <span>{pendingDisplay}</span>
+                                                )}
+                                            </td>
                                             <td className="p-4 whitespace-nowrap text-right text-sm font-medium">
                                                 <div className="flex justify-end gap-1">
                                                     <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="View"><EyeIcon className="w-5 h-5"/></button>
                                                     <button onClick={() => handleSelectMember(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Edit"><PencilSquareIcon className="w-5 h-5"/></button>
+                                                    <button
+                                                        onClick={() => onNavigateToDocuments?.(member.id)}
+                                                        className="p-2 text-gray-dark hover:text-info rounded-full"
+                                                        title="View documents"
+                                                    >
+                                                        <ClipboardIcon className="w-5 h-5" />
+                                                    </button>
                                                     <button onClick={() => openImpersonateModal(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Impersonate"><UserCircleIcon className="w-5 h-5"/></button>
                                                 </div>
                                             </td>
@@ -494,7 +514,20 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                         <p className="text-sm text-gray-dark">MRR: <span className="font-semibold text-charcoal">{mrrDisplay}</span></p>
                                         <p className="text-sm text-gray-dark">Renews: <span className="font-semibold text-charcoal">{renewalDisplay}</span></p>
                                         <p className="text-sm text-gray-dark">Last assessment: <span className="font-semibold text-charcoal">{lastAssessmentDisplay}</span></p>
-                                        <p className="text-sm text-gray-dark">Pending: <span className="font-semibold text-charcoal">{pendingDisplay}</span></p>
+                                        <p className="text-sm text-gray-dark">
+                                            Pending:{' '}
+                                            {pendingDisplay > 0 ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onNavigateToDocuments?.(member.id)}
+                                                    className="ml-1 inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-info/10 text-info border border-info/40 hover:bg-info/20 hover:text-info-dark transition cursor-pointer"
+                                                >
+                                                    {pendingDisplay}
+                                                </button>
+                                            ) : (
+                                                <span className="font-semibold text-charcoal">{pendingDisplay}</span>
+                                            )}
+                                        </p>
                                     </div>
                                     <button onClick={() => handleSelectMember(member)} className="py-2 px-4 bg-info/10 text-info font-bold rounded-lg">View</button>
                                 </div>
