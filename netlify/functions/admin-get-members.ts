@@ -47,6 +47,19 @@ interface AssessmentRow {
   created_at: string | null;
 }
 
+interface SubscriptionRow {
+  profile_id: string;
+  status: string | null;
+  created_at: string | null;
+}
+
+interface MemberDocumentRow {
+  profile_id: string;
+  status: string | null;
+}
+
+type MemberSegment = 'active' | 'pending_verification' | 'lead' | 'churned' | 'unknown';
+
 interface AdminMember {
   id: string;
   businessName: string;
@@ -58,6 +71,10 @@ interface AdminMember {
   verificationStatus: string | null;
   badgeRating: string | null;
   joinDate: string | null;
+  segment?: MemberSegment;
+  hasActiveSubscription?: boolean;
+  hasAnyAssessment?: boolean;
+  pendingItems?: number;
 }
 
 export const handler: Handler = async event => {
@@ -114,6 +131,25 @@ export const handler: Handler = async event => {
     console.error('[admin-get-members] failed to fetch assessments', assessmentsError);
   }
 
+  const { data: subscriptions, error: subscriptionsError } = await supabase
+    .from<SubscriptionRow>('subscriptions')
+    .select('profile_id, status, created_at')
+    .in('profile_id', profileIds);
+
+  if (subscriptionsError) {
+    console.error('[admin-get-members] failed to fetch subscriptions', subscriptionsError);
+  }
+
+  const { data: memberDocuments, error: memberDocumentsError } = await supabase
+    .from<MemberDocumentRow>('member_documents')
+    .select('profile_id, status')
+    .eq('status', 'pending')
+    .in('profile_id', profileIds);
+
+  if (memberDocumentsError) {
+    console.error('[admin-get-members] failed to fetch member documents', memberDocumentsError);
+  }
+
   const membershipByProfileId = (memberships ?? []).reduce<Record<string, MembershipRow>>((acc, membership) => {
     const existing = acc[membership.profile_id];
     const existingDate = existing?.created_at ? new Date(existing.created_at).getTime() : 0;
@@ -159,10 +195,29 @@ export const handler: Handler = async event => {
     return acc;
   }, {});
 
+  const hasActiveSubscriptionByProfileId = (subscriptions ?? []).reduce<Record<string, boolean>>((acc, subscription) => {
+    if (subscription.status === 'active') {
+      acc[subscription.profile_id] = true;
+    }
+
+    return acc;
+  }, {});
+
+  const pendingDocumentsByProfileId = (memberDocuments ?? []).reduce<Record<string, number>>((acc, document) => {
+    if (document.status === 'pending') {
+      acc[document.profile_id] = (acc[document.profile_id] ?? 0) + 1;
+    }
+
+    return acc;
+  }, {});
+
   const members: AdminMember[] = profiles.map(profile => {
     const membership = membershipByProfileId[profile.id];
     const badgeDesign = badgeDesignByProfileId[profile.id];
     const assessment = assessmentByProfileId[profile.id];
+    const hasAnyAssessment = !!assessment;
+    const hasActiveSubscription = hasActiveSubscriptionByProfileId[profile.id] ?? false;
+    const pendingDocumentsCount = pendingDocumentsByProfileId[profile.id] ?? 0;
 
     const location = profile.city && profile.state
       ? `${profile.city}, ${profile.state}`
@@ -177,6 +232,18 @@ export const handler: Handler = async event => {
       profile.badge_rating ||
       null;
 
+    let segment: MemberSegment = 'unknown';
+
+    if (hasActiveSubscription && profile.member_status === 'active' && profile.verification_status === 'verified') {
+      segment = 'active';
+    } else if (hasActiveSubscription && profile.verification_status === 'pending' && hasAnyAssessment) {
+      segment = 'pending_verification';
+    } else if (!hasActiveSubscription && hasAnyAssessment) {
+      segment = 'lead';
+    } else if (!hasActiveSubscription && profile.member_status === 'canceled') {
+      segment = 'churned';
+    }
+
     return {
       id: profile.id,
       businessName: profile.company_name ?? 'Unknown',
@@ -188,6 +255,10 @@ export const handler: Handler = async event => {
       verificationStatus: profile.verification_status ?? null,
       badgeRating,
       joinDate: profile.created_at ?? null,
+      segment,
+      hasActiveSubscription,
+      hasAnyAssessment,
+      pendingItems: pendingDocumentsCount,
     };
   });
 
