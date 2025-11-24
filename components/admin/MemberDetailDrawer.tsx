@@ -79,7 +79,7 @@ interface MemberFullData {
 const membershipTierOptions = ['free', 'founding', 'bronze', 'silver', 'gold'] as const;
 const memberStatusOptions = ['pending', 'active', 'inactive', 'canceled'] as const;
 const verificationStatusOptions = ['pending', 'verified', 'rejected'] as const;
-const badgeRatingOptions = ['A+', 'A', 'B+', 'B', 'C'] as const;
+const badgeRatingOptions = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C', 'D'] as const;
 
 const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose, onMemberUpdated }) => {
     const [companyName, setCompanyName] = useState('');
@@ -168,7 +168,7 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
         setMembershipTier(normalizeOption(summarySource?.membershipTier ?? member.tier, membershipTierOptions));
         setMemberStatus(normalizeOption(summarySource?.memberStatus ?? member.status, memberStatusOptions));
         setVerificationStatus(normalizeOption(summarySource?.verificationStatus ?? member.verificationStatus, verificationStatusOptions));
-        setBadgeRating(normalizeOption(summarySource?.badgeRating ?? member.badgeRating, badgeRatingOptions));
+        setBadgeRating(normalizeOption(summarySource?.badgeRating ?? profileSource?.badge_rating ?? (member as any)?.badge_rating ?? member.badgeRating, badgeRatingOptions));
         setError(null);
     }, [member, memberDetail]);
 
@@ -194,7 +194,8 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
             const sanitizedMembershipTier = membershipTierOptions.includes(membershipTier as typeof membershipTierOptions[number]) ? membershipTier : null;
             const sanitizedMemberStatus = memberStatusOptions.includes(memberStatus as typeof memberStatusOptions[number]) ? memberStatus : null;
             const sanitizedVerificationStatus = verificationStatusOptions.includes(verificationStatus as typeof verificationStatusOptions[number]) ? verificationStatus : null;
-            const sanitizedBadgeRating = badgeRatingOptions.includes(badgeRating as typeof badgeRatingOptions[number]) ? badgeRating : null;
+            const sanitizedBadgeRating = badgeRatingOptions.includes(badgeRating as typeof badgeRatingOptions[number]) ? badgeRating : '';
+            const badgeRatingPayload = sanitizedBadgeRating || null;
 
             const response = await fetch('/.netlify/functions/admin-update-member', {
                 method: 'PUT',
@@ -209,7 +210,7 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
                     membershipTier: sanitizedMembershipTier,
                     memberStatus: sanitizedMemberStatus,
                     verificationStatus: sanitizedVerificationStatus,
-                    badgeRating: sanitizedBadgeRating,
+                    badgeRating: badgeRatingPayload,
                 }),
             });
 
@@ -234,11 +235,15 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
     if (!member) return null;
 
     const summary = memberDetail?.summary;
+    const firstAssessment = memberDetail?.firstAssessment;
+    const latestAssessment = memberDetail?.latestAssessment;
     const openRecheckRequest = memberDetail?.openRecheckRequest;
     const hasOpenRecheck = !!memberDetail?.openRecheckCount && memberDetail.openRecheckCount > 0;
-    const initialScore = memberDetail?.firstAssessment?.total_score ?? null;
-    const latestScore = memberDetail?.latestAssessment?.total_score ?? null;
+    const initialScore = firstAssessment?.total_score ?? null;
+    const latestScore = latestAssessment?.total_score ?? null;
     const scoreDelta = initialScore !== null && latestScore !== null ? latestScore - initialScore : null;
+    const hasAnyAssessment = !!firstAssessment || !!latestAssessment;
+    const pciRating = summary?.pciRating || latestAssessment?.pci_rating || null;
 
     const renderAssessmentDetails = (title: string, rating: string | number | null, assessment: AssessmentRow | null) => (
         <div className="border border-gray-border rounded-lg p-3 space-y-2">
@@ -315,7 +320,9 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
                                     <span className="px-2 py-1 rounded-full bg-success/10 text-success font-semibold">Status: {summary?.memberStatus || 'Unknown'}</span>
                                     <span className="px-2 py-1 rounded-full bg-warning/10 text-warning font-semibold">Verification: {summary?.verificationStatus || 'Unknown'}</span>
                                     <span className="px-2 py-1 rounded-full bg-purple-100 text-purple-700 font-semibold">Badge: {summary?.badgeRating ? summary.badgeRating : 'Not rated yet'}</span>
-                                    <span className="px-2 py-1 rounded-full bg-gray-light text-charcoal font-semibold">PCI rating: {summary?.pciRating ? summary.pciRating : 'No assessment yet'}</span>
+                                    <span className="px-2 py-1 rounded-full bg-gray-light text-charcoal font-semibold">
+                                        PCI rating: {pciRating ? pciRating : hasAnyAssessment ? 'Not assigned yet' : 'No assessment yet'}
+                                    </span>
                                     {hasOpenRecheck && (
                                         <span className="px-2 py-1 rounded-full bg-warning/20 text-warning font-semibold">Recheck requested</span>
                                     )}

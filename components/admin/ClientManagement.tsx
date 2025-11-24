@@ -199,6 +199,22 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
         setImpersonateModalOpen(true);
     };
 
+    const deriveBadgeRating = (member: AdminMember) => {
+        const extendedMember = member as AdminMember & {
+            badge_rating?: string | null;
+            membership?: { badge_rating?: string | null } | null;
+            summary?: { badgeRating?: string | null } | null;
+        };
+
+        return (
+            extendedMember.membership?.badge_rating ??
+            extendedMember.badge_rating ??
+            extendedMember.summary?.badgeRating ??
+            member.badgeRating ??
+            null
+        );
+    };
+
 
     const filteredAndSortedMembers = useMemo(() => {
         let sortedMembers = [...members];
@@ -208,7 +224,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
             const searchMatch = member.businessName.toLowerCase().includes(searchTerm.toLowerCase()) || (member.email?.toLowerCase() || '').includes(searchTerm.toLowerCase());
             const tierMatch = filters.tier === 'All' || (member.tier ?? '—') === filters.tier;
             const statusMatch = filters.status === 'All' || (member.status ?? '—') === filters.status;
-            const ratingMatch = filters.rating === 'All' || (member.badgeRating ?? '—') === filters.rating;
+            const ratingMatch = filters.rating === 'All' || (deriveBadgeRating(member) ?? '—') === filters.rating;
             return searchMatch && tierMatch && statusMatch && ratingMatch;
         });
 
@@ -342,8 +358,9 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                 {!isLoading && !error && filteredAndSortedMembers.map(member => {
                                     const tierLabel = member.tier || '—';
                                     const tierColor = tierColors[member.tier || ''] || 'bg-gray-200 text-gray-800';
-                                    const ratingContent = member.badgeRating
-                                        ? <span className="px-2 py-1 text-xs font-semibold rounded-full bg-info/10 text-charcoal">{member.badgeRating}</span>
+                                    const badgeRating = deriveBadgeRating(member);
+                                    const ratingContent = badgeRating
+                                        ? <span className="px-2 py-1 text-xs font-semibold rounded-full bg-info/10 text-charcoal">{badgeRating}</span>
                                         : <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-dark">Not rated yet</span>;
                                     const statusLabel = member.status || '—';
                                     const statusColor = statusColors[member.status || ''] || 'bg-gray-200 text-gray-800';
