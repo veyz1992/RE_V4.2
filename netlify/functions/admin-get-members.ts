@@ -74,6 +74,8 @@ interface AdminMember {
   segment?: MemberSegment;
   hasActiveSubscription?: boolean;
   hasAnyAssessment?: boolean;
+   lastAssessmentDate: string | null;
+   hasNewAssessment: boolean;
   pendingItems?: number;
 }
 
@@ -216,6 +218,13 @@ export const handler: Handler = async event => {
     const badgeDesign = badgeDesignByProfileId[profile.id];
     const assessment = assessmentByProfileId[profile.id];
     const hasAnyAssessment = !!assessment;
+    const lastAssessmentDate = assessment?.created_at ?? null;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const hasNewAssessment = !!(
+      lastAssessmentDate &&
+      new Date(lastAssessmentDate).getTime() >= sevenDaysAgo &&
+      profile.verification_status === 'pending'
+    );
     const hasActiveSubscription = hasActiveSubscriptionByProfileId[profile.id] ?? false;
     const pendingDocumentsCount = pendingDocumentsByProfileId[profile.id] ?? 0;
 
@@ -258,6 +267,8 @@ export const handler: Handler = async event => {
       segment,
       hasActiveSubscription,
       hasAnyAssessment,
+      lastAssessmentDate,
+      hasNewAssessment,
       pendingItems: pendingDocumentsCount,
     };
   });
