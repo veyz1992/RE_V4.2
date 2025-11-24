@@ -14,6 +14,18 @@ const jsonResponse = (statusCode: number, body: unknown) => ({
   body: JSON.stringify(body),
 });
 
+const mapPciScoreToRating = (score: number | null | undefined): string | null => {
+  if (score == null) return null;
+
+  if (score >= 90) return 'A';
+  if (score >= 80) return 'B+';
+  if (score >= 70) return 'B';
+  if (score >= 60) return 'C';
+  if (score >= 50) return 'D';
+
+  return 'E';
+};
+
 export const handler: Handler = async event => {
   if (event.httpMethod === 'OPTIONS') {
     return jsonResponse(200, { ok: true });
@@ -74,7 +86,9 @@ export const handler: Handler = async event => {
 
   const { data: assessments, error: assessmentsError } = await supabase
     .from('assessments')
-    .select('*')
+    .select(
+      'id, total_score, operational_score, licensing_score, feedback_score, certifications_score, digital_score, pci_rating, created_at'
+    )
     .eq('profile_id', profileId)
     .order('created_at', { ascending: true });
 
@@ -83,8 +97,14 @@ export const handler: Handler = async event => {
     return jsonResponse(500, { error: 'Failed to load assessments' });
   }
 
-  const firstAssessment = assessments?.[0] ?? null;
-  const latestAssessment = assessments && assessments.length > 0 ? assessments[assessments.length - 1] : null;
+  const hasAssessments = !!assessments && assessments.length > 0;
+  const firstAssessment = hasAssessments ? assessments[0] : null;
+  const latestAssessment = hasAssessments ? assessments[assessments.length - 1] : null;
+  const firstAssessmentDate = firstAssessment?.created_at ?? null;
+  const latestAssessmentDate = latestAssessment?.created_at ?? null;
+  const lastPciScore = latestAssessment?.total_score ?? null;
+  const latestPciRating = latestAssessment?.pci_rating ?? null;
+  const summaryPciRating = latestPciRating ?? mapPciScoreToRating(lastPciScore);
 
   const { data: badgeDesigns, error: badgeDesignsError } = await supabase
     .from('badge_designs')
@@ -130,15 +150,19 @@ export const handler: Handler = async event => {
   const openRecheckRequest = recheckRequests?.[0] ?? null;
 
   const summary = {
-    pciRating: latestAssessment?.pci_rating ?? null,
+    pciRating: summaryPciRating,
     initialPciRating: firstAssessment?.pci_rating ?? null,
-    totalScore: latestAssessment?.total_score ?? null,
+    totalScore: lastPciScore,
     initialTotalScore: firstAssessment?.total_score ?? null,
     membershipTier: membership?.tier ?? profile.membership_tier ?? null,
     memberStatus: membership?.status ?? profile.member_status ?? null,
     verificationStatus: membership?.verification_status ?? profile.verification_status ?? null,
     badgeRating: membership?.badge_rating ?? profile.badge_rating ?? null,
     joinDate: profile.created_at ?? null,
+    hasAssessment: hasAssessments,
+    firstAssessmentDate,
+    latestAssessmentDate,
+    lastPciScore,
   };
 
   return jsonResponse(200, {
