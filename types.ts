@@ -206,6 +206,7 @@ export interface Transaction {
 
 // Types for Admin Members Page
 export type MemberStatus = 'Active' | 'Suspended' | 'Pending' | 'Canceled';
+export type MemberSegment = 'active' | 'pending_verification' | 'lead' | 'churned' | 'unknown';
 export type BadgeRating = 'A+' | 'A' | 'B+';
 
 export interface AdminMember {
@@ -224,6 +225,10 @@ export interface AdminMember {
   mrr: number;
   pendingDocs: number;
   openRequests: number;
+  segment?: MemberSegment;
+  hasActiveSubscription?: boolean;
+  hasAnyAssessment?: boolean;
+  pendingItems?: number;
   // For detail drawer
   documents: { name: string; status: 'Approved' | 'Pending' | 'Rejected' }[];
   activityLog: { event: string; date: string }[];

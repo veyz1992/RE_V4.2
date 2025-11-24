@@ -1,3 +1,5 @@
+export type MemberSegment = 'active' | 'pending_verification' | 'lead' | 'churned' | 'unknown';
+
 export interface AdminMember {
     id: string;
     businessName: string;
@@ -15,4 +17,8 @@ export interface AdminMember {
     renewalDate: string | null;
     pendingDocs: number | null;
     openRequests: number | null;
+    segment?: MemberSegment;
+    hasActiveSubscription?: boolean;
+    hasAnyAssessment?: boolean;
+    pendingItems?: number;
 }
