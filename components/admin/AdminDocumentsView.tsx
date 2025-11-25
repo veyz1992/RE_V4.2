@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { recalculateVerificationForProfile } from '@/lib/verification';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@src/context/AuthContext';
 import { ClipboardIcon, CheckCircleIcon, XMarkIcon } from '../icons';
 
 interface AdminDocumentsViewProps {

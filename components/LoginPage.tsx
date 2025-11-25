@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@src/context/AuthContext';
 import { CheckCircleIcon } from './icons';
 
 const PLAN_STORAGE_KEY = 'restorationexpertise:last-plan';

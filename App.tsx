@@ -11,7 +11,7 @@ import AuthCallback from './components/AuthCallback';
 import { ThemeProvider } from './components/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { FUNCTION_ENDPOINTS } from '@/lib/functions';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@src/context/AuthContext';
 import type { Answers, ScoreBreakdown, StoredAssessmentResult } from './types';
 
 const LoadingScreen: React.FC = () => (
