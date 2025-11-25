@@ -27,6 +27,10 @@ export default defineConfig(({ mode }) => {
             find: '@src/',
             replacement: `${path.resolve(__dirname, 'src')}/`,
           },
+          {
+            find: 'lib',
+            replacement: `${path.resolve(__dirname, 'lib')}`,
+          },
         ],
       }
     };

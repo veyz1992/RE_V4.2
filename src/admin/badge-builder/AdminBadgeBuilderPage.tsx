@@ -1,23 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Loader2, Pencil, Plus, RefreshCw, Save } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { fetchBadgeTemplates, type BadgeTemplateRow, upsertBadgeTemplate } from 'lib/badges/service';
 import BadgeBuilder from './BadgeBuilder';
 import { DesignProvider, useDesign } from './context/DesignContext';
 import { INITIAL_LAYERS, DEFAULT_TEMPLATES } from './constants';
 import type { DesignState, Template } from './types';
-
-interface BadgeTemplateRow {
-  id: string;
-  name: string;
-  badge_code?: string | null;
-  status?: string | null;
-  accent_color?: string | null;
-  description?: string | null;
-  svg_template?: string | null;
-  config?: unknown;
-  updated_at?: string | null;
-  created_at?: string | null;
-}
 
 interface TemplateFormState {
   name: string;
@@ -202,15 +189,12 @@ const AdminBadgeBuilderPage: React.FC = () => {
 
   const loadTemplates = async () => {
     setLoading(true);
-    const { data, error: fetchError } = await supabase
-      .from('badge_templates')
-      .select('id,name,badge_code,status,accent_color,description,svg_template,config,updated_at,created_at')
-      .order('updated_at', { ascending: false });
+    const { data, error: fetchError } = await fetchBadgeTemplates();
 
     if (fetchError) {
-      setError(fetchError.message);
-    } else if (data) {
-      setTemplates(data as BadgeTemplateRow[]);
+      setError(fetchError);
+    } else {
+      setTemplates(data);
     }
     setLoading(false);
   };
@@ -258,16 +242,12 @@ const AdminBadgeBuilderPage: React.FC = () => {
       config: { ...state, templateId: selectedTemplate?.id ?? state.templateId },
     } satisfies Partial<BadgeTemplateRow>;
 
-    const { data, error: upsertError } = await supabase
-      .from('badge_templates')
-      .upsert(payload, { onConflict: 'id' })
-      .select()
-      .maybeSingle();
+    const result = await upsertBadgeTemplate(payload);
 
-    if (upsertError) {
-      setError(upsertError.message);
-    } else if (data) {
-      const normalized = data as BadgeTemplateRow;
+    if (result.error) {
+      setError(result.error);
+    } else if (result.data) {
+      const normalized = result.data as BadgeTemplateRow;
       setSelectedTemplate(normalized);
       setDesignSeed(normalizeDesignState(normalized.config));
       setFormState({
