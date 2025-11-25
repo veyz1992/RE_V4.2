@@ -3523,11 +3523,21 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
     const imageUrl = previewBg === 'dark' ? (badge.imageDarkUrl || badge.imageLightUrl) : badge.imageLightUrl;
     const businessNameSlug = (currentMember?.businessName ?? 'member').toLowerCase().replace(/ /g, '-');
 
-    const embedCode = `<a href="${badge.profileUrl}" target="_blank" rel="noopener noreferrer">
-    <img src="${badge.imageLightUrl}"
-         alt="Restoration Expertise Verified Member – ${badge.label}"
-         style="max-width:180px;height:auto;" />
-  </a>`;
+    const fallbackEmbed = badge.imageLightUrl
+        ? `<a href="${badge.profileUrl ?? '#'}" target="_blank" rel="noopener noreferrer">
+  <img src="${badge.imageLightUrl}"
+       alt="Restoration Expertise Verified Member – ${badge.label}"
+       style="max-width:180px;height:auto;" />
+</a>`
+        : '';
+
+    const embedFromTemplate =
+        !badge.embedHtml && badge.embedScriptUrl && badge.code
+            ? `<div data-re-badge data-template="${badge.code}" data-profile="${currentUser?.id ?? ''}"></div>
+<script async src="${badge.embedScriptUrl}" data-template="${badge.code}" data-profile="${currentUser?.id ?? ''}"></script>`
+            : badge.embedHtml;
+
+    const embedCode = `${badge.embedStyle ? `<style>${badge.embedStyle}</style>\n` : ''}${embedFromTemplate ?? fallbackEmbed}`;
 
     const handleCopyCode = () => {
         navigator.clipboard.writeText(embedCode);
