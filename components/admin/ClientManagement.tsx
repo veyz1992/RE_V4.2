@@ -3,6 +3,16 @@ import { MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, UserCircleIcon, Clipboa
 import MemberDetailDrawer from './MemberDetailDrawer';
 import ImpersonateModal from './ImpersonateModal';
 import { AdminMember } from './types';
+import {
+    type AdminAssessmentRow,
+    type AdminMemberDocumentRow,
+    type AdminMembershipRow,
+    type AdminProfileRow,
+    type AdminSubscriptionRow,
+    getLastAssessmentInfo,
+    getMemberStatus,
+    getVerificationStatus,
+} from './adminUtils';
 
 interface ClientManagementProps {
     showToast: (message: string, type: 'success' | 'error') => void;
@@ -23,37 +33,13 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
     const [isImpersonateModalOpen, setImpersonateModalOpen] = useState(false);
     const [impersonatedMemberName, setImpersonatedMemberName] = useState('');
 
-    interface ProfileRow {
-        id: string;
-        company_name: string | null;
-        full_name: string | null;
-        email: string | null;
-        city: string | null;
-        state: string | null;
-        membership_tier: string | null;
-        member_status: string | null;
-        verification_status: string | null;
-        badge_rating: string | null;
-        created_at: string | null;
+    interface MembersApiResponse {
+        profiles: AdminProfileRow[];
+        memberships: AdminMembershipRow[];
+        assessments: AdminAssessmentRow[];
+        subscriptions: AdminSubscriptionRow[];
+        memberDocuments: AdminMemberDocumentRow[];
     }
-
-    type ApiAdminMember = {
-        id: string;
-        businessName: string;
-        primaryContact: string | null;
-        email: string | null;
-        location: string | null;
-        tier: string | null;
-        status: string | null;
-        verificationStatus: string | null;
-        badgeRating: string | null;
-        joinDate: string | null;
-        segment?: string;
-        hasNewAssessment?: boolean;
-        lastAssessmentDate?: string | null;
-        pendingItems?: number;
-        hasAnyAssessment?: boolean;
-    };
 
     useEffect(() => {
         let isMounted = true;
@@ -70,38 +56,85 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                     throw new Error(body.error || `Request failed with status ${res.status}`);
                 }
 
-                const data: { members: ApiAdminMember[] } = await res.json();
+                const data: MembersApiResponse = await res.json();
 
-                if (isMounted && data?.members) {
-                    const mappedMembers: AdminMember[] = data.members.map(member => {
-                        const location = member.location ?? null;
-                        const normalizedTier = member.tier?.trim() || null;
-                        const normalizedStatus = member.status?.trim() || null;
-                        const normalizedBadgeRating = member.badgeRating?.trim() || null;
-                        const normalizedVerificationStatus = member.verificationStatus?.trim() || null;
+                if (isMounted && data?.profiles) {
+                    const membershipByProfileId = (data.memberships ?? []).reduce<Record<string, AdminMembershipRow>>((acc, membership) => {
+                        const existing = acc[membership.profile_id];
+                        const existingDate = existing?.created_at ? new Date(existing.created_at).getTime() : 0;
+                        const currentDate = membership.created_at ? new Date(membership.created_at).getTime() : 0;
+
+                        if (!existing || currentDate > existingDate) {
+                            acc[membership.profile_id] = membership;
+                        }
+
+                        return acc;
+                    }, {});
+
+                    const subscriptionByProfileId = (data.subscriptions ?? []).reduce<Record<string, AdminSubscriptionRow>>((acc, subscription) => {
+                        const existing = acc[subscription.profile_id];
+
+                        if (existing?.status === 'active') {
+                            return acc;
+                        }
+
+                        const existingDate = existing?.created_at ? new Date(existing.created_at).getTime() : 0;
+                        const currentDate = subscription.created_at ? new Date(subscription.created_at).getTime() : 0;
+
+                        if (!existing || currentDate > existingDate || subscription.status === 'active') {
+                            acc[subscription.profile_id] = subscription;
+                        }
+
+                        return acc;
+                    }, {});
+
+                    const documentsByProfileId = (data.memberDocuments ?? []).reduce<Record<string, AdminMemberDocumentRow[]>>((acc, document) => {
+                        acc[document.profile_id] = acc[document.profile_id] ?? [];
+                        acc[document.profile_id].push(document);
+                        return acc;
+                    }, {});
+
+                    const mappedMembers: AdminMember[] = data.profiles.map(profile => {
+                        const membership = membershipByProfileId[profile.id];
+                        const subscription = subscriptionByProfileId[profile.id];
+                        const documents = documentsByProfileId[profile.id] ?? [];
+                        const { lastAssessment, lastAssessmentDate, hasAnyAssessment, hasNewAssessment } = getLastAssessmentInfo(profile, data.assessments ?? []);
+
+                        const status = getMemberStatus(profile, membership, subscription);
+                        const verificationStatus = getVerificationStatus(profile, membership, documents);
+                        const location = profile.city && profile.state
+                            ? `${profile.city}, ${profile.state}`
+                            : profile.city || profile.state || null;
+                        const tier = membership?.tier || profile.membership_tier || null;
+                        const badgeRating =
+                            membership?.badge_rating ||
+                            lastAssessment?.pci_rating ||
+                            profile.badge_rating ||
+                            null;
+                        const pendingItems = documents.filter(doc => doc.status === 'pending').length;
 
                         return {
-                            id: member.id,
-                            businessName: member.businessName,
-                            primaryContact: member.primaryContact,
-                            city: location,
-                            state: null,
+                            id: profile.id,
+                            businessName: profile.company_name ?? 'Unknown',
+                            primaryContact: profile.full_name ?? null,
+                            city: profile.city ?? null,
+                            state: profile.state ?? null,
                             location,
-                            email: member.email,
-                            tier: normalizedTier,
-                            status: normalizedStatus,
-                            verificationStatus: normalizedVerificationStatus,
-                            badgeRating: normalizedBadgeRating,
+                            email: profile.email ?? null,
+                            tier,
+                            status,
+                            verificationStatus,
+                            badgeRating,
                             renewalDate: null,
-                            joinDate: member.joinDate,
+                            joinDate: profile.created_at ?? null,
                             mrr: null,
                             pendingDocs: null,
                             openRequests: null,
-                            segment: member.segment ?? undefined,
-                            hasAnyAssessment: member.hasAnyAssessment,
-                            lastAssessmentDate: member.lastAssessmentDate ?? null,
-                            hasNewAssessment: !!member.hasNewAssessment,
-                            pendingItems: member.pendingItems,
+                            hasAnyAssessment,
+                            lastAssessmentDate,
+                            hasNewAssessment,
+                            pendingItems,
+                            hasActiveSubscription: subscription?.status === 'active',
                         };
                     });
 
@@ -126,7 +159,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
         };
     }, []);
 
-    const mapProfileToAdminMember = (profile: ProfileRow, existing?: AdminMember): AdminMember => {
+    const mapProfileToAdminMember = (profile: AdminProfileRow, existing?: AdminMember): AdminMember => {
         const location = profile.city && profile.state
             ? `${profile.city}, ${profile.state}`
             : profile.city || profile.state || existing?.location || null;
@@ -184,7 +217,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
         setSortConfig({ key, direction });
     };
     
-    const handleUpdateMember = (updatedProfile: ProfileRow) => {
+    const handleUpdateMember = (updatedProfile: AdminProfileRow) => {
         let updatedMember: AdminMember | null = null;
 
         setMembers(prev => prev.map(member => {
@@ -239,8 +272,8 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
 
     const filterCounts = useMemo(() => {
         const newAssessments = members.filter(member => member.hasNewAssessment).length;
-        const pendingVerification = members.filter(member => member.segment === 'pending_verification').length;
-        const activeMembers = members.filter(member => member.segment === 'active').length;
+        const pendingVerification = members.filter(member => member.verificationStatus === 'pending').length;
+        const activeMembers = members.filter(member => member.status === 'active').length;
 
         return {
             all: members.length,
@@ -259,8 +292,8 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
             const matchesMemberFilter =
                 memberFilter === 'all' ||
                 (memberFilter === 'new' && !!member.hasNewAssessment) ||
-                (memberFilter === 'pending_verification' && member.segment === 'pending_verification') ||
-                (memberFilter === 'active' && member.segment === 'active');
+                (memberFilter === 'pending_verification' && member.verificationStatus === 'pending') ||
+                (memberFilter === 'active' && member.status === 'active');
 
             const searchMatch = member.businessName.toLowerCase().includes(searchTerm.toLowerCase()) || (member.email?.toLowerCase() || '').includes(searchTerm.toLowerCase());
             const tierMatch = filters.tier === 'All' || (member.tier ?? '—') === filters.tier;
