@@ -155,6 +155,19 @@ const mapActivityRow = (row: SupabaseActivityRow): ServiceRequestActivityLog => 
     actorName: null,
 });
 
+interface RequestGroup {
+    profileId: string;
+    profileName: string;
+    profileEmail: string | null;
+    requests: MemberServiceRequest[];
+    latestActivity: string | null;
+    counts: {
+        open: number;
+        inProgress: number;
+        resolved: number;
+    };
+}
+
 const STATUS_LABELS: Record<ServiceRequestStatus, string> = {
     open: 'Open',
     in_progress: 'In Progress',
@@ -177,9 +190,17 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [expandedRequests, setExpandedRequests] = useState<Record<string, boolean>>({});
+    const [expandedProfiles, setExpandedProfiles] = useState<Record<string, boolean>>({});
     const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null);
 
     const statusOptions: ServiceRequestStatus[] = ['open', 'in_progress', 'completed', 'canceled'];
+    const statusFilters: { value: 'all' | ServiceRequestStatus; label: string }[] = [
+        { value: 'all', label: 'All' },
+        { value: 'open', label: 'Open' },
+        { value: 'in_progress', label: 'In Progress' },
+        { value: 'completed', label: 'Resolved' },
+    ];
+    const [statusFilter, setStatusFilter] = useState<'all' | ServiceRequestStatus>('all');
     const priorityOptions = useMemo(
         () => PRIORITY_OPTIONS.map(({ value }) => value),
         [],
@@ -211,7 +232,6 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
                     .select(
                         'id, profile_id, request_type, title, description, status, priority, admin_notes, assigned_admin_id, consumes_blog_post_quota, consumes_spotlight_quota, source, created_at, updated_at, due_date',
                     )
-                    .in('status', ['open', 'in_progress'])
                     .order('created_at', { ascending: false }),
                 fetchAdminProfiles(),
             ]);
@@ -338,6 +358,85 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
     }, [adminProfiles]);
 
     const activitiesForRequest = (id: string): ServiceRequestActivityLog[] => activitiesByRequest[id] ?? [];
+
+    const getLatestTimestampForRequest = useCallback(
+        (request: MemberServiceRequest): string | null => {
+            const activities = activitiesForRequest(request.id);
+            const latestActivityDate = activities.length > 0 ? activities[0].createdAt : null;
+            const timestamps = [latestActivityDate, request.updatedAt, request.createdAt]
+                .filter(Boolean)
+                .map((value) => new Date(value as string))
+                .filter((date) => !Number.isNaN(date.getTime()));
+
+            if (timestamps.length === 0) {
+                return null;
+            }
+
+            const latestDate = timestamps.reduce((latest, current) => (current > latest ? current : latest));
+            return latestDate.toISOString();
+        },
+        [activitiesByRequest],
+    );
+
+    const filteredRequests = useMemo(() => {
+        if (statusFilter === 'all') {
+            return requests;
+        }
+
+        return requests.filter((request) => request.status === statusFilter);
+    }, [requests, statusFilter]);
+
+    const groupedRequests = useMemo(() => {
+        const grouped: Record<string, RequestGroup> = {};
+
+        filteredRequests.forEach((request) => {
+            const profileId = request.profileId || 'unknown-profile';
+            if (!grouped[profileId]) {
+                grouped[profileId] = {
+                    profileId,
+                    profileName: request.profileName ?? request.profileEmail ?? profileId,
+                    profileEmail: request.profileEmail ?? null,
+                    requests: [],
+                    latestActivity: null,
+                    counts: {
+                        open: 0,
+                        inProgress: 0,
+                        resolved: 0,
+                    },
+                };
+            }
+
+            const group = grouped[profileId];
+            group.requests.push(request);
+
+            if (request.status === 'open') {
+                group.counts.open += 1;
+            } else if (request.status === 'in_progress') {
+                group.counts.inProgress += 1;
+            } else if (request.status === 'completed') {
+                group.counts.resolved += 1;
+            }
+
+            const latestTimestamp = getLatestTimestampForRequest(request);
+            if (latestTimestamp) {
+                if (!group.latestActivity) {
+                    group.latestActivity = latestTimestamp;
+                } else {
+                    const currentLatest = new Date(group.latestActivity);
+                    const nextLatest = new Date(latestTimestamp);
+                    if (nextLatest > currentLatest) {
+                        group.latestActivity = latestTimestamp;
+                    }
+                }
+            }
+        });
+
+        return Object.values(grouped).sort((a, b) => {
+            const aTime = a.latestActivity ? new Date(a.latestActivity).getTime() : 0;
+            const bTime = b.latestActivity ? new Date(b.latestActivity).getTime() : 0;
+            return bTime - aTime;
+        });
+    }, [filteredRequests, getLatestTimestampForRequest]);
 
     const addActivity = (requestId: string, activity: ServiceRequestActivityLog) => {
         setActivitiesByRequest((previous) => {
@@ -486,6 +585,13 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
         }));
     };
 
+    const toggleProfile = (profileId: string) => {
+        setExpandedProfiles((previous) => ({
+            ...previous,
+            [profileId]: !previous[profileId],
+        }));
+    };
+
     return (
         <div className="p-4 md:p-6 lg:p-8 animate-fade-in space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -506,167 +612,233 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
                 <div className="rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">{error}</div>
             )}
 
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-border overflow-hidden">
-                <div className="overflow-x-auto hidden md:block">
-                    <table className="min-w-full">
-                        <thead className="bg-gray-light/50">
-                            <tr>
-                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Member</th>
-                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Request</th>
-                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Status</th>
-                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Priority</th>
-                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Assigned Admin</th>
-                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Created</th>
-                                <th className="p-4 text-right text-xs font-bold text-gray-dark uppercase">Activity</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-border">
-                            {requests.map((request) => (
-                                <tr key={request.id} className="hover:bg-gray-light/50">
-                                    <td className="p-4 align-top">
-                                        <p className="font-semibold text-charcoal">{request.profileName ?? 'Unknown Member'}</p>
-                                        <p className="text-sm text-gray-dark">{request.profileEmail ?? request.profileId}</p>
-                                    </td>
-                                    <td className="p-4 align-top">
-                                        <p className="font-semibold text-charcoal">{request.title}</p>
-                                        <p className="text-sm text-gray-dark mt-1">{request.requestType}</p>
-                                        <p className="text-xs text-gray-dark mt-2 line-clamp-2">
-                                            {request.description ?? 'No description provided.'}
-                                        </p>
-                                    </td>
-                                    <td className="p-4 align-top">
-                                        <select
-                                            value={request.status}
-                                            onChange={(event) => handleStatusChange(request, event.target.value as ServiceRequestStatus)}
-                                            className="w-full px-2 py-1 border border-gray-border rounded-lg text-sm"
-                                            disabled={updatingRequestId === request.id}
-                                        >
-                                            {statusOptions.map((status) => (
-                                                <option key={status} value={status}>
-                                                    {STATUS_LABELS[status]}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </td>
-                                    <td className="p-4 align-top">
-                                        <select
-                                            value={request.priority}
-                                            onChange={(event) => handlePriorityChange(request, event.target.value as ServiceRequestPriority)}
-                                            className="w-full px-2 py-1 border border-gray-border rounded-lg text-sm"
-                                            disabled={updatingRequestId === request.id}
-                                        >
-                                            {priorityOptions.map((priority) => (
-                                                <option key={priority} value={priority}>
-                                                    {PRIORITY_LABELS[priority]}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </td>
-                                    <td className="p-4 align-top">
-                                        <select
-                                            value={request.assignedAdminId ?? ''}
-                                            onChange={(event) => handleAssignmentChange(request, event.target.value)}
-                                            className="w-full px-2 py-1 border border-gray-border rounded-lg text-sm"
-                                            disabled={updatingRequestId === request.id}
-                                        >
-                                            {adminOptions.map((admin) => (
-                                                <option key={admin.id} value={admin.id}>
-                                                    {admin.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </td>
-                                    <td className="p-4 align-top text-sm text-gray-dark">{formatDate(request.createdAt)}</td>
-                                    <td className="p-4 align-top text-right">
-                                        <button
-                                            onClick={() => toggleExpand(request.id)}
-                                            className="inline-flex items-center gap-2 text-sm font-semibold text-info"
-                                        >
-                                            View activity
-                                            <ChevronDownIcon className={`w-4 h-4 transition-transform ${expandedRequests[request.id] ? 'rotate-180' : ''}`} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div className="md:hidden divide-y divide-gray-border">
-                    {requests.map((request) => (
-                        <div key={request.id} className="p-4 space-y-3">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="font-semibold text-charcoal">{request.profileName ?? 'Unknown Member'}</p>
-                                    <p className="text-sm text-gray-dark">{request.profileEmail ?? request.profileId}</p>
-                                </div>
-                                <span className={`px-3 py-1 text-xs font-bold rounded-full ${STATUS_BADGE_CLASSES[request.status]}`}>
-                                    {STATUS_LABELS[request.status]}
-                                </span>
-                            </div>
-                            <div>
-                                <p className="font-semibold text-charcoal">{request.title}</p>
-                                <p className="text-sm text-gray-dark">{request.requestType}</p>
-                                <p className="text-sm text-gray-dark mt-2 line-clamp-3">
-                                    {request.description ?? 'No description provided.'}
-                                </p>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <select
-                                    value={request.status}
-                                    onChange={(event) => handleStatusChange(request, event.target.value as ServiceRequestStatus)}
-                                    className="px-2 py-1 border border-gray-border rounded-lg text-sm"
-                                    disabled={updatingRequestId === request.id}
-                                >
-                                    {statusOptions.map((status) => (
-                                        <option key={status} value={status}>
-                                            {STATUS_LABELS[status]}
-                                        </option>
-                                    ))}
-                                </select>
-                                <select
-                                    value={request.priority}
-                                    onChange={(event) => handlePriorityChange(request, event.target.value as ServiceRequestPriority)}
-                                    className="px-2 py-1 border border-gray-border rounded-lg text-sm"
-                                    disabled={updatingRequestId === request.id}
-                                >
-                                    {priorityOptions.map((priority) => (
-                                        <option key={priority} value={priority}>
-                                            {PRIORITY_LABELS[priority]}
-                                        </option>
-                                    ))}
-                                </select>
-                                <select
-                                    value={request.assignedAdminId ?? ''}
-                                    onChange={(event) => handleAssignmentChange(request, event.target.value)}
-                                    className="px-2 py-1 border border-gray-border rounded-lg text-sm"
-                                    disabled={updatingRequestId === request.id}
-                                >
-                                    {adminOptions.map((admin) => (
-                                        <option key={admin.id} value={admin.id}>
-                                            {admin.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <p className="text-sm text-gray-dark">Created {formatDate(request.createdAt)}</p>
-                            <button
-                                onClick={() => toggleExpand(request.id)}
-                                className="inline-flex items-center gap-2 text-sm font-semibold text-info"
-                            >
-                                View activity
-                                <ChevronDownIcon className={`w-4 h-4 transition-transform ${expandedRequests[request.id] ? 'rotate-180' : ''}`} />
-                            </button>
-                        </div>
-                    ))}
-                </div>
+            <div className="flex flex-wrap gap-2">
+                {statusFilters.map((filter) => {
+                    const isActive = statusFilter === filter.value;
+                    return (
+                        <button
+                            key={filter.value}
+                            className={`px-4 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                                isActive
+                                    ? 'bg-charcoal text-white border-charcoal'
+                                    : 'bg-white text-charcoal border-gray-border hover:bg-gray-50'
+                            }`}
+                            onClick={() => setStatusFilter(filter.value)}
+                        >
+                            {filter.label}
+                        </button>
+                    );
+                })}
             </div>
 
-            {requests.length === 0 && !isLoading && (
+            <div className="space-y-4">
+                {groupedRequests.map((group) => (
+                    <div key={group.profileId} className="bg-white rounded-2xl shadow-lg border border-gray-border overflow-hidden">
+                        <button
+                            onClick={() => toggleProfile(group.profileId)}
+                            className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 text-left hover:bg-gray-50"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div>
+                                    <p className="font-semibold text-charcoal text-lg">{group.profileName}</p>
+                                    {group.profileEmail && <p className="text-sm text-gray-dark">{group.profileEmail}</p>}
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 text-sm">
+                                <span className="px-3 py-1 rounded-full bg-gray-100 text-charcoal font-semibold">
+                                    Open: {group.counts.open}
+                                </span>
+                                <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-800 font-semibold">
+                                    In Progress: {group.counts.inProgress}
+                                </span>
+                                <span className="px-3 py-1 rounded-full bg-green-50 text-green-800 font-semibold">
+                                    Resolved: {group.counts.resolved}
+                                </span>
+                                <span className="text-gray-dark">
+                                    Latest activity: {group.latestActivity ? formatDateTime(group.latestActivity) : '—'}
+                                </span>
+                                <ChevronDownIcon
+                                    className={`w-5 h-5 text-gray-500 transition-transform ${
+                                        expandedProfiles[group.profileId] ? 'rotate-180' : ''
+                                    }`}
+                                />
+                            </div>
+                        </button>
+
+                        {expandedProfiles[group.profileId] && (
+                            <div className="p-4 border-t border-gray-border space-y-4">
+                                <div className="overflow-x-auto hidden md:block">
+                                    <table className="min-w-full">
+                                        <thead className="bg-gray-light/50">
+                                            <tr>
+                                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Request</th>
+                                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Status</th>
+                                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Priority</th>
+                                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Assigned Admin</th>
+                                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Created</th>
+                                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-border">
+                                            {group.requests.map((request) => (
+                                                <tr key={request.id} className="hover:bg-gray-50/60">
+                                                    <td className="p-4">
+                                                        <div>
+                                                            <div className="inline-flex items-center gap-2 mb-1">
+                                                                <span
+                                                                    className={`px-3 py-1 text-xs font-bold rounded-full ${STATUS_BADGE_CLASSES[request.status]}`}
+                                                                >
+                                                                    {STATUS_LABELS[request.status]}
+                                                                </span>
+                                                            </div>
+                                                            <p className="font-semibold text-charcoal">{request.title}</p>
+                                                            <p className="text-sm text-gray-dark">{request.requestType}</p>
+                                                            <p className="text-sm text-gray-dark mt-2 line-clamp-3">
+                                                                {request.description ?? 'No description provided.'}
+                                                            </p>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <select
+                                                            value={request.status}
+                                                            onChange={(event) =>
+                                                                handleStatusChange(request, event.target.value as ServiceRequestStatus)
+                                                            }
+                                                            className="px-3 py-2 border border-gray-border rounded-lg text-sm w-full"
+                                                            disabled={updatingRequestId === request.id}
+                                                        >
+                                                            {statusOptions.map((status) => (
+                                                                <option key={status} value={status}>
+                                                                    {STATUS_LABELS[status]}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <select
+                                                            value={request.priority}
+                                                            onChange={(event) =>
+                                                                handlePriorityChange(request, event.target.value as ServiceRequestPriority)
+                                                            }
+                                                            className="px-3 py-2 border border-gray-border rounded-lg text-sm w-full"
+                                                            disabled={updatingRequestId === request.id}
+                                                        >
+                                                            {priorityOptions.map((priority) => (
+                                                                <option key={priority} value={priority}>
+                                                                    {PRIORITY_LABELS[priority]}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <select
+                                                            value={request.assignedAdminId ?? ''}
+                                                            onChange={(event) => handleAssignmentChange(request, event.target.value)}
+                                                            className="px-3 py-2 border border-gray-border rounded-lg text-sm w-full"
+                                                            disabled={updatingRequestId === request.id}
+                                                        >
+                                                            {adminOptions.map((admin) => (
+                                                                <option key={admin.id} value={admin.id}>
+                                                                    {admin.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="p-4 text-sm text-gray-dark">{formatDate(request.createdAt)}</td>
+                                                    <td className="p-4">
+                                                        <button
+                                                            onClick={() => toggleExpand(request.id)}
+                                                            className="inline-flex items-center gap-2 text-sm font-semibold text-info"
+                                                        >
+                                                            View activity
+                                                            <ChevronDownIcon
+                                                                className={`w-4 h-4 transition-transform ${expandedRequests[request.id] ? 'rotate-180' : ''}`}
+                                                            />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="space-y-4 md:hidden">
+                                    {group.requests.map((request) => (
+                                        <div key={request.id} className="border border-gray-border rounded-xl p-4 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="font-semibold text-charcoal">{request.title}</p>
+                                                    <p className="text-sm text-gray-dark">{request.requestType}</p>
+                                                </div>
+                                                <span className={`px-3 py-1 text-xs font-bold rounded-full ${STATUS_BADGE_CLASSES[request.status]}`}>
+                                                    {STATUS_LABELS[request.status]}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm text-gray-dark mt-2 line-clamp-3">
+                                                {request.description ?? 'No description provided.'}
+                                            </p>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                <select
+                                                    value={request.status}
+                                                    onChange={(event) => handleStatusChange(request, event.target.value as ServiceRequestStatus)}
+                                                    className="px-2 py-1 border border-gray-border rounded-lg text-sm"
+                                                    disabled={updatingRequestId === request.id}
+                                                >
+                                                    {statusOptions.map((status) => (
+                                                        <option key={status} value={status}>
+                                                            {STATUS_LABELS[status]}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <select
+                                                    value={request.priority}
+                                                    onChange={(event) => handlePriorityChange(request, event.target.value as ServiceRequestPriority)}
+                                                    className="px-2 py-1 border border-gray-border rounded-lg text-sm"
+                                                    disabled={updatingRequestId === request.id}
+                                                >
+                                                    {priorityOptions.map((priority) => (
+                                                        <option key={priority} value={priority}>
+                                                            {PRIORITY_LABELS[priority]}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <select
+                                                    value={request.assignedAdminId ?? ''}
+                                                    onChange={(event) => handleAssignmentChange(request, event.target.value)}
+                                                    className="px-2 py-1 border border-gray-border rounded-lg text-sm"
+                                                    disabled={updatingRequestId === request.id}
+                                                >
+                                                    {adminOptions.map((admin) => (
+                                                        <option key={admin.id} value={admin.id}>
+                                                            {admin.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <p className="text-sm text-gray-dark">Created {formatDate(request.createdAt)}</p>
+                                            <button
+                                                onClick={() => toggleExpand(request.id)}
+                                                className="inline-flex items-center gap-2 text-sm font-semibold text-info"
+                                            >
+                                                View activity
+                                                <ChevronDownIcon
+                                                    className={`w-4 h-4 transition-transform ${expandedRequests[request.id] ? 'rotate-180' : ''}`}
+                                                />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            {groupedRequests.length === 0 && !isLoading && (
                 <div className="text-center py-16 bg-white rounded-2xl shadow-lg border border-gray-border">
                     <ClipboardIcon className="w-12 h-12 mx-auto text-gray-300" />
-                    <h3 className="mt-4 text-xl font-bold text-charcoal">No open requests</h3>
-                    <p className="text-gray-dark mt-1">All caught up! New submissions will appear here automatically.</p>
+                    <h3 className="mt-4 text-xl font-bold text-charcoal">No requests found</h3>
+                    <p className="text-gray-dark mt-1">Try adjusting the filters to see more results.</p>
                 </div>
             )}
 
