@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { supabase } from '../lib/supabaseServer';
+import { getSupabaseClient } from '../lib/supabaseServer';
 
 // Run this once in Supabase SQL editor if request_type does not yet include 'assessment_recheck':
 // ALTER TYPE request_type ADD VALUE IF NOT EXISTS 'assessment_recheck';
@@ -45,6 +45,8 @@ export const handler: Handler = async event => {
     if (!profileId || !assessmentId) {
         return jsonResponse(400, { error: 'profileId and assessmentId are required' });
     }
+
+    const supabase = getSupabaseClient();
 
     const { data: assessment, error: assessmentError } = await supabase
         .from('assessments')

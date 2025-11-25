@@ -1,7 +1,7 @@
 import type { Handler } from '@netlify/functions';
 import Stripe from 'stripe';
 import { assertEnv } from '../lib/assertEnv';
-import { supabase } from '../lib/supabaseServer';
+import { getSupabaseClient } from '../lib/supabaseServer';
 
 const json = (statusCode: number, body: unknown) => ({
   statusCode,
@@ -97,6 +97,7 @@ export const handler: Handler = async event => {
     }
 
     const { stripe, priceId } = getStripe();
+    const supabase = getSupabaseClient();
 
     let assessmentId = parseId(payload.assessment_id ?? payload.assessmentId);
     let profileId = parseId(payload.profile_id ?? payload.profileId);

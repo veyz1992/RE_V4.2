@@ -1,7 +1,7 @@
 import type { Handler } from '@netlify/functions';
 import Stripe from 'stripe';
 import { assertEnv } from '../lib/assertEnv';
-import { supabase } from '../lib/supabaseServer';
+import { getSupabaseClient } from '../lib/supabaseServer';
 import {
   getPriceIdForTier,
   isPaidMembershipTier,
@@ -83,6 +83,7 @@ export const handler: Handler = async event => {
   }
 
   try {
+    const supabase = getSupabaseClient();
     const accessToken = getAccessToken(event);
     if (!accessToken) {
       return json(401, { error: 'NOT_AUTHENTICATED' });

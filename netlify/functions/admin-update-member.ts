@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { supabase } from '../lib/supabaseServer';
+import { getSupabaseClient } from '../lib/supabaseServer';
 
 // TODO: Validate admin auth from Authorization header before allowing updates
 const headers = {
@@ -66,6 +66,8 @@ export const handler: Handler = async event => {
       body: JSON.stringify({ error: 'No fields to update' }),
     };
   }
+
+  const supabase = getSupabaseClient();
 
   const { data, error } = await supabase
     .from('profiles')
