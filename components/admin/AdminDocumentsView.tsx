@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { recalculateVerificationForProfile } from '@/lib/verification';
 import { useAuth } from '@/context/AuthContext';
 import { ClipboardIcon, CheckCircleIcon, XMarkIcon } from '../icons';
 
@@ -15,6 +16,10 @@ type DocumentStatus = 'pending' | 'approved' | 'rejected' | 'expired';
 interface SupabaseDocumentRow {
     id: string | number;
     profile_id?: string | null;
+    profiles?: {
+        company_name?: string | null;
+        email?: string | null;
+    } | null;
     doc_type?: string | null;
     file_url?: string | null;
     status?: DocumentStatus | null;
@@ -31,7 +36,9 @@ interface AdminDocument {
     id: string;
     profileId: string;
     docType: string | null;
-    status: string;
+    status: DocumentStatus;
+    companyName: string | null;
+    email: string | null;
     adminNotes: string | null;
     uploadedAt: string | null;
     approvedAt: string | null;
@@ -81,6 +88,8 @@ const mapDocumentRow = (row: SupabaseDocumentRow): AdminDocument => ({
     profileId: row.profile_id ?? '',
     docType: row.doc_type ?? null,
     status: normalizeStatus(row.status),
+    companyName: row.profiles?.company_name ?? null,
+    email: row.profiles?.email ?? null,
     adminNotes: row.admin_notes ?? null,
     uploadedAt: row.uploaded_at ?? row.created_at ?? null,
     approvedAt: row.approved_at ?? null,
@@ -89,7 +98,7 @@ const mapDocumentRow = (row: SupabaseDocumentRow): AdminDocument => ({
     createdAt: row.created_at ?? null,
 });
 
-const PENDING_STATUSES: DocumentStatus[] = ['pending'];
+const VISIBLE_STATUSES: DocumentStatus[] = ['pending', 'approved', 'rejected', 'expired'];
 
 const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, profileIdFilter }) => {
     const { session } = useAuth();
@@ -112,9 +121,9 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
             let query = supabase
                 .from('member_documents')
                 .select(
-                    'id, profile_id, doc_type, file_url, status, admin_notes, uploaded_at, approved_at, rejected_at, expires_at, created_at'
+                    'id, profile_id, doc_type, file_url, status, admin_notes, uploaded_at, approved_at, rejected_at, expires_at, created_at, profiles (company_name, email)'
                 )
-                .in('status', PENDING_STATUSES)
+                .in('status', VISIBLE_STATUSES)
                 .order('created_at', { ascending: false });
 
             if (activeProfileFilter) {
@@ -142,7 +151,7 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
             setError(null);
         } catch (fetchError) {
             console.error('Failed to load documents', fetchError);
-            setError('Unable to load pending documents. Please try again.');
+            setError('Unable to load documents. Please try again.');
             setDocuments([]);
         } finally {
             setIsLoading(false);
@@ -215,8 +224,28 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
                 throw updateError;
             }
 
+            setDocuments((current) =>
+                current.map((item) =>
+                    item.id === document.id
+                        ? {
+                              ...item,
+                              status,
+                              approvedAt: status === 'approved' ? new Date().toISOString() : null,
+                              rejectedAt: status === 'rejected' ? new Date().toISOString() : null,
+                          }
+                        : item,
+                ),
+            );
+
+            try {
+                await recalculateVerificationForProfile(document.profileId);
+            } catch (recalculateError) {
+                console.error('Failed to recalculate verification status', recalculateError);
+                showToast('Document updated, but verification status may be outdated.', 'error');
+            }
+
+            await fetchDocuments();
             showToast(`Document ${status === 'approved' ? 'approved' : 'rejected'} successfully.`, 'success');
-            setDocuments((current) => current.filter((item) => item.id !== document.id));
         } catch (updateError) {
             console.error('Failed to update document', updateError);
             showToast('Failed to update the document. Please try again.', 'error');
@@ -225,7 +254,10 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
         }
     };
 
-    const pendingCount = useMemo(() => documents.length, [documents]);
+    const pendingCount = useMemo(
+        () => documents.filter((document) => document.status === 'pending').length,
+        [documents],
+    );
 
     return (
         <div className="p-4 md:p-6 lg:p-8 animate-fade-in space-y-6">
@@ -285,9 +317,11 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
                         <tbody className="divide-y divide-gray-border">
                             {documents.map((document) => (
                                 <tr key={document.id} className="align-top">
-                                    <td className="p-4">
-                                        <p className="font-semibold text-charcoal">{document.profileId}</p>
-                                        <p className="text-sm text-gray-dark uppercase tracking-wide">{document.status}</p>
+                                    <td className="p-4 space-y-1">
+                                        <p className="font-semibold text-charcoal">{document.companyName ?? 'Unknown company'}</p>
+                                        <p className="text-sm text-gray-dark">{document.email ?? '—'}</p>
+                                        <p className="text-xs text-gray-500">ID: {document.profileId}</p>
+                                        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{document.status}</p>
                                     </td>
                                     <td className="p-4">
                                         <p className="font-semibold text-charcoal">{getDocumentLabel(document.docType)}</p>
@@ -330,21 +364,23 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
                 </div>
 
                 <div className="md:hidden divide-y divide-gray-border">
-                    {documents.map((document) => (
-                        <div key={document.id} className="p-4 space-y-3">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="font-semibold text-charcoal">{getDocumentLabel(document.docType)}</p>
-                                    <p className="text-sm text-gray-dark">{document.docType ?? '—'}</p>
-                                </div>
-                                <span className="px-3 py-1 text-xs font-bold rounded-full bg-gray-light text-gray-dark uppercase">
-                                    {document.status}
-                                </span>
-                            </div>
-                            <p className="text-sm text-gray-dark">Profile: {document.profileId}</p>
-                            <p className="text-sm text-gray-dark">Uploaded {formatDateTime(document.uploadedAt)}</p>
-                            <textarea
-                                value={notesByDocument[document.id] ?? ''}
+                            {documents.map((document) => (
+                                <div key={document.id} className="p-4 space-y-3">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="font-semibold text-charcoal">{getDocumentLabel(document.docType)}</p>
+                                            <p className="text-sm text-gray-dark">{document.docType ?? '—'}</p>
+                                        </div>
+                                        <span className="px-3 py-1 text-xs font-bold rounded-full bg-gray-light text-gray-dark uppercase">
+                                            {document.status}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-gray-dark">Member: {document.companyName ?? 'Unknown company'}</p>
+                                    <p className="text-sm text-gray-dark">Email: {document.email ?? '—'}</p>
+                                    <p className="text-xs text-gray-500">Profile ID: {document.profileId}</p>
+                                    <p className="text-sm text-gray-dark">Uploaded {formatDateTime(document.uploadedAt)}</p>
+                                    <textarea
+                                        value={notesByDocument[document.id] ?? ''}
                                 onChange={(event) => handleNoteChange(document.id, event.target.value)}
                                 rows={3}
                                 className="w-full border border-gray-border rounded-lg text-sm p-2 focus:outline-none focus:ring-2 focus:ring-info"
@@ -376,8 +412,8 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
             {documents.length === 0 && !isLoading && (
                 <div className="text-center py-16 bg-white rounded-2xl shadow-lg border border-gray-border">
                     <ClipboardIcon className="w-12 h-12 mx-auto text-gray-300" />
-                    <h3 className="mt-4 text-xl font-bold text-charcoal">No pending documents</h3>
-                    <p className="text-gray-dark mt-1">All member uploads have been reviewed.</p>
+                    <h3 className="mt-4 text-xl font-bold text-charcoal">No documents found</h3>
+                    <p className="text-gray-dark mt-1">There are no member uploads to review right now.</p>
                 </div>
             )}
         </div>
