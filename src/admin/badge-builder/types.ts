@@ -83,7 +83,7 @@ export interface Template {
   accentColor: string;
   imageUrl?: string;
   status?: 'active' | 'coming-soon';
-  layers: Record<string, TemplateLayerConfig>;
+  layers: Record<string, TemplateLayerConfig> | Layer[];
 }
 
 export interface DesignState {

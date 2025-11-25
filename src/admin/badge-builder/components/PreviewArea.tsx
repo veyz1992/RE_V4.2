@@ -180,84 +180,82 @@ const PreviewArea: React.FC = () => {
     });
   };
 
-  return (
-    <div className="flex flex-col h-full bg-slate-900 lg:border-l border-slate-800">
-      {/* Header Controls */}
-      <div className="min-h-[3.5rem] border-b border-slate-800 flex flex-wrap items-center justify-between px-4 py-2 bg-slate-900/50 backdrop-blur gap-2">
-        <h2 className="text-sm font-semibold text-slate-300 whitespace-nowrap">Live Preview</h2>
-        
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-end flex-1">
-            <button 
-                onClick={() => setShowGuides(!showGuides)}
-                className={`px-3 py-2 rounded text-xs flex items-center gap-1 transition-colors ${showGuides ? 'bg-blue-900/30 text-blue-400' : 'text-slate-400 hover:bg-slate-800'}`}
-            >
-                <Crosshair size={14} />
-                <span className="hidden sm:inline">Guides</span>
-            </button>
-            <div className="h-4 w-px bg-slate-700 mx-2 hidden sm:block"></div>
-            <div className="flex items-center bg-slate-800 rounded-lg">
-              <button 
-                  onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}
-                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-l-lg"
-              >
-                  <ZoomOut size={16} />
-              </button>
-              <span className="text-xs font-mono w-10 text-center text-slate-500">
-                  {Math.round(zoom * 100)}%
-              </span>
-              <button 
-                  onClick={() => setZoom(Math.min(3, zoom + 0.25))}
-                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-r-lg"
-              >
-                  <ZoomIn size={16} />
-              </button>
-            </div>
-        </div>
-      </div>
+    return (
+      <div className="flex h-full flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)]/70 px-4 py-2 backdrop-blur">
+          <h2 className="text-sm font-semibold text-[var(--text-main)] whitespace-nowrap">Live Preview</h2>
 
-      {/* Canvas Container */}
-      <div 
-        ref={containerRef}
-        className="flex-1 overflow-auto p-4 md:p-8 flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')] bg-slate-950"
-      >
-        {/* Wrapper handles the aspect ratio and scaling, constrained to parent width */}
-        <div 
-            className="relative bg-slate-900 shadow-2xl border-2 border-slate-800 transition-transform duration-200 ease-out"
-            style={{ 
-                // Intrinsic size
-                width: state.imageWidth,
-                height: state.imageHeight,
-                // Responsive constraints: prevent overflow on mobile
-                maxWidth: '100%',
-                aspectRatio: `${state.imageWidth} / ${state.imageHeight}`,
-                // Zoom scaling
-                transform: `scale(${zoom})`,
-                transformOrigin: 'center center'
-            }}
+          <div className="flex flex-1 flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
+              <button
+                  onClick={() => setShowGuides(!showGuides)}
+                  className={`px-3 py-2 rounded text-xs flex items-center gap-1 transition-colors ${showGuides ? 'bg-info/10 text-info' : 'text-[var(--text-muted)] hover:bg-[var(--bg-subtle)]'}`}
+              >
+                  <Crosshair size={14} />
+                  <span className="hidden sm:inline">Guides</span>
+              </button>
+              <div className="h-4 w-px bg-[var(--border-subtle)] mx-2 hidden sm:block"></div>
+              <div className="flex items-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)]">
+                <button
+                    onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}
+                    className="p-2 text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                >
+                    <ZoomOut size={16} />
+                </button>
+                <span className="text-xs font-mono w-12 text-center text-[var(--text-muted)]">
+                    {Math.round(zoom * 100)}%
+                </span>
+                <button
+                    onClick={() => setZoom(Math.min(3, zoom + 0.25))}
+                    className="p-2 text-[var(--text-muted)] hover:text-[var(--text-main)]"
+                >
+                    <ZoomIn size={16} />
+                </button>
+              </div>
+              <button
+                  onClick={() => setZoom(1)}
+                  className="px-3 py-2 rounded text-xs flex items-center gap-1 text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--bg-subtle)]"
+              >
+                  1:1
+              </button>
+          </div>
+        </div>
+
+        <div
+          ref={containerRef}
+          className="flex-1 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-4 md:p-6"
         >
-            {/* Canvas fills the wrapper's calculated size */}
-            <canvas 
-              ref={canvasRef} 
-              className="block w-full h-full"
+          <div
+              className="relative mx-auto bg-slate-900 shadow-lg border border-slate-800"
               style={{
-                maxWidth: '100%',
-                height: 'auto'
+                  width: state.imageWidth,
+                  height: state.imageHeight,
+                  maxWidth: '100%',
+                  aspectRatio: `${state.imageWidth} / ${state.imageHeight}`,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'center center'
               }}
-            />
+          >
+              <canvas
+                ref={canvasRef}
+                className="block w-full h-full"
+                style={{
+                  maxWidth: '100%',
+                  height: 'auto'
+                }}
+              />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap justify-between gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[10px] text-[var(--text-muted)]">
+            <p className="font-mono">
+              {state.imageWidth} x {state.imageHeight}px
+            </p>
+            <p>
+               {showGuides ? 'Guides On' : 'Guides Off'}
+            </p>
         </div>
       </div>
-      
-      {/* Footer Info */}
-      <div className="p-2 bg-slate-900 border-t border-slate-800 text-center flex flex-wrap justify-between px-4 gap-2">
-          <p className="text-[10px] text-slate-500 font-mono">
-            {state.imageWidth} x {state.imageHeight}px
-          </p>
-          <p className="text-[10px] text-slate-600">
-             {showGuides ? 'Guides On' : 'Guides Off'}
-          </p>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default PreviewArea;

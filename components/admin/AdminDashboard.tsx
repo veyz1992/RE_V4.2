@@ -9,7 +9,7 @@ import AdminServiceRequests from './AdminServiceRequests';
 import AdminDocumentsView from './AdminDocumentsView';
 import AdminSubscriptionsView from './AdminSubscriptionsView';
 import ThemeToggle from '../ThemeToggle';
-import BadgeBuilder from '@/badge-builder/BadgeBuilder';
+import AdminBadgeBuilderPage from '@/admin/badge-builder/AdminBadgeBuilderPage';
 import { ADMIN_MEMBERS, type AdminMember } from '../../lib/mockData';
 
 const PlaceholderView: React.FC<{ title: string }> = ({ title }) => (
@@ -139,7 +139,7 @@ const AdminDashboard: React.FC = () => {
             case 'badgeBuilder':
                 return (
                     <div className="p-4 md:p-6 lg:p-8 h-full overflow-auto">
-                        <BadgeBuilder profileId={selectedProfile?.id ?? null} companyName={selectedProfile?.businessName ?? null} />
+                        <AdminBadgeBuilderPage />
                     </div>
                 );
             default:
