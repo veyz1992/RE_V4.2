@@ -67,13 +67,32 @@ const mapRowToTemplate = (row: BadgeTemplateRow): Template => {
   };
 };
 
+const buildFormStateFromRow = (row?: BadgeTemplateRow | null): TemplateFormState => ({
+  name: row?.name ?? '',
+  badgeCode: row?.badge_code ?? '',
+  status: row?.status ?? 'draft',
+  accentColor: row?.accent_color ?? 'from-blue-500 to-indigo-600',
+  description: row?.description ?? '',
+  svgTemplate: row?.svg_template ?? '',
+});
+
+const buildDesignSeedFromRow = (row?: BadgeTemplateRow | null): DesignState => {
+  if (!row) {
+    return { ...BASE_DESIGN_STATE, layers: [...BASE_DESIGN_STATE.layers] };
+  }
+
+  const normalized = normalizeDesignState(row.config);
+  return { ...normalized, layers: [...normalized.layers] };
+};
+
 const TemplateEditor: React.FC<{
   formState: TemplateFormState;
   onFormChange: (changes: Partial<TemplateFormState>) => void;
   onSave: (state: DesignState) => void;
   saving: boolean;
+  loading: boolean;
   updatedAtLabel: string;
-}> = ({ formState, onFormChange, onSave, saving, updatedAtLabel }) => {
+}> = ({ formState, onFormChange, onSave, saving, loading, updatedAtLabel }) => {
   const { state } = useDesign();
 
   return (
@@ -145,8 +164,8 @@ const TemplateEditor: React.FC<{
             <span>Updated {updatedAtLabel}</span>
             <button
               onClick={() => onSave(state)}
-              disabled={saving}
-              aria-busy={saving}
+              disabled={saving || loading}
+              aria-busy={saving || loading}
               className="inline-flex items-center gap-2 rounded-md bg-info px-3 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -158,8 +177,8 @@ const TemplateEditor: React.FC<{
       actionSlot={(
         <button
           onClick={() => onSave(state)}
-          disabled={saving}
-          aria-busy={saving}
+          disabled={saving || loading}
+          aria-busy={saving || loading}
           className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm disabled:opacity-60"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -178,6 +197,7 @@ const AdminBadgeBuilderPage: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<BadgeTemplateRow | null>(null);
   const [designSeed, setDesignSeed] = useState<DesignState>(BASE_DESIGN_STATE);
+  const [designSessionKey, setDesignSessionKey] = useState(0);
   const [formState, setFormState] = useState<TemplateFormState>(DEFAULT_FORM_STATE);
 
   const templateOptions = useMemo<Template[]>(
@@ -189,61 +209,62 @@ const AdminBadgeBuilderPage: React.FC = () => {
     ? new Date(selectedTemplate.updated_at).toLocaleString()
     : 'Not saved yet';
 
-  const syncSelection = useCallback((rows: BadgeTemplateRow[]) => {
-    if (!selectedTemplate) return;
+  const applyTemplateRow = useCallback((row: BadgeTemplateRow | null) => {
+    setDesignSeed(buildDesignSeedFromRow(row));
+    setFormState(buildFormStateFromRow(row));
+    setDesignSessionKey((key) => key + 1);
+  }, []);
 
-    const updated = rows.find((row) => row.id === selectedTemplate.id);
-    if (!updated) return;
+  const refreshTemplates = useCallback(
+    async (rebindId?: string | null) => {
+      setLoading(true);
+      try {
+        const { data, error: fetchError } = await fetchBadgeTemplates();
 
-    setSelectedTemplate(updated);
-    setDesignSeed(normalizeDesignState(updated.config));
-    setFormState({
-      name: updated.name ?? '',
-      badgeCode: updated.badge_code ?? '',
-      status: updated.status ?? 'draft',
-      accentColor: updated.accent_color ?? 'from-blue-500 to-indigo-600',
-      description: updated.description ?? '',
-      svgTemplate: updated.svg_template ?? '',
-    });
-  }, [selectedTemplate]);
+        if (fetchError) {
+          setError(fetchError);
+        } else {
+          setError(null);
+          const sorted = [...data].sort((a, b) => {
+            const aTime = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+            const bTime = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+            return bTime - aTime;
+          });
 
-  const loadTemplates = useCallback(async () => {
-    setLoading(true);
-    const { data, error: fetchError } = await fetchBadgeTemplates();
-
-    if (fetchError) {
-      setError(fetchError);
-    } else {
-      setTemplates(data);
-      syncSelection(data);
-    }
-
-    setLoading(false);
-  }, [syncSelection]);
+          setTemplates(sorted);
+          const targetId = rebindId ?? selectedTemplate?.id;
+          if (targetId) {
+            const updated = sorted.find((row) => row.id === targetId);
+            if (updated) {
+              setSelectedTemplate(updated);
+              applyTemplateRow(updated);
+            } else if (selectedTemplate) {
+              setSelectedTemplate(null);
+              applyTemplateRow(null);
+            }
+          }
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [applyTemplateRow, selectedTemplate?.id],
+  );
 
   useEffect(() => {
-    void loadTemplates();
-  }, [loadTemplates]);
+    void refreshTemplates();
+  }, [refreshTemplates]);
 
   const handleSelectTemplate = (row: BadgeTemplateRow) => {
     setSelectedTemplate(row);
-    setDesignSeed(normalizeDesignState(row.config));
-    setFormState({
-      name: row.name ?? '',
-      badgeCode: row.badge_code ?? '',
-      status: row.status ?? 'draft',
-      accentColor: row.accent_color ?? 'from-blue-500 to-indigo-600',
-      description: row.description ?? '',
-      svgTemplate: row.svg_template ?? '',
-    });
+    applyTemplateRow(row);
     setSuccess(null);
     setError(null);
   };
 
   const startNewTemplate = () => {
     setSelectedTemplate(null);
-    setDesignSeed({ ...BASE_DESIGN_STATE, layers: [...BASE_DESIGN_STATE.layers] });
-    setFormState(DEFAULT_FORM_STATE);
+    applyTemplateRow(null);
     setSuccess(null);
     setError(null);
   };
@@ -252,6 +273,22 @@ const AdminBadgeBuilderPage: React.FC = () => {
     setSaving(true);
     setError(null);
     setSuccess(null);
+
+    const nextBadgeCode = formState.badgeCode.trim();
+    if (nextBadgeCode) {
+      const normalizedBadge = nextBadgeCode.toLowerCase();
+      const duplicate = templates.some(
+        (template) =>
+          template.id !== selectedTemplate?.id &&
+          (template.badge_code ?? '').trim().toLowerCase() === normalizedBadge,
+      );
+
+      if (duplicate) {
+        setSaving(false);
+        setError(`Badge code "${formState.badgeCode}" is already used by another template.`);
+        return;
+      }
+    }
 
     const payload = {
       id: selectedTemplate?.id,
@@ -271,41 +308,34 @@ const AdminBadgeBuilderPage: React.FC = () => {
     } else if (result.data) {
       const normalized = result.data as BadgeTemplateRow;
       setSelectedTemplate(normalized);
-      setDesignSeed(normalizeDesignState(normalized.config));
-      setFormState({
-        name: normalized.name ?? '',
-        badgeCode: normalized.badge_code ?? '',
-        status: normalized.status ?? 'draft',
-        accentColor: normalized.accent_color ?? 'from-blue-500 to-indigo-600',
-        description: normalized.description ?? '',
-        svgTemplate: normalized.svg_template ?? '',
-      });
+      applyTemplateRow(normalized);
       setSuccess('Template saved');
-      await loadTemplates();
+      await refreshTemplates(normalized.id);
     }
 
     setSaving(false);
   };
 
   return (
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 lg:py-10">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--text-main)]">Badge Builder</h1>
-            <p className="text-[var(--text-muted)]">Manage Supabase-backed badge templates and update their designs.</p>
-          </div>
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 lg:py-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--text-main)]">Badge Builder</h1>
+          <p className="text-[var(--text-muted)]">Manage Supabase-backed badge templates and update their designs.</p>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={startNewTemplate}
-            className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm"
+            className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm disabled:opacity-60"
+            disabled={saving || loading}
           >
             <Plus className="h-4 w-4" />
             Create template
           </button>
           <button
-            onClick={() => void loadTemplates()}
+            onClick={() => void refreshTemplates()}
             className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm disabled:opacity-60"
-            disabled={loading}
+            disabled={loading || saving}
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -392,7 +422,8 @@ const AdminBadgeBuilderPage: React.FC = () => {
                     <td className="px-3 py-2 text-right">
                       <button
                         onClick={() => handleSelectTemplate(template)}
-                        className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-1.5 text-sm text-[var(--text-main)]"
+                        className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-1.5 text-sm text-[var(--text-main)] disabled:opacity-60"
+                        disabled={saving}
                       >
                         <Pencil className="h-4 w-4" />
                         Edit
@@ -407,7 +438,7 @@ const AdminBadgeBuilderPage: React.FC = () => {
 
         <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm xl:col-span-8">
           <DesignProvider
-            key={selectedTemplate?.id ?? 'new-template'}
+            key={`${selectedTemplate?.id ?? 'new-template'}-${designSessionKey}`}
             initialState={designSeed}
             templates={templateOptions}
           >
@@ -416,6 +447,7 @@ const AdminBadgeBuilderPage: React.FC = () => {
               onFormChange={(changes) => setFormState((prev) => ({ ...prev, ...changes }))}
               onSave={handleSave}
               saving={saving}
+              loading={loading}
               updatedAtLabel={updatedLabel}
             />
           </DesignProvider>
