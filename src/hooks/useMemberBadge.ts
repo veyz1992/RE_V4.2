@@ -2,22 +2,12 @@ import { useEffect, useState } from 'react';
 import { FUNCTION_ENDPOINTS } from '@/lib/functions';
 import { useAuth } from '@src/context/AuthContext';
 import type { MemberBadgeView } from '@/lib/badges';
+import type { MemberBadgeSummary } from '@/lib/badges/model';
 
 // This hook now fetches the active badge for the current profile from the Netlify function
 // /.netlify/functions/member-badge, which reads from the Supabase badge_designs table.
-export type BadgeStatus = 'NONE' | 'PENDING' | 'ACTIVE' | 'REVOKED';
-
-export interface MemberBadgeData {
-  status: BadgeStatus;
-  badgeLabel: string;
-  imageLightUrl: string | null;
-  imageDarkUrl: string | null;
-  profileUrl: string | null;
-  rating: number | null;
-}
-
 interface UseMemberBadgeResult {
-  badge: MemberBadgeData | null;
+  badge: MemberBadgeSummary | null;
   isLoading: boolean;
   error: string | null;
 }
@@ -25,7 +15,7 @@ interface UseMemberBadgeResult {
 export function useMemberBadge(): UseMemberBadgeResult {
   const { session } = useAuth();
   const profileId = session?.user?.id;
-  const [badge, setBadge] = useState<MemberBadgeData | null>(null);
+  const [badge, setBadge] = useState<MemberBadgeSummary | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,13 +44,18 @@ export function useMemberBadge(): UseMemberBadgeResult {
         if (!data.badge) {
           setBadge(null);
         } else {
-          const mapped: MemberBadgeData = {
+          const mapped: MemberBadgeSummary = {
+            label: data.badge.badgeLabel,
+            code: data.badge.badgeCode ?? null,
             status: data.badge.status,
-            badgeLabel: data.badge.badgeLabel,
             imageLightUrl: data.badge.imageLightUrl,
             imageDarkUrl: data.badge.imageDarkUrl,
             profileUrl: data.badge.profileUrl,
             rating: data.badge.rating,
+            svg: data.badge.svg ?? null,
+            embedHtml: data.badge.embedHtml ?? null,
+            embedStyle: data.badge.embedStyle ?? null,
+            embedScriptUrl: data.badge.embedScriptUrl ?? null,
           };
           setBadge(mapped);
         }

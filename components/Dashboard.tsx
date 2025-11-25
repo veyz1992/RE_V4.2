@@ -3525,7 +3525,7 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
 
     const embedCode = `<a href="${badge.profileUrl}" target="_blank" rel="noopener noreferrer">
     <img src="${badge.imageLightUrl}"
-         alt="Restoration Expertise Verified Member – ${badge.badgeLabel}"
+         alt="Restoration Expertise Verified Member – ${badge.label}"
          style="max-width:180px;height:auto;" />
   </a>`;
 
@@ -3574,7 +3574,7 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
                                 {currentStatusInfo.chipText}
                             </span>
                          )}
-                        <img src={imageUrl} alt={badge.badgeLabel} className="max-w-xs h-auto" />
+                        <img src={imageUrl} alt={badge.label} className="max-w-xs h-auto" />
                     </div>
                      <p className="text-sm text-[var(--text-muted)] mt-4 text-center lg:text-left px-2">
                         This badge reflects your current plan ({currentMember.tier}) and rating ({badgeRatingDisplay}). Any future upgrades or renewals will automatically update your badge.
