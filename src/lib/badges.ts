@@ -22,10 +22,15 @@ export type MemberBadgeUiStatus = 'NONE' | 'PENDING' | 'ACTIVE' | 'REVOKED';
 export interface MemberBadgeView {
   status: MemberBadgeUiStatus;
   badgeLabel: string;
+  badgeCode?: string | null;
   imageLightUrl: string | null;
   imageDarkUrl: string | null;
   profileUrl: string | null;
   rating: number | null;
+  svg?: string | null;
+  embedHtml?: string | null;
+  embedStyle?: string | null;
+  embedScriptUrl?: string | null;
 }
 
 export const mapRowToMemberBadgeView = (
@@ -48,9 +53,14 @@ export const mapRowToMemberBadgeView = (
   return {
     status,
     badgeLabel: row.badge_label ?? 'Restoration Expertise Badge',
+    badgeCode: null,
     imageLightUrl: row.image_light_url,
     imageDarkUrl: row.image_dark_url,
     profileUrl,
     rating: row.rating,
+    svg: null,
+    embedHtml: null,
+    embedStyle: null,
+    embedScriptUrl: null,
   };
 };
