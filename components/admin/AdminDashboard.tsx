@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HomeIcon, UsersIcon, BriefcaseIcon, Cog6ToothIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon, CurrencyDollarIcon, UserCircleIcon, ChevronDownIcon, TrophyIcon } from '../icons';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@src/context/AuthContext';
 import AdminOverview from './AdminOverview';
 import ClientManagement from './ClientManagement';
 import AdminSettings from './AdminSettings';
@@ -9,7 +9,7 @@ import AdminServiceRequests from './AdminServiceRequests';
 import AdminDocumentsView from './AdminDocumentsView';
 import AdminSubscriptionsView from './AdminSubscriptionsView';
 import ThemeToggle from '../ThemeToggle';
-import AdminBadgeBuilderPage from '@/admin/badge-builder/AdminBadgeBuilderPage';
+import AdminBadgeBuilderPage from '@src/admin/badge-builder/AdminBadgeBuilderPage';
 import { ADMIN_MEMBERS, type AdminMember } from '../../lib/mockData';
 
 const PlaceholderView: React.FC<{ title: string }> = ({ title }) => (

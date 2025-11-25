@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { HomeIcon, ListBulletIcon, UserCircleIcon, ArrowRightOnRectangleIcon, PencilSquareIcon, TrophyIcon, DocumentTextIcon, CheckCircleIcon, CreditCardIcon, UsersIcon, Cog6ToothIcon, ClockIcon, ExclamationTriangleIcon, EyeIcon, CalendarDaysIcon, PlusCircleIcon, StarIcon, NewspaperIcon, ArrowDownTrayIcon, ArrowTrendingUpIcon, ShieldCheckIcon, MagnifyingGlassIcon, ClipboardIcon, LightBulbIcon, XMarkIcon, UploadIcon, TrashIcon, ChevronDownIcon, ChartBarIcon, ChatBubbleOvalLeftEllipsisIcon, CheckIcon, BriefcaseIcon, KeyIcon, ClipboardDocumentCheckIcon } from './icons';
-import { useAuth } from '@/context/AuthContext';
-import { useBlueprintAccess } from '@/hooks';
-import { useMemberBadge } from '@/hooks/useMemberBadge';
+import { useAuth } from '@src/context/AuthContext';
+import { useBlueprintAccess } from '@src/hooks';
+import { useMemberBadge } from '@src/hooks/useMemberBadge';
 import {
     Benefit,
     MemberServiceRequest,
@@ -25,16 +25,16 @@ import {
 import { supabase } from '@/lib/supabase';
 import { startCheckout } from '@/lib/checkout';
 import { normalizeWebsiteUrl, isLikelyValidWebsite } from '@/lib/urlHelpers';
-import { REQUEST_TYPE_SEO_BLOG, type SeoBlogPeriod } from '@/config/benefits';
+import { REQUEST_TYPE_SEO_BLOG, type SeoBlogPeriod } from '@src/config/benefits';
 import {
     MEMBERSHIP_PLANS,
     PLAN_BENEFITS,
     normalizeMembershipTier as normalizeLegacyMembershipTier,
     type MembershipTier as LegacyMembershipTier,
     type PlanBenefits,
-} from '@/config/membershipPlans';
-import PlanManagementModal from '@/components/billing/PlanManagementModal';
-import { PLANS, normalizePlanTier, type MembershipTier as PlanConfigMembershipTier } from '@/config/plans';
+} from '@src/config/membershipPlans';
+import PlanManagementModal from '@src/components/billing/PlanManagementModal';
+import { PLANS, normalizePlanTier, type MembershipTier as PlanConfigMembershipTier } from '@src/config/plans';
 import type { PostgrestError } from '@supabase/supabase-js';
 
 // --- Reusable Components ---

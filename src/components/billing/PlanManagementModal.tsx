@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { normalizePlanTier, type MembershipTier } from '@/config/plans';
-import { MEMBERSHIP_PLANS } from '@/config/membershipPlans';
+import { normalizePlanTier, type MembershipTier } from '@src/config/plans';
+import { MEMBERSHIP_PLANS } from '@src/config/membershipPlans';
 
 type PaidMembershipTier = Exclude<MembershipTier, 'free'>;
 

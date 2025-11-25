@@ -12,8 +12,19 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./*"],
+      "@src/*": ["src/*"]
     }
   },
-  "include": ["netlify/**/*.ts", "src/**/*.ts", "src/**/*.tsx"]
+  "include": [
+    "*.ts",
+    "*.tsx",
+    "lib/**/*.ts",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "netlify/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
 }

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Answers, ScoreBreakdown, Opportunity, AssessmentInputs } from '../types';
 import { ASSESSMENT_STEPS, MAX_SCORES, INITIAL_ANSWERS, US_STATES } from '../constants';
 import { CheckCircleIcon, BriefcaseIcon, ShieldCheckIcon, ClipboardDocumentCheckIcon, StarIcon, TrophyIcon, LightBulbIcon } from './icons';
-import { FUNCTION_ENDPOINTS } from '../src/lib/functions';
+import { FUNCTION_ENDPOINTS } from '@/lib/functions';
 
 // Refactored scoring logic to use a linear normalization for a 0-100 score.
 const RAW_MAX = {

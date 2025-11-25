@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@src/context/AuthContext';
 import {
     MemberServiceRequest,
     ServiceRequestActivityLog,

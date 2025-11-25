@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '@src/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 // Note: This hook is deprecated in favor of useBlueprintData for the data-driven system
 
 export type StepStatus = 'not_started' | 'in_progress' | 'completed';

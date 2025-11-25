@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@src/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import {
   PLAN_STORAGE_KEY,
@@ -9,7 +9,7 @@ import {
   normalizePlan,
   type Plan,
 } from '../src/shared/config';
-import { FUNCTION_ENDPOINTS } from '../src/lib/functions';
+import { FUNCTION_ENDPOINTS } from '@/lib/functions';
 import {
   AnimatedCheckmarkIcon,
   UsersIcon,

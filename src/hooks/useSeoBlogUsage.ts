@@ -7,7 +7,7 @@ import {
   type SeoBlogPeriod,
   type SeoBlogQuotaConfig,
   normalizeTierForQuota,
-} from '@/config/benefits';
+} from '@src/config/benefits';
 
 interface SubscriptionRow {
   tier?: string | null;

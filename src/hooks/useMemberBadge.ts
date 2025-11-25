@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { FUNCTION_ENDPOINTS } from '../lib/functions';
-import { useAuth } from '../context/AuthContext';
-import type { MemberBadgeView } from '../lib/badges';
+import { FUNCTION_ENDPOINTS } from '@/lib/functions';
+import { useAuth } from '@src/context/AuthContext';
+import type { MemberBadgeView } from '@/lib/badges';
 
 // This hook now fetches the active badge for the current profile from the Netlify function
 // /.netlify/functions/member-badge, which reads from the Supabase badge_designs table.
