@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { XMarkIcon } from '../icons';
 import { AdminMember } from './types';
+import { deriveMemberHelperOutputs } from '../../lib/memberHelperOutputs';
 
 interface MemberDetailDrawerProps {
     member: AdminMember | null;
     onClose: () => void;
     onMemberUpdated?: (profile: ProfileRow) => void;
+    onNavigateToDocuments?: (profileId: string) => void;
+    onNavigateToRequests?: (profileId: string) => void;
 }
 
 interface ProfileRow {
@@ -77,6 +80,7 @@ interface MemberFullData {
     serviceRequests: any[];
     openRecheckRequest?: any | null;
     openRecheckCount?: number;
+    helperOutputs?: import('../../lib/memberHelperOutputs').MemberHelperOutputs;
 }
 
 const membershipTierOptions = ['free', 'founding', 'bronze', 'silver', 'gold'] as const;
@@ -84,7 +88,7 @@ const memberStatusOptions = ['pending', 'active', 'inactive', 'canceled'] as con
 const verificationStatusOptions = ['pending', 'verified', 'rejected'] as const;
 const badgeRatingOptions = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C', 'D'] as const;
 
-const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose, onMemberUpdated }) => {
+const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose, onMemberUpdated, onNavigateToDocuments, onNavigateToRequests }) => {
     const [companyName, setCompanyName] = useState('');
     const [primaryContact, setPrimaryContact] = useState('');
     const [email, setEmail] = useState('');
@@ -243,6 +247,9 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
     const hasAssessment = summary?.hasAssessment ?? false;
     const openRecheckRequest = memberDetail?.openRecheckRequest;
     const hasOpenRecheck = !!memberDetail?.openRecheckCount && memberDetail.openRecheckCount > 0;
+    const helperOutputs = memberDetail
+        ? memberDetail.helperOutputs ?? deriveMemberHelperOutputs(memberDetail.documents, memberDetail.serviceRequests)
+        : null;
     const initialScore = firstAssessment?.total_score ?? null;
     const latestScore = latestAssessment?.total_score ?? null;
     const scoreDelta = initialScore !== null && latestScore !== null ? latestScore - initialScore : null;
@@ -342,10 +349,57 @@ const MemberDetailDrawer: React.FC<MemberDetailDrawerProps> = ({ member, onClose
                                     <span className="px-2 py-1 rounded-full bg-gray-light text-charcoal font-semibold">
                                         PCI rating: {pciRating ? pciRating : hasAssessment ? 'Not assigned yet' : 'No assessment yet'}
                                     </span>
+                                    {helperOutputs && (
+                                        <span
+                                            className={`px-2 py-1 rounded-full font-semibold ${
+                                                helperOutputs.documents.status === 'verified'
+                                                    ? 'bg-success/10 text-success'
+                                                    : helperOutputs.documents.status === 'pending'
+                                                        ? 'bg-warning/10 text-warning'
+                                                        : 'bg-error/10 text-error'
+                                            }`}
+                                        >
+                                            Docs: {helperOutputs.documents.label}
+                                        </span>
+                                    )}
+                                    {helperOutputs && (
+                                        <span
+                                            className={`px-2 py-1 rounded-full font-semibold ${
+                                                helperOutputs.requests.openCount > 0
+                                                    ? 'bg-warning/10 text-warning'
+                                                    : 'bg-success/10 text-success'
+                                            }`}
+                                        >
+                                            Requests: {helperOutputs.requests.label}
+                                        </span>
+                                    )}
                                     {hasOpenRecheck && (
                                         <span className="px-2 py-1 rounded-full bg-warning/20 text-warning font-semibold">Recheck requested</span>
                                     )}
                                 </div>
+
+                                {(helperOutputs || onNavigateToDocuments || onNavigateToRequests) && (
+                                    <div className="flex flex-wrap gap-2 text-xs">
+                                        {onNavigateToDocuments && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onNavigateToDocuments(member.id)}
+                                                className="px-3 py-1 rounded-full border border-info/40 text-info hover:bg-info/10"
+                                            >
+                                                Go to documents
+                                            </button>
+                                        )}
+                                        {onNavigateToRequests && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onNavigateToRequests(member.id)}
+                                                className="px-3 py-1 rounded-full border border-charcoal/20 text-charcoal hover:bg-gray-light"
+                                            >
+                                                View service requests
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
 
                                 {openRecheckRequest && (
                                     <p className="text-[11px] text-warning">Latest recheck request: {openRecheckRequest.created_at ? new Date(openRecheckRequest.created_at).toLocaleDateString() : 'Pending'}</p>

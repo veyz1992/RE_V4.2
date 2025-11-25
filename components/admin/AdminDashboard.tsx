@@ -56,6 +56,7 @@ const AdminDashboard: React.FC = () => {
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [selectedProfile, setSelectedProfile] = useState<AdminMember | null>(ADMIN_MEMBERS[0] ?? null);
     const [documentsProfileFilter, setDocumentsProfileFilter] = useState<string | null>(searchParams.get('profileId'));
+    const [requestsProfileFilter, setRequestsProfileFilter] = useState<string | null>(searchParams.get('requestProfileId'));
 
      useEffect(() => {
         if (toast) {
@@ -93,6 +94,7 @@ const AdminDashboard: React.FC = () => {
 
         setActiveView(derivedView);
         setDocumentsProfileFilter(derivedView === 'documents' ? params.get('profileId') : null);
+        setRequestsProfileFilter(derivedView === 'serviceRequests' ? params.get('requestProfileId') : null);
     }, [location.search]);
 
     const handleViewChange = (view: AdminView, profileId?: string | null) => {
@@ -107,6 +109,14 @@ const AdminDashboard: React.FC = () => {
             setDocumentsProfileFilter(null);
         }
 
+        if (view === 'serviceRequests' && profileId) {
+            params.set('requestProfileId', profileId);
+            setRequestsProfileFilter(profileId);
+        } else if (view !== 'serviceRequests') {
+            params.delete('requestProfileId');
+            setRequestsProfileFilter(null);
+        }
+
         navigate({ pathname: location.pathname, search: `?${params.toString()}` }, { replace: false });
         setActiveView(view);
         setIsSidebarOpen(false);
@@ -114,6 +124,10 @@ const AdminDashboard: React.FC = () => {
 
     const handleNavigateToDocuments = (profileId: string) => {
         handleViewChange('documents', profileId);
+    };
+
+    const handleNavigateToRequests = (profileId: string) => {
+        handleViewChange('serviceRequests', profileId);
     };
 
     const renderView = () => {
@@ -126,10 +140,11 @@ const AdminDashboard: React.FC = () => {
                         showToast={showToast}
                         onSelectMember={setSelectedProfile}
                         onNavigateToDocuments={handleNavigateToDocuments}
+                        onNavigateToRequests={handleNavigateToRequests}
                     />
                 );
             case 'serviceRequests':
-                return <AdminServiceRequests showToast={showToast} />;
+                return <AdminServiceRequests showToast={showToast} profileIdFilter={requestsProfileFilter} />;
             case 'documents':
                 return <AdminDocumentsView showToast={showToast} profileIdFilter={documentsProfileFilter} />;
             case 'subscriptions':

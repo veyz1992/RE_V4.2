@@ -25,6 +25,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { startCheckout } from '@/lib/checkout';
 import { normalizeWebsiteUrl, isLikelyValidWebsite } from '@/lib/urlHelpers';
+import { deriveMemberHelperOutputs } from '../lib/memberHelperOutputs';
 import { REQUEST_TYPE_SEO_BLOG, type SeoBlogPeriod } from '@src/config/benefits';
 import {
     MEMBERSHIP_PLANS,
@@ -952,7 +953,8 @@ const MemberOverview: React.FC<{
         isRequestingReview?: boolean;
         requestDisabled?: boolean;
     };
-}> = ({ data, onNavigate, onNewRequest, assessmentInfo }) => {
+    helperOutputs?: ReturnType<typeof deriveMemberHelperOutputs>;
+}> = ({ data, onNavigate, onNewRequest, assessmentInfo, helperOutputs }) => {
     const QuickActionButton: React.FC<{ icon: React.ElementType, label: string, onClick: () => void }> = ({ icon: Icon, label, onClick }) => (
         <button onClick={onClick} className="bg-[var(--accent)] text-[var(--accent-text)] font-bold rounded-lg p-4 flex flex-col items-center justify-center text-center transition-colors hover:bg-[var(--accent-dark)] h-28">
             <Icon className="w-8 h-8 mb-2" />
@@ -989,6 +991,31 @@ const MemberOverview: React.FC<{
                 hasDocuments={safeData.hasDocuments}
                 onNavigate={onNavigate}
             />
+
+            {helperOutputs && (
+                <div className="flex flex-wrap gap-2">
+                    <span
+                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            helperOutputs.documents.status === 'verified'
+                                ? 'bg-success/10 text-success'
+                                : helperOutputs.documents.status === 'pending'
+                                    ? 'bg-warning/10 text-warning'
+                                    : 'bg-error/10 text-error'
+                        }`}
+                    >
+                        Docs: {helperOutputs.documents.label}
+                    </span>
+                    <span
+                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            helperOutputs.requests.openCount > 0
+                                ? 'bg-warning/10 text-warning'
+                                : 'bg-success/10 text-success'
+                        }`}
+                    >
+                        Requests: {helperOutputs.requests.label}
+                    </span>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
@@ -6576,6 +6603,11 @@ const MemberDashboard: React.FC = () => {
     const [openAssessmentRecheck, setOpenAssessmentRecheck] = useState<SupabaseServiceRequest | null>(null);
     const [isRequestingRecheck, setIsRequestingRecheck] = useState(false);
 
+    const helperOutputs = useMemo(
+        () => deriveMemberHelperOutputs(documents, serviceRequests),
+        [documents, serviceRequests],
+    );
+
     const refetchDocuments = useCallback(async (): Promise<DashboardDocument[]> => {
         if (!session?.user?.id) {
             setDocuments([]);
@@ -7289,6 +7321,7 @@ const MemberDashboard: React.FC = () => {
                         onNavigate={setActiveView}
                         onNewRequest={() => setNewRequestModalOpen(true)}
                         assessmentInfo={assessmentInfo}
+                        helperOutputs={helperOutputs}
                     />
                 );
             case 'my-requests':

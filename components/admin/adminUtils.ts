@@ -38,7 +38,23 @@ export interface AdminSubscriptionRow {
 export interface AdminMemberDocumentRow {
     profile_id: string;
     status: string | null;
+    doc_type?: string | null;
 }
+
+export interface AdminServiceRequestRow {
+    profile_id: string;
+    status: string | null;
+}
+
+export const normalizeServiceRequestStatus = (status?: string | null): 'open' | 'in_progress' | 'completed' | 'canceled' => {
+    const normalized = status?.toLowerCase() ?? '';
+
+    if (normalized.includes('progress')) return 'in_progress';
+    if (normalized.includes('complete')) return 'completed';
+    if (normalized.includes('cancel')) return 'canceled';
+
+    return 'open';
+};
 
 export const getMemberStatus = (
     profile: Pick<AdminProfileRow, 'member_status'>,
