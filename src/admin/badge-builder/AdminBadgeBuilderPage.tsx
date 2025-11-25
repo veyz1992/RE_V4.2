@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Loader2, Pencil, Plus, RefreshCw, Save } from 'lucide-react';
 import { fetchBadgeTemplates, type BadgeTemplateRow, upsertBadgeTemplate } from 'lib/badges/service';
 import BadgeBuilder from './BadgeBuilder';
@@ -146,6 +146,7 @@ const TemplateEditor: React.FC<{
             <button
               onClick={() => onSave(state)}
               disabled={saving}
+              aria-busy={saving}
               className="inline-flex items-center gap-2 rounded-md bg-info px-3 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -158,6 +159,7 @@ const TemplateEditor: React.FC<{
         <button
           onClick={() => onSave(state)}
           disabled={saving}
+          aria-busy={saving}
           className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm disabled:opacity-60"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -187,7 +189,25 @@ const AdminBadgeBuilderPage: React.FC = () => {
     ? new Date(selectedTemplate.updated_at).toLocaleString()
     : 'Not saved yet';
 
-  const loadTemplates = async () => {
+  const syncSelection = useCallback((rows: BadgeTemplateRow[]) => {
+    if (!selectedTemplate) return;
+
+    const updated = rows.find((row) => row.id === selectedTemplate.id);
+    if (!updated) return;
+
+    setSelectedTemplate(updated);
+    setDesignSeed(normalizeDesignState(updated.config));
+    setFormState({
+      name: updated.name ?? '',
+      badgeCode: updated.badge_code ?? '',
+      status: updated.status ?? 'draft',
+      accentColor: updated.accent_color ?? 'from-blue-500 to-indigo-600',
+      description: updated.description ?? '',
+      svgTemplate: updated.svg_template ?? '',
+    });
+  }, [selectedTemplate]);
+
+  const loadTemplates = useCallback(async () => {
     setLoading(true);
     const { data, error: fetchError } = await fetchBadgeTemplates();
 
@@ -195,13 +215,15 @@ const AdminBadgeBuilderPage: React.FC = () => {
       setError(fetchError);
     } else {
       setTemplates(data);
+      syncSelection(data);
     }
+
     setLoading(false);
-  };
+  }, [syncSelection]);
 
   useEffect(() => {
     void loadTemplates();
-  }, []);
+  }, [loadTemplates]);
 
   const handleSelectTemplate = (row: BadgeTemplateRow) => {
     setSelectedTemplate(row);
@@ -266,23 +288,24 @@ const AdminBadgeBuilderPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-main)]">Badge Builder</h1>
-          <p className="text-[var(--text-muted)]">Manage Supabase-backed badge templates and update their designs.</p>
-        </div>
+      <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 lg:py-10">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--text-main)]">Badge Builder</h1>
+            <p className="text-[var(--text-muted)]">Manage Supabase-backed badge templates and update their designs.</p>
+          </div>
         <div className="flex gap-2">
           <button
             onClick={startNewTemplate}
-            className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-sm font-semibold text-[var(--text-main)]"
+            className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm"
           >
             <Plus className="h-4 w-4" />
             Create template
           </button>
           <button
             onClick={() => void loadTemplates()}
-            className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-sm font-semibold text-[var(--text-main)]"
+            className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm disabled:opacity-60"
+            disabled={loading}
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -302,8 +325,8 @@ const AdminBadgeBuilderPage: React.FC = () => {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
-        <div className="space-y-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm">
+      <div className="grid gap-6 xl:grid-cols-12">
+        <div className="space-y-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm xl:col-span-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Templates</p>
@@ -323,10 +346,34 @@ const AdminBadgeBuilderPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-subtle)]">
-                {templates.length === 0 && (
+                {loading && templates.length === 0 && (
+                  [...Array(3)].map((_, idx) => (
+                    <tr key={`skeleton-${idx}`}>
+                      <td className="px-3 py-3" colSpan={5}>
+                        <div className="animate-pulse space-y-2">
+                          <div className="h-3 w-1/3 rounded bg-[var(--bg-card)]" />
+                          <div className="h-3 w-1/4 rounded bg-[var(--bg-card)]" />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+                {!loading && templates.length === 0 && (
                   <tr>
-                    <td className="px-3 py-4 text-[var(--text-muted)]" colSpan={5}>
-                      No templates found. Create one to get started.
+                    <td className="px-3 py-6 text-[var(--text-muted)]" colSpan={5}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--text-main)]">No templates yet</p>
+                          <p className="text-xs text-[var(--text-muted)]">Create your first badge template to get started.</p>
+                        </div>
+                        <button
+                          onClick={startNewTemplate}
+                          className="inline-flex items-center gap-2 rounded-md bg-info px-3 py-1.5 text-sm font-semibold text-white shadow-sm"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Create
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -358,7 +405,7 @@ const AdminBadgeBuilderPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm">
+        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm xl:col-span-8">
           <DesignProvider
             key={selectedTemplate?.id ?? 'new-template'}
             initialState={designSeed}
