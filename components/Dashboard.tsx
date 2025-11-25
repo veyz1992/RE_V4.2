@@ -3,6 +3,7 @@ import { HomeIcon, ListBulletIcon, UserCircleIcon, ArrowRightOnRectangleIcon, Pe
 import { useAuth } from '@src/context/AuthContext';
 import { useBlueprintAccess } from '@src/hooks';
 import { useMemberBadge } from '@src/hooks/useMemberBadge';
+import BadgePreview from '@/shared/badges/BadgePreview';
 import {
     Benefit,
     MemberServiceRequest,
@@ -3437,198 +3438,141 @@ const MemberProfile: React.FC<{ showToast: (message: string, type: 'success' | '
 
 
 const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast: (message: string, type: 'success' | 'error') => void; }> = ({ onNavigate, showToast }) => {
-    const { badge, isLoading, error } = useMemberBadge();
+    const { badge, loading, error } = useMemberBadge();
     const { currentUser } = useAuth();
     const currentMember = useMemo(
         () => ADMIN_MEMBERS.find((member) => member.email === currentUser?.email) || ADMIN_MEMBERS[0],
         [currentUser?.email]
     );
 
-    const [previewBg, setPreviewBg] = useState<'light' | 'dark'>('light');
     const [copied, setCopied] = useState(false);
 
-    const badgeRatingDisplay = badge?.rating ?? currentMember?.rating ?? '—';
+    const buildEmbedSnippet = () => {
+        const fallback = badge?.imageLightUrl
+            ? `<a href="${badge.profileUrl ?? '#'}" target="_blank" rel="noopener noreferrer">\n  <img src="${badge.imageLightUrl}"\n       alt="Restoration Expertise Verified Member – ${badge.label}"\n       style="max-width:180px;height:auto;" />\n</a>`
+            : '';
 
-    if (isLoading) {
+        const embedFromTemplate =
+            badge?.embedHtml ??
+            (badge?.embedScriptUrl && badge.code
+                ? `<div data-re-badge data-template="${badge.code}" data-profile="${currentUser?.id ?? ''}"></div>\n<script async src="${badge.embedScriptUrl}" data-template="${badge.code}" data-profile="${currentUser?.id ?? ''}"></script>`
+                : null);
+
+        return `${badge?.embedStyle ? `<style>${badge.embedStyle}</style>\n` : ''}${embedFromTemplate ?? fallback}`.trim();
+    };
+
+    const handleCopy = () => {
+        const snippet = buildEmbedSnippet();
+        if (!snippet) return;
+        navigator.clipboard.writeText(snippet);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        showToast('Code copied to clipboard!', 'success');
+    };
+
+    if (loading) {
         return (
-            <div className="animate-fade-in space-y-8">
-                <div>
-                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Your Restoration Expertise Badge</h1>
-                    <p className="mt-2 text-lg text-[var(--text-muted)]">Add this badge to your website and profiles so homeowners instantly know you’re verified.</p>
-                </div>
-                <Card>
-                    <div className="text-center py-12">
-                        <div className="w-16 h-16 mx-auto border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin"></div>
-                        <h3 className="mt-4 text-xl font-bold text-[var(--text-main)]">Loading your badge...</h3>
-                    </div>
-                </Card>
+            <div className="space-y-4">
+                {[...Array(3)].map((_, idx) => (
+                    <div key={idx} className="h-24 animate-pulse rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)]" />
+                ))}
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="animate-fade-in space-y-8">
-                <div>
-                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Your Restoration Expertise Badge</h1>
-                    <p className="mt-2 text-lg text-[var(--text-muted)]">Add this badge to your website and profiles so homeowners instantly know you’re verified.</p>
-                </div>
-                <Card>
-                    <div className="text-center py-12">
-                        <ExclamationTriangleIcon className="w-16 h-16 mx-auto text-error" />
-                        <h3 className="mt-4 text-xl font-bold text-[var(--text-main)]">We couldn’t load your badge.</h3>
-                        <p className="mt-1 text-[var(--text-muted)]">{error}</p>
+            <div className="space-y-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800">
+                <div className="flex items-center gap-2">
+                    <ExclamationTriangleIcon className="h-5 w-5" />
+                    <div>
+                        <p className="font-semibold">We couldn’t load your badge</p>
+                        <p className="text-sm text-red-700">{error}</p>
                     </div>
-                </Card>
+                </div>
+                <button
+                    onClick={() => onNavigate('documents')}
+                    className="inline-flex w-fit items-center gap-2 rounded-md bg-[var(--bg-card)] px-3 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm"
+                >
+                    Check documents
+                </button>
             </div>
         );
     }
 
-    if (!badge || badge.status === "NONE") {
-         return (
-            <div className="animate-fade-in space-y-8">
-                <div>
-                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Your Restoration Expertise Badge</h1>
-                    <p className="mt-2 text-lg text-[var(--text-muted)]">Add this badge to your website and profiles so homeowners instantly know you’re verified.</p>
+    if (!badge || badge.status === 'NONE') {
+        return (
+            <Card>
+                <div className="text-center py-12">
+                    <ClockIcon className="w-10 h-10 mx-auto text-gray-400" />
+                    <h3 className="mt-3 text-xl font-bold text-[var(--text-main)]">Your badge is not ready yet</h3>
+                    <p className="mt-1 text-[var(--text-muted)]">Once our team approves your documents, it will appear here.</p>
                 </div>
-                <Card>
-                    <div className="text-center py-12">
-                        <ClockIcon className="w-16 h-16 mx-auto text-gray-300" />
-                        <h3 className="mt-4 text-xl font-bold text-[var(--text-main)]">Your badge is not ready yet.</h3>
-                        <p className="mt-1 text-[var(--text-muted)]">Once our team approves your documents, it will appear here.</p>
-                    </div>
-                </Card>
-            </div>
+            </Card>
         );
     }
 
-    if (badge.status === "PENDING") {
-         return (
-            <div className="animate-fade-in space-y-8">
-                <div>
-                    <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Your Restoration Expertise Badge</h1>
-                    <p className="mt-2 text-lg text-[var(--text-muted)]">Add this badge to your website and profiles so homeowners instantly know you’re verified.</p>
+    if (badge.status === 'PENDING') {
+        return (
+            <Card>
+                <div className="text-center py-12">
+                    <MagnifyingGlassIcon className="w-10 h-10 mx-auto text-gray-400" />
+                    <h3 className="mt-3 text-xl font-bold text-[var(--text-main)]">Your business is under review</h3>
+                    <p className="mt-1 text-[var(--text-muted)]">We’re preparing your badge design.</p>
                 </div>
-                <Card>
-                    <div className="text-center py-12">
-                        <MagnifyingGlassIcon className="w-16 h-16 mx-auto text-gray-300" />
-                        <h3 className="mt-4 text-xl font-bold text-[var(--text-main)]">Your business is eligible and under review.</h3>
-                        <p className="mt-1 text-[var(--text-muted)]">We’re preparing your badge design.</p>
-                    </div>
-                </Card>
-            </div>
+            </Card>
         );
     }
 
-    const imageUrl = previewBg === 'dark' ? (badge.imageDarkUrl || badge.imageLightUrl) : badge.imageLightUrl;
-    const businessNameSlug = (currentMember?.businessName ?? 'member').toLowerCase().replace(/ /g, '-');
-
-    const fallbackEmbed = badge.imageLightUrl
-        ? `<a href="${badge.profileUrl ?? '#'}" target="_blank" rel="noopener noreferrer">
-  <img src="${badge.imageLightUrl}"
-       alt="Restoration Expertise Verified Member – ${badge.label}"
-       style="max-width:180px;height:auto;" />
-</a>`
-        : '';
-
-    const embedFromTemplate =
-        !badge.embedHtml && badge.embedScriptUrl && badge.code
-            ? `<div data-re-badge data-template="${badge.code}" data-profile="${currentUser?.id ?? ''}"></div>
-<script async src="${badge.embedScriptUrl}" data-template="${badge.code}" data-profile="${currentUser?.id ?? ''}"></script>`
-            : badge.embedHtml;
-
-    const embedCode = `${badge.embedStyle ? `<style>${badge.embedStyle}</style>\n` : ''}${embedFromTemplate ?? fallbackEmbed}`;
-
-    const handleCopyCode = () => {
-        navigator.clipboard.writeText(embedCode);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-        showToast('Code copied to clipboard!', 'success');
-    };
-
-    const badgeStatusConfig = {
-        ACTIVE: { chipText: 'Active', chipColor: 'bg-success text-white' },
-        PENDING: { chipText: 'Pending', chipColor: 'bg-warning text-charcoal' },
-        REVOKED: { chipText: 'Revoked', chipColor: 'bg-error text-white' },
-    };
-    const currentStatusInfo = badgeStatusConfig[badge.status as keyof typeof badgeStatusConfig];
+    const embedSnippet = buildEmbedSnippet();
 
     return (
-        <div className="animate-fade-in space-y-8">
+        <div className="space-y-6">
             <div>
                 <h1 className="font-playfair text-4xl font-bold text-[var(--text-main)]">Your Restoration Expertise Badge</h1>
                 <p className="mt-2 text-lg text-[var(--text-muted)]">Add this badge to your website and profiles so homeowners instantly know you’re verified.</p>
             </div>
 
-            <div className="mt-6 bg-gold/10 border border-gold/20 text-[var(--text-main)] p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                <div className="flex items-center">
-                    <ShieldCheckIcon className="w-6 h-6 text-gold-dark mr-3 shrink-0" />
-                    <p className="text-sm sm:text-base font-semibold">
-                        Verified Member · {currentMember.tier} Plan · Rating: {badgeRatingDisplay}
-                    </p>
-                </div>
-                <button onClick={() => onNavigate('billing')} className="font-bold text-sm bg-gold/20 text-gold-dark py-1.5 px-3 rounded-md hover:bg-gold/30 transition-colors whitespace-nowrap self-end sm:self-center">
-                    Manage plan →
-                </button>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
-                <div className="lg:col-span-3">
-                    <div className="flex space-x-2 mb-4">
-                        <button onClick={() => setPreviewBg('light')} className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${previewBg === 'light' ? 'bg-[var(--accent)] text-[var(--accent-text)] shadow-md' : 'bg-[var(--bg-card)] border border-[var(--border-subtle)]'}`}>Light background</button>
-                        <button onClick={() => setPreviewBg('dark')} className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${previewBg === 'dark' ? 'bg-[var(--accent)] text-[var(--accent-text)] shadow-md' : 'bg-[var(--bg-card)] border border-[var(--border-subtle)]'}`}>Dark background</button>
+            <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-4">
+                <div className="flex flex-col gap-4 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6">
+                    <div className="lg:col-span-2">
+                        <BadgePreview
+                            summary={{
+                                label: badge.label,
+                                status: badge.status,
+                                imageLightUrl: badge.imageLightUrl,
+                                imageDarkUrl: badge.imageDarkUrl,
+                                embedHtml: badge.embedHtml,
+                            }}
+                            embedSnippet={embedSnippet}
+                            onCopyEmbed={embedSnippet ? handleCopy : undefined}
+                            copied={copied}
+                        />
                     </div>
-                    <div className={`relative p-8 rounded-2xl shadow-lg border border-[var(--border-subtle)] flex items-center justify-center min-h-[350px] transition-colors ${previewBg === 'light' ? 'bg-[var(--bg-subtle)]' : 'bg-charcoal-dark'}`}>
-                         {currentStatusInfo && (
-                            <span className={`absolute top-4 right-4 text-xs font-bold px-3 py-1 rounded-full ${currentStatusInfo.chipColor}`}>
-                                {currentStatusInfo.chipText}
-                            </span>
-                         )}
-                        <img src={imageUrl} alt={badge.label} className="max-w-xs h-auto" />
-                    </div>
-                     <p className="text-sm text-[var(--text-muted)] mt-4 text-center lg:text-left px-2">
-                        This badge reflects your current plan ({currentMember.tier}) and rating ({badgeRatingDisplay}). Any future upgrades or renewals will automatically update your badge.
-                    </p>
-                </div>
-
-                <div className="lg:col-span-2 space-y-8">
-                    <Card>
-                        <h3 className="font-playfair text-xl font-bold text-[var(--text-main)] mb-4">Download & Embed</h3>
-                        <div className="grid grid-cols-2 gap-4 mb-6">
-                            <a href={imageUrl} download={`${businessNameSlug}-badge.png`}>
-                                <button className="w-full py-3 px-4 bg-[var(--bg-card)] text-[var(--text-main)] font-bold rounded-lg shadow-md border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] transition-all flex items-center justify-center gap-2"><ArrowDownTrayIcon className="w-5 h-5"/> PNG</button>
-                            </a>
-                             <a href={imageUrl} download={`${businessNameSlug}-badge.svg`}>
-                                <button className="w-full py-3 px-4 bg-[var(--bg-card)] text-[var(--text-main)] font-bold rounded-lg shadow-md border border-[var(--border-subtle)] hover:bg-[var(--bg-subtle)] transition-all flex items-center justify-center gap-2"><ArrowDownTrayIcon className="w-5 h-5"/> SVG</button>
-                            </a>
-                        </div>
-                        <div className="relative bg-charcoal-dark p-4 rounded-lg">
-                            <button onClick={handleCopyCode} className="absolute top-2 right-2 p-1.5 bg-gray-dark rounded-md text-gray-light hover:bg-gray-dark/50" title="Copy code">
-                                {copied ? <CheckIcon className="w-5 h-5 text-success" /> : <ClipboardIcon className="w-5 h-5"/>}
-                            </button>
-                            <pre><code className="text-gray-light text-sm whitespace-pre-wrap select-all">{embedCode}</code></pre>
-                        </div>
-                        <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
-                            <p className="text-[var(--text-muted)]">Current plan limit: 1 badge per company website</p>
-                            <button onClick={() => onNavigate('benefits')} className="font-semibold text-[var(--accent-dark)] hover:underline self-end sm:self-center">
-                                View benefits →
-                            </button>
-                        </div>
-                    </Card>
-
-                    <Card>
-                        <div className="flex items-center mb-4">
-                            <div className="bg-gold/10 text-gold-dark p-2 rounded-full mr-3">
-                                <LightBulbIcon className="w-5 h-5" />
+                    <div className="lg:col-span-1 space-y-4">
+                        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 text-sm text-[var(--text-main)]">
+                            <div className="flex items-center gap-2 text-[var(--text-muted)]">
+                                <ShieldCheckIcon className="h-4 w-4 text-info" />
+                                <span className="text-xs font-semibold uppercase">Verified Member</span>
                             </div>
-                            <h3 className="font-playfair text-xl font-bold text-[var(--text-main)]">Where to place your badge</h3>
+                            <p className="mt-2 font-semibold">Plan: {currentMember?.tier ?? 'Member'}</p>
+                            <p className="text-[var(--text-muted)]">Rating: {badge.rating ?? '—'}</p>
+                            <button
+                                onClick={() => onNavigate('billing')}
+                                className="mt-3 inline-flex items-center gap-2 rounded-md bg-info px-3 py-2 text-xs font-semibold text-white"
+                            >
+                                Manage plan
+                            </button>
                         </div>
-                        <ul className="space-y-2 list-disc list-inside text-[var(--text-muted)]">
-                            <li>Place above the fold on your homepage near your main call to action.</li>
-                            <li>Add it to your About and Reviews pages.</li>
-                            <li>Include it in your email signature or proposal PDFs.</li>
-                        </ul>
-                    </Card>
+                        <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 text-sm text-[var(--text-muted)]">
+                            <p className="font-semibold text-[var(--text-main)]">Where to place your badge</p>
+                            <ul className="mt-2 space-y-1 list-disc list-inside">
+                                <li>Homepage above the fold</li>
+                                <li>About and Reviews pages</li>
+                                <li>Email signature or proposals</li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
