@@ -1,6 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { assertEnv } from '../lib/assertEnv';
-import { supabase } from '../lib/supabaseServer';
+import { getSupabaseClient } from '../lib/supabaseServer';
 
 const json = (statusCode: number, body: unknown) => ({
   statusCode,
@@ -58,6 +58,7 @@ export const handler: Handler = async event => {
     }
 
     assertEnv();
+    const supabase = getSupabaseClient();
 
     const email = normalizeString(payload.email)?.toLowerCase();
     const answers = payload.answers;

@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
-import { createClient } from '@supabase/supabase-js';
 import { mapPriceIdToTier, normalizeMembershipTier, type MembershipTier } from '../lib/membershipPlans';
+import { assertEnv } from '../lib/assertEnv';
+import { getSupabaseAdminClient, getSupabaseClient } from '../lib/supabaseServer';
 
 type Event = {
   httpMethod: string;
@@ -17,48 +18,22 @@ type HandlerResult = Promise<{
   body?: string;
 }>;
 
-// Environment variables for Stripe
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const stripePublishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+let stripe: Stripe | null = null;
+const getStripe = () => {
+  if (!stripe) {
+    const { STRIPE_SECRET_KEY } = assertEnv();
+    stripe = new Stripe(STRIPE_SECRET_KEY, {
+      apiVersion: '2024-12-18',
+    });
+  }
 
-// Environment variables for Supabase
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  return stripe;
+};
 
-// Validate required environment variables
-if (!stripeSecretKey) {
-  throw new Error('Missing STRIPE_SECRET_KEY environment variable.');
-}
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variable.');
-}
-if (!supabaseServiceRoleKey) {
-  throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable.');
-}
-if (!webhookSecret) {
-  throw new Error('Missing STRIPE_WEBHOOK_SECRET environment variable.');
-}
-
-// Initialize Stripe
-const stripe = new Stripe(stripeSecretKey, {
-  apiVersion: '2024-12-18',
-});
-
-// Initialize Supabase clients
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+const getWebhookSecret = () => {
+  const { STRIPE_WEBHOOK_SECRET } = assertEnv();
+  return STRIPE_WEBHOOK_SECRET;
+};
 
 // Utility functions
 const jsonResponse = (statusCode: number, body: unknown) => ({
@@ -71,6 +46,7 @@ const jsonResponse = (statusCode: number, body: unknown) => ({
 
 // Idempotency check using Stripe event ID
 const isEventProcessed = async (eventId: string): Promise<boolean> => {
+  const supabase = getSupabaseClient();
   const { data } = await supabase
     .from('processed_events')
     .select('id')
@@ -81,9 +57,10 @@ const isEventProcessed = async (eventId: string): Promise<boolean> => {
 };
 
 const markEventAsProcessed = async (eventId: string): Promise<void> => {
+  const supabase = getSupabaseClient();
   await supabase
     .from('processed_events')
-    .insert({ 
+    .insert({
       stripe_event_id: eventId,
       processed_at: new Date().toISOString()
     })
@@ -93,6 +70,7 @@ const markEventAsProcessed = async (eventId: string): Promise<void> => {
 
 // Find latest assessment for email within 48 hours
 const findLatestAssessment = async (email: string): Promise<any | null> => {
+  const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('assessments')
     .select('*')
@@ -127,6 +105,7 @@ const mapPriceToTier = (priceId: string, metadata?: Record<string, string>): Mem
 
 // Find or create Supabase Auth user
 const findOrCreateAuthUser = async (email: string): Promise<string> => {
+  const supabaseAdmin = getSupabaseAdminClient();
   // First try to find existing user
   const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
   
@@ -177,6 +156,8 @@ const upsertProfileWithBackfill = async (
     stripe_customer_id: stripeCustomerId,
     updated_at: new Date().toISOString()
   };
+
+  const supabase = getSupabaseClient();
 
   // Back-fill from assessment data if available
   if (assessmentData) {
@@ -259,6 +240,7 @@ const upsertMembership = async (
   status: 'active' | 'inactive' | 'pending' = 'active',
   assessmentId?: string
 ): Promise<void> => {
+  const supabase = getSupabaseClient();
   const membershipData: any = {
     profile_id: profileId,
     tier,
@@ -294,6 +276,7 @@ const upsertSubscription = async (
   subscription: Stripe.Subscription,
   paymentMethod?: Stripe.PaymentMethod
 ): Promise<void> => {
+  const supabase = getSupabaseClient();
   const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id;
   const priceId = subscription.items.data[0]?.price?.id;
   const tier = priceId ? mapPriceIdToTier(priceId) : 'free';
@@ -341,6 +324,7 @@ const insertInvoice = async (
   profileId: string,
   invoice: Stripe.Invoice
 ): Promise<void> => {
+  const supabase = getSupabaseClient();
   const invoiceData = {
     profile_id: profileId,
     stripe_invoice_id: invoice.id,
@@ -373,6 +357,7 @@ const insertInvoice = async (
 
 // Handle payment method attachment
 const handlePaymentMethodAttached = async (paymentMethod: Stripe.PaymentMethod): Promise<void> => {
+  const supabase = getSupabaseClient();
   const customerId = typeof paymentMethod.customer === 'string' ? paymentMethod.customer : paymentMethod.customer?.id;
   
   if (!customerId) {
@@ -431,6 +416,9 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
     ? Buffer.from(event.body, 'base64').toString('utf8')
     : event.body;
 
+  const stripe = getStripe();
+  const webhookSecret = getWebhookSecret();
+
   let stripeEvent: Stripe.Event;
   try {
     stripeEvent = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
@@ -438,6 +426,8 @@ export const handler = async (event: Event, _context: Context): HandlerResult =>
     console.error('Stripe webhook signature verification failed', error);
     return jsonResponse(400, { error: 'Invalid signature' });
   }
+
+  const supabase = getSupabaseClient();
 
   try {
     // Idempotency check

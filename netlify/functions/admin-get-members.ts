@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { supabase } from '../lib/supabaseServer';
+import { getSupabaseClient } from '../lib/supabaseServer';
 import {
   type AdminAssessmentRow,
   type AdminMemberDocumentRow,
@@ -30,6 +30,8 @@ export const handler: Handler = async event => {
 
   // Placeholder: later we can validate admin auth from the Authorization header
   // const authHeader = event.headers.authorization || event.headers.Authorization;
+
+  const supabase = getSupabaseClient();
 
   const { data: profiles, error: profilesError } = await supabase
     .from<AdminProfileRow>('profiles')

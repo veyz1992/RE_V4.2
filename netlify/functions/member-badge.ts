@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { supabase } from '../lib/supabaseServer';
+import { getSupabaseClient } from '../lib/supabaseServer';
 
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
@@ -26,6 +26,8 @@ export const handler: Handler = async event => {
   if (!profileId) {
     return jsonResponse(400, { error: 'profileId is required' });
   }
+
+  const supabase = getSupabaseClient();
 
   const [{ data: membership, error: membershipError }, { data: profile, error: profileError }] = await Promise.all([
     supabase

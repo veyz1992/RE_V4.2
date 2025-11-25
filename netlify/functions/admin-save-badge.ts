@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { supabase } from '../lib/supabaseServer';
+import { getSupabaseClient } from '../lib/supabaseServer';
 
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
@@ -45,6 +45,8 @@ export const handler: Handler = async event => {
   }
 
   const badgeRating = badgeLabel ?? (rating !== null && rating !== undefined ? String(rating) : null);
+
+  const supabase = getSupabaseClient();
 
   const [membershipResult, profileResult] = await Promise.all([
     supabase

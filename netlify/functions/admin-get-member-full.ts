@@ -1,5 +1,5 @@
 import type { Handler } from '@netlify/functions';
-import { supabase } from '../lib/supabaseServer';
+import { getSupabaseClient } from '../lib/supabaseServer';
 
 const headers = {
   'Content-Type': 'application/json',
@@ -40,6 +40,8 @@ export const handler: Handler = async event => {
   if (!profileId) {
     return jsonResponse(400, { error: 'profileId is required' });
   }
+
+  const supabase = getSupabaseClient();
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')

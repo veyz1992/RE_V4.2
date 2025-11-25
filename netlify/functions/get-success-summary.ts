@@ -1,11 +1,18 @@
 import Stripe from 'stripe';
 import { assertEnv } from '../lib/assertEnv';
-import { supabase } from '../lib/supabaseServer';
+import { getSupabaseClient } from '../lib/supabaseServer';
 
-const { STRIPE_SECRET_KEY } = assertEnv();
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2024-06-20'
-});
+let stripe: Stripe | null = null;
+const getStripe = (): Stripe => {
+  if (!stripe) {
+    const { STRIPE_SECRET_KEY } = assertEnv();
+    stripe = new Stripe(STRIPE_SECRET_KEY, {
+      apiVersion: '2024-06-20'
+    });
+  }
+
+  return stripe;
+};
 
 const json = (status: number, body: unknown) => ({
   statusCode: status,
@@ -20,7 +27,7 @@ const json = (status: number, body: unknown) => ({
 
 export const handler = async (event: any) => {
   try {
-    const serverClient = supabase;
+    const serverClient = getSupabaseClient();
 
     // CORS preflight
     if (event.httpMethod === 'OPTIONS') {
@@ -56,7 +63,7 @@ export const handler = async (event: any) => {
     let metadataProfileId;
     
     try {
-      session = await stripe.checkout.sessions.retrieve(sessionId, {
+      session = await getStripe().checkout.sessions.retrieve(sessionId, {
         expand: ['customer']
       });
 
