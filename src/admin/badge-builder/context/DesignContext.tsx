@@ -1,6 +1,5 @@
-
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { DesignState, TextLayer, Layer, Template } from '../types';
+import React, { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { DesignState, Layer, Template } from '../types';
 import { INITIAL_LAYERS, DEFAULT_TEMPLATES } from '../constants';
 import { generateTemplateBackground } from '../utils/templateHelpers';
 
@@ -19,29 +18,23 @@ interface DesignContextType {
     applyTemplate: (templateId: string, company: string, location: string, rating: string) => void;
     updateLayer: (updatedLayer: Layer) => void;
     updateBackground: (file: File) => void;
-    saveCustomTemplate: (name: string) => void;
-    deleteCustomTemplate: (id: string) => void;
     importDesign: (file: File) => void;
     setStartupOpen: (isOpen: boolean) => void;
     setCodeModalOpen: (isOpen: boolean) => void;
     resetDesign: () => void;
-    
-    // Persistence Actions
-    saveDesign: () => void;
-    clearSavedDesign: () => void;
-    
-    // Backend Placeholders
-    saveDesignToBackend: () => Promise<void>;
-    loadDesignFromBackend: (designId: string) => Promise<void>;
-    listDesignsFromBackend: () => Promise<void>;
+    toggleSuccess: (show: boolean) => void;
   };
-  // Helper to get all available templates (default + custom)
-  availableTemplates: Template[]; 
+  availableTemplates: Template[];
+}
+
+interface DesignProviderProps {
+  children: ReactNode;
+  initialState?: Partial<DesignState>;
+  templates?: Template[];
+  onStateChange?: (state: DesignState) => void;
 }
 
 const DesignContext = createContext<DesignContextType | undefined>(undefined);
-
-const STORAGE_KEY_DESIGN = 'badgeDesigner.designState';
 
 const DEFAULT_STATE: DesignState = {
   templateId: 'standard-member',
@@ -55,48 +48,42 @@ const DEFAULT_STATE: DesignState = {
   customTemplates: []
 };
 
-export const DesignProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Initialize state from LocalStorage if available
-  const [state, setState] = useState<DesignState>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_DESIGN);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Merge with default state to ensure new properties are present
-        return { ...DEFAULT_STATE, ...parsed };
-      }
-    } catch (e) {
-      console.warn('Failed to load saved design:', e);
-    }
-    return DEFAULT_STATE;
-  });
+const buildInitialState = (initialState?: Partial<DesignState>): DesignState => ({
+  ...DEFAULT_STATE,
+  ...initialState,
+  layers: initialState?.layers ? [...initialState.layers] : [...DEFAULT_STATE.layers],
+  backgroundImage: initialState?.backgroundImage ?? DEFAULT_STATE.backgroundImage,
+});
 
+export const DesignProvider: React.FC<DesignProviderProps> = ({ children, initialState, templates, onStateChange }) => {
+  const [state, setState] = useState<DesignState>(() => buildInitialState(initialState));
   const [ui, setUi] = useState<UIState>({
-    isStartupOpen: !localStorage.getItem(STORAGE_KEY_DESIGN), // Only show startup if no saved design
+    isStartupOpen: false,
     isCodeModalOpen: false,
     isLoading: false,
     showSuccess: false,
     toastMessage: null
   });
 
-  // Persist state changes to LocalStorage automatically (Debounced slightly by nature of React updates)
+  const availableTemplates = useMemo(() => {
+    const provided = templates?.length ? templates : DEFAULT_TEMPLATES;
+    return provided;
+  }, [templates]);
+
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_DESIGN, JSON.stringify(state));
-  }, [state]);
+    setState(buildInitialState(initialState));
+  }, [initialState]);
+
+  useEffect(() => {
+    if (onStateChange) {
+      onStateChange(state);
+    }
+  }, [state, onStateChange]);
 
   const showToast = (message: string) => {
     setUi(prev => ({ ...prev, toastMessage: message }));
     setTimeout(() => setUi(prev => ({ ...prev, toastMessage: null })), 3000);
   };
-
-  // --- Template Helpers ---
-  
-  // Combine defaults and custom templates for easy access
-  const availableTemplates = [...DEFAULT_TEMPLATES, ...state.customTemplates];
-
-  const getActiveTemplate = () => availableTemplates.find(t => t.id === state.templateId) || DEFAULT_TEMPLATES[0];
-
-  // --- Actions ---
 
   const updateLayer = (updatedLayer: Layer) => {
     setState(prev => ({
@@ -127,35 +114,24 @@ export const DesignProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const isHighRating = rating === 'A' || rating === 'A+';
     const headerText = isHighRating ? "Restoration Expert" : "Restoration Professional";
-    
-    const template = availableTemplates.find(t => t.id === templateId) || DEFAULT_TEMPLATES[0];
-    
+
+    const template = availableTemplates.find(t => t.id === templateId) || availableTemplates[0] || DEFAULT_TEMPLATES[0];
+
     const configureLayers = (currentLayers: Layer[]) => {
-      // Determine which layer config source to use. 
-      // If it's a custom template, it has a 'layers' array (if based on DesignState structure) 
-      // OR it follows the DEFAULT_TEMPLATES structure (Record<string, config>).
-      // For this implementation, we normalize based on the 'layers' property type.
-      
-      // Simpler approach: We reconstruct from the template definition
-      
       return currentLayers.map(layer => {
         if (layer.type !== 'text') return layer;
 
-        // Helper to find config in either array (DesignState style) or object (Constants style)
         let config: any = null;
-        
+
         if (Array.isArray(template.layers)) {
-            // It's a custom template saved from state
             config = template.layers.find((l: any) => l.id === layer.id);
         } else {
-            // It's a default template from constants
             config = (template.layers as Record<string, any>)[layer.id];
         }
 
         if (!config) return { ...layer, enabled: false };
 
         let text = config.text || layer.text;
-        // Apply dynamic overrides
         if (layer.id === 'member-name') text = company;
         if (layer.id === 'location') text = location;
         if (layer.id === 'rating') text = rating;
@@ -182,12 +158,12 @@ export const DesignProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           letterSpacing: config.letterSpacing || 0,
           textTransform: config.textTransform || 'none',
           stroke: config.stroke || { enabled: false, color: '#000000', width: 1 }
-        } as TextLayer;
+        } as any;
       });
     };
 
     const finishApply = (bgImage: string, width: number, height: number) => {
-      const newLayers = configureLayers(INITIAL_LAYERS); // Reset to initial structure then apply config
+      const newLayers = configureLayers(INITIAL_LAYERS);
       setState(prev => ({
         ...prev,
         templateId: template.id,
@@ -217,7 +193,6 @@ export const DesignProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           try {
             finalBg = canvas.toDataURL('image/png');
           } catch (e) {
-             // CORS fail, fallback to URL
           }
         }
         finishApply(finalBg, img.width, img.height);
@@ -235,34 +210,6 @@ export const DesignProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  const saveCustomTemplate = (name: string) => {
-     const newTemplate: Template = {
-      id: `custom-${Date.now()}`,
-      name,
-      description: 'Custom user design',
-      badge: 'CST',
-      accentColor: 'from-purple-500 to-pink-500',
-      // Save current layers array as the configuration
-      layers: JSON.parse(JSON.stringify(state.layers)) as any, 
-      imageUrl: state.backgroundImage || undefined
-    };
-
-    setState(prev => ({
-      ...prev,
-      customTemplates: [...prev.customTemplates, newTemplate]
-    }));
-    
-    showToast("Template Saved Successfully");
-  };
-
-  const deleteCustomTemplate = (id: string) => {
-    setState(prev => ({
-        ...prev,
-        customTemplates: prev.customTemplates.filter(t => t.id !== id)
-    }));
-    showToast("Template Deleted");
-  };
-
   const importDesign = (file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -272,9 +219,7 @@ export const DesignProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           setState(prev => ({
               ...prev,
               ...parsed,
-              // Ensure we don't overwrite custom templates with the imported file's list
-              // unless we want to merge. For now, keep existing local templates.
-              customTemplates: prev.customTemplates 
+              customTemplates: prev.customTemplates
           }));
           showToast("Design Imported");
         } else {
@@ -288,66 +233,18 @@ export const DesignProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const resetDesign = () => {
-      setUi(prev => ({ ...prev, isStartupOpen: true }));
+      setState(buildInitialState(initialState));
   };
-
-  // --- Persistence Actions ---
-
-  const saveDesign = () => {
-    localStorage.setItem(STORAGE_KEY_DESIGN, JSON.stringify(state));
-    showToast("Design saved to browser storage");
-  };
-
-  const clearSavedDesign = () => {
-    if(window.confirm("Are you sure? This will clear your saved work and reset to defaults.")) {
-        localStorage.removeItem(STORAGE_KEY_DESIGN);
-        // Reset state but preserve custom templates if possible, 
-        // though the prompt implies "clear saved data". 
-        // We'll reset to DEFAULT_STATE but keep the custom templates currently in memory 
-        // if we assume those are valuable.
-        const currentCustom = state.customTemplates;
-        setState({ ...DEFAULT_STATE, customTemplates: currentCustom });
-        setUi(prev => ({ ...prev, isStartupOpen: true }));
-        showToast("Saved design cleared");
-    }
-  };
-
-  // --- Backend Placeholders ---
-
-  const saveDesignToBackend = async () => {
-    console.warn('Supabase integration: saveDesignToBackend not implemented yet');
-    return Promise.resolve();
-  };
-
-  const loadDesignFromBackend = async (designId: string) => {
-    console.warn('Supabase integration: loadDesignFromBackend not implemented yet', designId);
-    return Promise.resolve();
-  };
-
-  const listDesignsFromBackend = async () => {
-    console.warn('Supabase integration: listDesignsFromBackend not implemented yet');
-    return Promise.resolve();
-  };
-
 
   const actions = {
     applyTemplate,
     updateLayer,
     updateBackground,
-    saveCustomTemplate,
-    deleteCustomTemplate,
     importDesign,
     setStartupOpen: (isOpen: boolean) => setUi(prev => ({ ...prev, isStartupOpen: isOpen })),
     setCodeModalOpen: (isOpen: boolean) => setUi(prev => ({ ...prev, isCodeModalOpen: isOpen })),
     resetDesign,
     toggleSuccess: (show: boolean) => setUi(prev => ({ ...prev, showSuccess: show })),
-    
-    saveDesign,
-    clearSavedDesign,
-    
-    saveDesignToBackend,
-    loadDesignFromBackend,
-    listDesignsFromBackend
   };
 
   return (
