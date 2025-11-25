@@ -1,23 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Loader2, Pencil, Plus, RefreshCw, Save } from 'lucide-react';
-import { createBadgeTemplate, fetchBadgeTemplates, updateBadgeTemplate } from '@/lib/badges/service';
+import { fetchBadgeTemplates, type BadgeTemplateRow, upsertBadgeTemplate } from 'lib/badges/service';
 import BadgeBuilder from './BadgeBuilder';
 import { DesignProvider, useDesign } from './context/DesignContext';
 import { INITIAL_LAYERS, DEFAULT_TEMPLATES } from './constants';
 import type { DesignState, Template } from './types';
-
-interface BadgeTemplateRow {
-  id: string;
-  name: string;
-  badge_code?: string | null;
-  status?: string | null;
-  accent_color?: string | null;
-  description?: string | null;
-  svg_template?: string | null;
-  config?: unknown;
-  updated_at?: string | null;
-  created_at?: string | null;
-}
 
 interface TemplateFormState {
   name: string;
@@ -206,7 +193,7 @@ const AdminBadgeBuilderPage: React.FC = () => {
 
     if (fetchError) {
       setError(fetchError);
-    } else if (data) {
+    } else {
       setTemplates(data);
     }
     setLoading(false);
@@ -255,9 +242,7 @@ const AdminBadgeBuilderPage: React.FC = () => {
       config: { ...state, templateId: selectedTemplate?.id ?? state.templateId },
     } satisfies Partial<BadgeTemplateRow>;
 
-    const result = selectedTemplate?.id
-      ? await updateBadgeTemplate(selectedTemplate.id, payload)
-      : await createBadgeTemplate(payload);
+    const result = await upsertBadgeTemplate(payload);
 
     if (result.error) {
       setError(result.error);
