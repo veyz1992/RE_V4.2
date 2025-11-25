@@ -5,13 +5,17 @@ import { toBadgeTemplate } from '@src/lib/badges/model';
 import { supabase } from '../supabase';
 
 const BADGE_TEMPLATE_COLUMNS =
-  'id,name,badge_code,status,accent_color,description,svg_template,config,updated_at,created_at';
+  'id,name,badge_code,status,accent_color,accent_gradient,background_image_url,description,svg_template,config,design_config,updated_at,created_at';
 
 const normalizeSupabaseError = (error: PostgrestError | null, fallback: string): string | null => {
   if (!error) return null;
 
   if (error.code === '42P01' || error.message?.toLowerCase().includes('does not exist')) {
     return 'Badge templates table is missing in Supabase. Please run the latest migrations for admin badge builder support.';
+  }
+
+  if (error.code === '23505') {
+    return 'A badge with this code already exists. Please choose a unique badge code.';
   }
 
   if (error.code === '400') {
@@ -100,9 +104,11 @@ const extractTemplateEmbed = (
   return { html: null, style: embedStyle, script: embedScriptUrl };
 };
 
-export const fetchBadgeTemplates = async (): Promise<{ data: BadgeTemplateRow[]; error: string | null }> => {
+export const fetchBadgeTemplates = async (
+  supabaseClient: SupabaseClient = supabase,
+): Promise<{ data: BadgeTemplateRow[]; error: string | null }> => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from('badge_templates')
       .select(BADGE_TEMPLATE_COLUMNS)
       .order('updated_at', { ascending: false });
@@ -125,11 +131,25 @@ export const fetchBadgeTemplates = async (): Promise<{ data: BadgeTemplateRow[];
   }
 };
 
+export const fetchBadgeTemplatesForAdmin = async (
+  supabaseClient: SupabaseClient = supabase,
+): Promise<{ templates: BadgeTemplate[]; error: string | null }> => {
+  const { data, error } = await fetchBadgeTemplates(supabaseClient);
+
+  if (error) {
+    return { templates: [], error };
+  }
+
+  const templates = (data ?? []).map((row) => toBadgeTemplate(row));
+  return { templates, error: null };
+};
+
 export const upsertBadgeTemplate = async (
   payload: Partial<BadgeTemplateRow>,
+  supabaseClient: SupabaseClient = supabase,
 ): Promise<{ data: BadgeTemplateRow | null; error: string | null }> => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from('badge_templates')
       .upsert(payload, { onConflict: 'id' })
       .select(BADGE_TEMPLATE_COLUMNS)
@@ -152,9 +172,10 @@ export const upsertBadgeTemplate = async (
 
 export const deleteBadgeTemplate = async (
   id: string,
+  supabaseClient: SupabaseClient = supabase,
 ): Promise<{ success: boolean; error: string | null }> => {
   try {
-    const { error } = await supabase.from('badge_templates').delete().eq('id', id);
+    const { error } = await supabaseClient.from('badge_templates').delete().eq('id', id);
 
     const normalizedError = handleMissingTable(error, {
       fallback: 'Unable to delete badge template.',
@@ -174,7 +195,7 @@ export const deleteBadgeTemplate = async (
 export const fetchMemberBadgeSummary = async (
   supabaseClient: SupabaseClient,
   profileId: string,
-): Promise<MemberBadgeSummary | null> => {
+): Promise<{ badge: MemberBadgeSummary | null; error: string | null }> => {
   try {
     const { data: designRow, error: designError } = await supabaseClient
       .from('badge_designs')
@@ -190,11 +211,11 @@ export const fetchMemberBadgeSummary = async (
     });
 
     if (normalizedDesignError) {
-      throw new Error(normalizedDesignError);
+      return { badge: null, error: normalizedDesignError };
     }
 
     if (!designRow) {
-      return null;
+      return { badge: null, error: null };
     }
 
     const badgeView = mapRowToMemberBadgeView(designRow as BadgeDesignRow, getDefaultProfileUrl(profileId));
@@ -243,9 +264,9 @@ export const fetchMemberBadgeSummary = async (
       embedScriptUrl: templateEmbed.script ?? badgeView.embedScriptUrl ?? null,
     };
 
-    return summary;
+    return { badge: summary, error: null };
   } catch (err) {
     console.error('Unexpected error loading member badge summary', err);
-    throw err instanceof Error ? err : new Error('Unexpected error loading badge.');
+    return { badge: null, error: 'Unexpected error loading badge.' };
   }
 };

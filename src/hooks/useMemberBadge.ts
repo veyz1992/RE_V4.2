@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 
 interface UseMemberBadgeResult {
   badge: MemberBadgeSummary | null;
+  loading: boolean;
   isLoading: boolean;
   error: string | null;
 }
@@ -56,5 +57,5 @@ export function useMemberBadge(): UseMemberBadgeResult {
     };
   }, [supabase, profile?.id]);
 
-  return { badge, isLoading, error };
+  return { badge, isLoading, loading: isLoading, error };
 }

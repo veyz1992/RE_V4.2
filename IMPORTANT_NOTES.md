@@ -2,6 +2,11 @@
 
 This document contains critical information about the current state of the Restoration Expertise Assessment app.
 
+## 🏅 Badge builder updates
+- Admin badge builder now uses a three-column layout (templates, editor, preview) with searchable/filterable template sidebar, duplicate/archive actions, and clearer empty/error states.
+- A shared `BadgePreview` component aligns admin and member badge visuals with loading/error/embed states.
+- Badge services expose typed helpers for fetching/upserting templates and loading member badge summaries with 42P01-safe errors; the member badge hook consumes these helpers.
+
 ## 🚨 CRITICAL ENVIRONMENT VARIABLES
 
 ### Required for All Deploy Contexts:
