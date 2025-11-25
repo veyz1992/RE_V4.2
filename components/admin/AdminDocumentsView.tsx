@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { recalculateVerificationForProfile } from '@/lib/verification';
 import { useAuth } from '@src/context/AuthContext';
-import { ClipboardIcon, CheckCircleIcon, XMarkIcon } from '../icons';
+import { ChevronDownIcon, ClipboardIcon, CheckCircleIcon, XMarkIcon } from '../icons';
 
 interface AdminDocumentsViewProps {
     showToast: (message: string, type: 'success' | 'error') => void;
@@ -46,6 +46,19 @@ interface AdminDocument {
     expiresAt: string | null;
     createdAt: string | null;
 }
+
+interface MemberDocumentGroup {
+    profileId: string;
+    companyName: string | null;
+    email: string | null;
+    documents: AdminDocument[];
+    pendingCount: number;
+    verifiedCount: number;
+    rejectedCount: number;
+    latestUpload: string | null;
+}
+
+type FilterOption = 'all' | 'needs_review' | 'verified';
 
 const formatDateTime = (value?: string | null): string => {
     if (!value) {
@@ -110,6 +123,8 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
     const [error, setError] = useState<string | null>(null);
     const [updatingId, setUpdatingId] = useState<string | null>(null);
     const [profileName, setProfileName] = useState<string | null>(null);
+    const [filter, setFilter] = useState<FilterOption>('all');
+    const [expandedProfiles, setExpandedProfiles] = useState<Record<string, boolean>>({});
 
     const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
     const profileIdFromQuery = searchParams.get('profileId');
@@ -259,6 +274,95 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
         [documents],
     );
 
+    const groupedDocuments = useMemo<MemberDocumentGroup[]>(() => {
+        const groups = new Map<string, MemberDocumentGroup>();
+
+        const resolveDate = (value: string | null | undefined) => (value ? new Date(value).getTime() : -Infinity);
+
+        documents.forEach((document) => {
+            const latestUpload = document.uploadedAt ?? document.createdAt ?? null;
+            const existing = groups.get(document.profileId);
+
+            if (!existing) {
+                groups.set(document.profileId, {
+                    profileId: document.profileId,
+                    companyName: document.companyName ?? null,
+                    email: document.email ?? null,
+                    documents: [document],
+                    pendingCount: document.status === 'pending' ? 1 : 0,
+                    verifiedCount: document.status === 'approved' ? 1 : 0,
+                    rejectedCount: document.status === 'rejected' ? 1 : 0,
+                    latestUpload,
+                });
+                return;
+            }
+
+            existing.documents.push(document);
+
+            if (document.status === 'pending') existing.pendingCount += 1;
+            if (document.status === 'approved') existing.verifiedCount += 1;
+            if (document.status === 'rejected') existing.rejectedCount += 1;
+
+            const currentLatest = existing.latestUpload;
+            const isNewer = resolveDate(latestUpload) > resolveDate(currentLatest);
+            if (isNewer) {
+                existing.latestUpload = latestUpload;
+            }
+        });
+
+        return Array.from(groups.values()).sort((first, second) => {
+            const firstDate = first.latestUpload ? new Date(first.latestUpload).getTime() : 0;
+            const secondDate = second.latestUpload ? new Date(second.latestUpload).getTime() : 0;
+            return secondDate - firstDate;
+        });
+    }, [documents]);
+
+    const filterCounts = useMemo(
+        () =>
+            groupedDocuments.reduce(
+                (accumulator, group) => {
+                    if (group.pendingCount > 0) {
+                        accumulator.needsReview += 1;
+                    }
+                    if (group.pendingCount === 0 && group.verifiedCount > 0) {
+                        accumulator.verified += 1;
+                    }
+
+                    return accumulator;
+                },
+                { needsReview: 0, verified: 0 },
+            ),
+        [groupedDocuments],
+    );
+
+    const filteredGroups = useMemo(() => {
+        if (filter === 'all') {
+            return groupedDocuments;
+        }
+
+        if (filter === 'needs_review') {
+            return groupedDocuments.filter((group) => group.pendingCount > 0);
+        }
+
+        return groupedDocuments.filter((group) => group.pendingCount === 0 && group.verifiedCount > 0);
+    }, [filter, groupedDocuments]);
+
+    const toggleProfile = (profileId: string) => {
+        setExpandedProfiles((current) => ({
+            ...current,
+            [profileId]: !current[profileId],
+        }));
+    };
+
+    const formatStatusBadge = (status: DocumentStatus) => {
+        const baseClasses = 'px-3 py-1 text-xs font-bold rounded-full uppercase';
+
+        if (status === 'approved') return `${baseClasses} bg-success/10 text-success`;
+        if (status === 'rejected') return `${baseClasses} bg-error/10 text-error`;
+        if (status === 'expired') return `${baseClasses} bg-warning/10 text-warning-dark`;
+        return `${baseClasses} bg-info/10 text-info`;
+    };
+
     return (
         <div className="p-4 md:p-6 lg:p-8 animate-fade-in space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -278,6 +382,51 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
                         {isLoading ? 'Refreshing…' : 'Refresh'}
                     </button>
                 </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+                <button
+                    type="button"
+                    onClick={() => setFilter('all')}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold shadow-sm transition ${
+                        filter === 'all'
+                            ? 'bg-info text-white border-info'
+                            : 'bg-white text-charcoal border-gray-border hover:bg-gray-50'
+                    }`}
+                >
+                    All
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white/20 border border-white/30 text-inherit">
+                        {groupedDocuments.length}
+                    </span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setFilter('needs_review')}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold shadow-sm transition ${
+                        filter === 'needs_review'
+                            ? 'bg-warning-dark text-white border-warning-dark'
+                            : 'bg-white text-charcoal border-gray-border hover:bg-gray-50'
+                    }`}
+                >
+                    Needs review
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white/20 border border-white/30 text-inherit">
+                        {filterCounts.needsReview}
+                    </span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setFilter('verified')}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold shadow-sm transition ${
+                        filter === 'verified'
+                            ? 'bg-success text-white border-success'
+                            : 'bg-white text-charcoal border-gray-border hover:bg-gray-50'
+                    }`}
+                >
+                    Verified
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white/20 border border-white/30 text-inherit">
+                        {filterCounts.verified}
+                    </span>
+                </button>
             </div>
 
             {activeProfileFilter && (
@@ -302,118 +451,108 @@ const AdminDocumentsView: React.FC<AdminDocumentsViewProps> = ({ showToast, prof
                 <div className="rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">{error}</div>
             )}
 
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-border overflow-hidden">
-                <div className="overflow-x-auto hidden md:block">
-                    <table className="min-w-full">
-                        <thead className="bg-gray-light/50">
-                            <tr>
-                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Member</th>
-                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Document</th>
-                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Uploaded</th>
-                                <th className="p-4 text-left text-xs font-bold text-gray-dark uppercase">Notes</th>
-                                <th className="p-4 text-right text-xs font-bold text-gray-dark uppercase">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-border">
-                            {documents.map((document) => (
-                                <tr key={document.id} className="align-top">
-                                    <td className="p-4 space-y-1">
-                                        <p className="font-semibold text-charcoal">{document.companyName ?? 'Unknown company'}</p>
-                                        <p className="text-sm text-gray-dark">{document.email ?? '—'}</p>
-                                        <p className="text-xs text-gray-500">ID: {document.profileId}</p>
-                                        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{document.status}</p>
-                                    </td>
-                                    <td className="p-4">
-                                        <p className="font-semibold text-charcoal">{getDocumentLabel(document.docType)}</p>
-                                        <p className="text-sm text-gray-dark">{document.docType ?? '—'}</p>
-                                    </td>
-                                    <td className="p-4 text-sm text-gray-dark">{formatDateTime(document.uploadedAt)}</td>
-                                    <td className="p-4">
-                                        <textarea
-                                            value={notesByDocument[document.id] ?? ''}
-                                            onChange={(event) => handleNoteChange(document.id, event.target.value)}
-                                            rows={3}
-                                            className="w-full border border-gray-border rounded-lg text-sm p-2 focus:outline-none focus:ring-2 focus:ring-info"
-                                            placeholder="Add an internal note…"
-                                        ></textarea>
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex items-center justify-end gap-3">
-                                            <button
-                                                type="button"
-                                                onClick={() => updateDocumentStatus(document, 'approved')}
-                                                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-success/90 text-white text-sm font-semibold shadow-sm hover:bg-success"
-                                                disabled={updatingId === document.id}
-                                            >
-                                                <CheckCircleIcon className="w-4 h-4" /> Approve
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => updateDocumentStatus(document, 'rejected')}
-                                                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-error/90 text-white text-sm font-semibold shadow-sm hover:bg-error"
-                                                disabled={updatingId === document.id}
-                                            >
-                                                <XMarkIcon className="w-4 h-4" /> Reject
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+            <div className="space-y-4">
+                {filteredGroups.map((group) => {
+                    const isExpanded = expandedProfiles[group.profileId] ?? false;
 
-                <div className="md:hidden divide-y divide-gray-border">
-                            {documents.map((document) => (
-                                <div key={document.id} className="p-4 space-y-3">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <p className="font-semibold text-charcoal">{getDocumentLabel(document.docType)}</p>
-                                            <p className="text-sm text-gray-dark">{document.docType ?? '—'}</p>
+                    return (
+                        <div key={group.profileId} className="bg-white rounded-2xl shadow-lg border border-gray-border overflow-hidden">
+                            <button
+                                type="button"
+                                onClick={() => toggleProfile(group.profileId)}
+                                className="w-full px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-left hover:bg-gray-50"
+                            >
+                                <div className="space-y-0.5">
+                                    <p className="font-semibold text-charcoal text-lg">{group.companyName ?? 'Unknown company'}</p>
+                                    <p className="text-sm text-gray-dark">{group.email ?? '—'}</p>
+                                    <p className="text-xs text-gray-500">Profile ID: {group.profileId}</p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-info/10 text-info text-xs font-bold">
+                                        Pending {group.pendingCount}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-success/10 text-success text-xs font-bold">
+                                        Verified {group.verifiedCount}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-error/10 text-error text-xs font-bold">
+                                        Rejected {group.rejectedCount}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold">
+                                        Latest upload: {formatDateTime(group.latestUpload)}
+                                    </span>
+                                    <span className="ml-2 hidden sm:inline-flex">
+                                        <ChevronDownIcon
+                                            className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-180 text-info' : 'text-gray-500'}`}
+                                        />
+                                    </span>
+                                </div>
+                            </button>
+
+                            {isExpanded && (
+                                <div className="border-t border-gray-border divide-y divide-gray-border">
+                                    {group.documents.map((document) => (
+                                        <div key={document.id} className="p-4 space-y-4">
+                                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center gap-3">
+                                                        <div>
+                                                            <p className="font-semibold text-charcoal text-lg">
+                                                                {getDocumentLabel(document.docType)}
+                                                            </p>
+                                                            <p className="text-sm text-gray-dark">{document.docType ?? '—'}</p>
+                                                        </div>
+                                                        <span className={formatStatusBadge(document.status)}>{document.status}</span>
+                                                    </div>
+                                                    <p className="text-sm text-gray-dark">Uploaded {formatDateTime(document.uploadedAt)}</p>
+                                                </div>
+                                                <div className="flex items-center gap-2 sm:self-start">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateDocumentStatus(document, 'approved')}
+                                                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-success/90 text-white text-sm font-semibold shadow-sm hover:bg-success"
+                                                        disabled={updatingId === document.id}
+                                                    >
+                                                        <CheckCircleIcon className="w-4 h-4" /> Approve
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateDocumentStatus(document, 'rejected')}
+                                                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-error/90 text-white text-sm font-semibold shadow-sm hover:bg-error"
+                                                        disabled={updatingId === document.id}
+                                                    >
+                                                        <XMarkIcon className="w-4 h-4" /> Reject
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-semibold text-charcoal mb-2">Internal notes</label>
+                                                <textarea
+                                                    value={notesByDocument[document.id] ?? ''}
+                                                    onChange={(event) => handleNoteChange(document.id, event.target.value)}
+                                                    rows={3}
+                                                    className="w-full border border-gray-border rounded-lg text-sm p-2 focus:outline-none focus:ring-2 focus:ring-info"
+                                                    placeholder="Add an internal note…"
+                                                ></textarea>
+                                            </div>
                                         </div>
-                                        <span className="px-3 py-1 text-xs font-bold rounded-full bg-gray-light text-gray-dark uppercase">
-                                            {document.status}
-                                        </span>
-                                    </div>
-                                    <p className="text-sm text-gray-dark">Member: {document.companyName ?? 'Unknown company'}</p>
-                                    <p className="text-sm text-gray-dark">Email: {document.email ?? '—'}</p>
-                                    <p className="text-xs text-gray-500">Profile ID: {document.profileId}</p>
-                                    <p className="text-sm text-gray-dark">Uploaded {formatDateTime(document.uploadedAt)}</p>
-                                    <textarea
-                                        value={notesByDocument[document.id] ?? ''}
-                                onChange={(event) => handleNoteChange(document.id, event.target.value)}
-                                rows={3}
-                                className="w-full border border-gray-border rounded-lg text-sm p-2 focus:outline-none focus:ring-2 focus:ring-info"
-                                placeholder="Add an internal note…"
-                            ></textarea>
-                            <div className="flex items-center justify-end gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => updateDocumentStatus(document, 'approved')}
-                                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-success/90 text-white text-sm font-semibold shadow-sm hover:bg-success"
-                                    disabled={updatingId === document.id}
-                                >
-                                    <CheckCircleIcon className="w-4 h-4" /> Approve
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => updateDocumentStatus(document, 'rejected')}
-                                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-error/90 text-white text-sm font-semibold shadow-sm hover:bg-error"
-                                    disabled={updatingId === document.id}
-                                >
-                                    <XMarkIcon className="w-4 h-4" /> Reject
-                                </button>
-                            </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    ))}
-                </div>
+                    );
+                })}
             </div>
 
-            {documents.length === 0 && !isLoading && (
+            {filteredGroups.length === 0 && !isLoading && (
                 <div className="text-center py-16 bg-white rounded-2xl shadow-lg border border-gray-border">
                     <ClipboardIcon className="w-12 h-12 mx-auto text-gray-300" />
                     <h3 className="mt-4 text-xl font-bold text-charcoal">No documents found</h3>
-                    <p className="text-gray-dark mt-1">There are no member uploads to review right now.</p>
+                    <p className="text-gray-dark mt-1">
+                        {documents.length === 0
+                            ? 'There are no member uploads to review right now.'
+                            : 'No members match the selected filter.'}
+                    </p>
                 </div>
             )}
         </div>
