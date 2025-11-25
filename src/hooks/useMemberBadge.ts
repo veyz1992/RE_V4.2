@@ -32,6 +32,14 @@ export function useMemberBadge(): UseMemberBadgeResult {
 
       try {
         const summary = await fetchMemberBadgeSummary(supabase, profileId);
+        const { badge: summary, error: badgeError } = await fetchMemberBadgeSummary(profileId);
+
+        if (badgeError) {
+          setError(badgeError);
+          setBadge(null);
+          return;
+        }
+
         setBadge(summary);
       } catch (err: any) {
         console.error('Failed to load member badge', err);
