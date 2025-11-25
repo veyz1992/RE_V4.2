@@ -2,6 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@src/context/AuthContext';
 import type { MemberBadgeSummary } from '@/lib/badges/model';
 import { fetchMemberBadgeSummaryForProfile } from '@/lib/badges/service';
+import { useEffect, useState } from 'react';
+import { useAuth } from '@src/context/AuthContext';
+import type { MemberBadgeSummary } from '@/lib/badges/model';
+import { fetchMemberBadgeSummary } from '@/lib/badges/service';
+import { supabase } from '@/lib/supabase';
 
 // This hook fetches the active badge summary for the current profile using the Supabase-backed
 // badge service so the dashboard can render embed-ready metadata.
@@ -36,6 +41,20 @@ export function useMemberBadge(): UseMemberBadgeResult {
       if (badgeError) {
         console.error('Failed to load member badge summary', badgeError);
         setError('Failed to load badge');
+      try {
+        const summary = await fetchMemberBadgeSummary(supabase, profileId);
+        const { badge: summary, error: badgeError } = await fetchMemberBadgeSummary(profileId);
+
+        if (badgeError) {
+          setError(badgeError);
+          setBadge(null);
+          return;
+        }
+
+        setBadge(summary);
+      } catch (err: any) {
+        console.error('Failed to load member badge', err);
+        setError(err?.message ?? 'Failed to load badge');
         setBadge(null);
       } else {
         setError(null);
