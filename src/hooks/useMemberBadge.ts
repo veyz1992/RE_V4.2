@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { FUNCTION_ENDPOINTS } from '@/lib/functions';
 import { useAuth } from '@src/context/AuthContext';
-import type { MemberBadgeView } from '@/lib/badges';
 import type { MemberBadgeSummary } from '@/lib/badges/model';
+import { fetchMemberBadgeSummary } from '@/lib/badges/service';
+import { supabase } from '@/lib/supabase';
 
-// This hook now fetches the active badge for the current profile from the Netlify function
-// /.netlify/functions/member-badge, which reads from the Supabase badge_designs table.
+// This hook fetches the active badge summary for the current profile using the Supabase-backed
+// badge service so the dashboard can render embed-ready metadata.
 interface UseMemberBadgeResult {
   badge: MemberBadgeSummary | null;
   isLoading: boolean;
@@ -31,34 +31,8 @@ export function useMemberBadge(): UseMemberBadgeResult {
       setError(null);
 
       try {
-        const url = `${FUNCTION_ENDPOINTS.MEMBER_BADGE}?profileId=${encodeURIComponent(profileId)}`;
-        const res = await fetch(url, { method: 'GET' });
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.error || `Request failed with status ${res.status}`);
-        }
-
-        const data: { badge: MemberBadgeView | null } = await res.json();
-
-        if (!data.badge) {
-          setBadge(null);
-        } else {
-          const mapped: MemberBadgeSummary = {
-            label: data.badge.badgeLabel,
-            code: data.badge.badgeCode ?? null,
-            status: data.badge.status,
-            imageLightUrl: data.badge.imageLightUrl,
-            imageDarkUrl: data.badge.imageDarkUrl,
-            profileUrl: data.badge.profileUrl,
-            rating: data.badge.rating,
-            svg: data.badge.svg ?? null,
-            embedHtml: data.badge.embedHtml ?? null,
-            embedStyle: data.badge.embedStyle ?? null,
-            embedScriptUrl: data.badge.embedScriptUrl ?? null,
-          };
-          setBadge(mapped);
-        }
+        const summary = await fetchMemberBadgeSummary(supabase, profileId);
+        setBadge(summary);
       } catch (err: any) {
         console.error('Failed to load member badge', err);
         setError(err?.message ?? 'Failed to load badge');
