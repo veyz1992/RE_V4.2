@@ -1,3 +1,7 @@
+import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '@src/context/AuthContext';
+import type { MemberBadgeSummary } from '@/lib/badges/model';
+import { fetchMemberBadgeSummaryForProfile } from '@/lib/badges/service';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@src/context/AuthContext';
 import type { MemberBadgeSummary } from '@/lib/badges/model';
@@ -10,6 +14,7 @@ interface UseMemberBadgeResult {
   badge: MemberBadgeSummary | null;
   isLoading: boolean;
   error: string | null;
+  refetch: () => Promise<void>;
 }
 
 export function useMemberBadge(): UseMemberBadgeResult {
@@ -19,17 +24,23 @@ export function useMemberBadge(): UseMemberBadgeResult {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchBadge = async () => {
-      if (!profileId) {
-        setBadge(null);
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
+  const fetchBadge = useCallback(async () => {
+    if (!profileId) {
+      setBadge(null);
       setError(null);
+      setIsLoading(false);
+      return;
+    }
 
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { badge: badgeSummary, error: badgeError } = await fetchMemberBadgeSummaryForProfile(profileId);
+
+      if (badgeError) {
+        console.error('Failed to load member badge summary', badgeError);
+        setError('Failed to load badge');
       try {
         const summary = await fetchMemberBadgeSummary(supabase, profileId);
         const { badge: summary, error: badgeError } = await fetchMemberBadgeSummary(profileId);
@@ -45,13 +56,22 @@ export function useMemberBadge(): UseMemberBadgeResult {
         console.error('Failed to load member badge', err);
         setError(err?.message ?? 'Failed to load badge');
         setBadge(null);
-      } finally {
-        setIsLoading(false);
+      } else {
+        setError(null);
+        setBadge(badgeSummary);
       }
-    };
-
-    fetchBadge();
+    } catch (err) {
+      console.error('Failed to load member badge summary', err);
+      setError('Failed to load badge');
+      setBadge(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, [profileId]);
 
-  return { badge, isLoading, error };
+  useEffect(() => {
+    fetchBadge();
+  }, [fetchBadge]);
+
+  return { badge, isLoading, error, refetch: fetchBadge };
 }
