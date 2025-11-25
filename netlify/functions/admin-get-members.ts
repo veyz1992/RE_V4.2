@@ -6,7 +6,9 @@ import {
   type AdminMembershipRow,
   type AdminProfileRow,
   type AdminSubscriptionRow,
+  type AdminServiceRequestRow,
 } from '../../components/admin/adminUtils';
+import { deriveMemberHelperOutputs, REQUIRED_DOCUMENT_TYPES } from '../../lib/memberHelperOutputs';
 
 const jsonResponse = (statusCode: number, body: unknown) => ({
   statusCode,
@@ -81,13 +83,30 @@ export const handler: Handler = async event => {
 
   const { data: memberDocuments, error: memberDocumentsError } = await supabase
     .from<AdminMemberDocumentRow>('member_documents')
-    .select('profile_id, status')
-    .eq('status', 'pending')
+    .select('profile_id, status, doc_type')
+    .in('doc_type', REQUIRED_DOCUMENT_TYPES)
     .in('profile_id', profileIds);
 
   if (memberDocumentsError) {
     console.error('[admin-get-members] failed to fetch member documents', memberDocumentsError);
   }
+
+  const { data: serviceRequests, error: serviceRequestsError } = await supabase
+    .from<AdminServiceRequestRow>('service_requests')
+    .select('profile_id, status')
+    .in('profile_id', profileIds);
+
+  if (serviceRequestsError) {
+    console.error('[admin-get-members] failed to fetch service requests', serviceRequestsError);
+  }
+
+  const helperOutputsByProfile = new Map(
+    profiles.map((profile) => {
+      const profileDocuments = (memberDocuments ?? []).filter((doc) => doc.profile_id === profile.id);
+      const profileRequests = (serviceRequests ?? []).filter((request) => request.profile_id === profile.id);
+      return [profile.id, deriveMemberHelperOutputs(profileDocuments, profileRequests)];
+    }),
+  );
 
   return jsonResponse(200, {
     profiles,
@@ -95,5 +114,7 @@ export const handler: Handler = async event => {
     assessments: assessments ?? [],
     subscriptions: subscriptions ?? [],
     memberDocuments: memberDocuments ?? [],
+    serviceRequests: serviceRequests ?? [],
+    helperOutputs: Object.fromEntries(helperOutputsByProfile),
   });
 };

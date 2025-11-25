@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, UserCircleIcon, ClipboardIcon } from '../icons';
+import { BriefcaseIcon, ClipboardIcon, EyeIcon, MagnifyingGlassIcon, PencilSquareIcon, UserCircleIcon } from '../icons';
 import MemberDetailDrawer from './MemberDetailDrawer';
 import ImpersonateModal from './ImpersonateModal';
 import { AdminMember } from './types';
@@ -8,19 +8,22 @@ import {
     type AdminMemberDocumentRow,
     type AdminMembershipRow,
     type AdminProfileRow,
+    type AdminServiceRequestRow,
     type AdminSubscriptionRow,
     getLastAssessmentInfo,
     getMemberStatus,
     getVerificationStatus,
 } from './adminUtils';
+import { deriveMemberHelperOutputs, type MemberHelperOutputs } from '../../lib/memberHelperOutputs';
 
 interface ClientManagementProps {
     showToast: (message: string, type: 'success' | 'error') => void;
     onSelectMember?: (member: AdminMember) => void;
     onNavigateToDocuments?: (profileId: string) => void;
+    onNavigateToRequests?: (profileId: string) => void;
 }
 
-const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelectMember, onNavigateToDocuments }) => {
+const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelectMember, onNavigateToDocuments, onNavigateToRequests }) => {
     const [members, setMembers] = useState<AdminMember[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
@@ -39,6 +42,8 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
         assessments: AdminAssessmentRow[];
         subscriptions: AdminSubscriptionRow[];
         memberDocuments: AdminMemberDocumentRow[];
+        serviceRequests: AdminServiceRequestRow[];
+        helperOutputs: Record<string, MemberHelperOutputs>;
     }
 
     useEffect(() => {
@@ -94,14 +99,22 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                         return acc;
                     }, {});
 
+                    const requestsByProfileId = (data.serviceRequests ?? []).reduce<Record<string, AdminServiceRequestRow[]>>((acc, request) => {
+                        acc[request.profile_id] = acc[request.profile_id] ?? [];
+                        acc[request.profile_id].push(request);
+                        return acc;
+                    }, {});
+
                     const mappedMembers: AdminMember[] = data.profiles.map(profile => {
                         const membership = membershipByProfileId[profile.id];
                         const subscription = subscriptionByProfileId[profile.id];
                         const documents = documentsByProfileId[profile.id] ?? [];
+                        const serviceRequests = requestsByProfileId[profile.id] ?? [];
                         const { lastAssessment, lastAssessmentDate, hasAnyAssessment, hasNewAssessment } = getLastAssessmentInfo(profile, data.assessments ?? []);
 
                         const status = getMemberStatus(profile, membership, subscription);
                         const verificationStatus = getVerificationStatus(profile, membership, documents);
+                        const helperOutputs = data.helperOutputs?.[profile.id] ?? deriveMemberHelperOutputs(documents, serviceRequests);
                         const location = profile.city && profile.state
                             ? `${profile.city}, ${profile.state}`
                             : profile.city || profile.state || null;
@@ -128,13 +141,14 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                             renewalDate: null,
                             joinDate: profile.created_at ?? null,
                             mrr: null,
-                            pendingDocs: null,
-                            openRequests: null,
+                            pendingDocs: helperOutputs?.documents.pendingRequiredCount ?? null,
+                            openRequests: helperOutputs?.requests.openCount ?? null,
                             hasAnyAssessment,
                             lastAssessmentDate,
                             hasNewAssessment,
-                            pendingItems,
+                            pendingItems: helperOutputs?.documents.pendingRequiredCount ?? pendingItems,
                             hasActiveSubscription: subscription?.status === 'active',
+                            helperOutputs,
                         };
                     });
 
@@ -359,6 +373,8 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                     member={selectedMember}
                     onClose={() => setSelectedMember(null)}
                     onMemberUpdated={handleUpdateMember}
+                    onNavigateToDocuments={onNavigateToDocuments}
+                    onNavigateToRequests={onNavigateToRequests}
                 />
             )}
             <ImpersonateModal 
@@ -433,7 +449,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                     <SortableHeader sortKey="status" label="Status" />
                                     <SortableHeader sortKey="mrr" label="MRR" />
                                     <SortableHeader sortKey="renewalDate" label="Renewal" />
-                                    <th className="px-4 py-3 text-left text-xs font-bold text-charcoal uppercase tracking-wider">Pending</th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-charcoal uppercase tracking-wider">Docs / Requests</th>
                                     <th className="px-4 py-3 text-right text-xs font-bold text-charcoal uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
@@ -461,6 +477,17 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                     const renewalDisplay = member.renewalDate || '—';
                                     const lastAssessmentDisplay = formatDate(member.lastAssessmentDate ?? null);
                                     const pendingDisplay = member.pendingItems ?? 0;
+                                    const helperOutputs = member.helperOutputs;
+                                    const docsChipClass = helperOutputs
+                                        ? helperOutputs.documents.status === 'verified'
+                                            ? 'bg-success/10 text-success'
+                                            : helperOutputs.documents.status === 'pending'
+                                                ? 'bg-warning/10 text-warning'
+                                                : 'bg-error/10 text-error'
+                                        : 'bg-gray-100 text-gray-dark';
+                                    const requestsChipClass = helperOutputs && (helperOutputs.requests.openCount > 0)
+                                        ? 'bg-warning/10 text-warning'
+                                        : 'bg-success/10 text-success';
 
                                     return (
                                         <tr key={member.id} className="hover:bg-gray-light/50">
@@ -477,17 +504,22 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                             <td className="p-4 whitespace-nowrap">{mrrDisplay}</td>
                                             <td className="p-4 whitespace-nowrap text-sm">{renewalDisplay}</td>
                                             <td className="p-4 whitespace-nowrap text-sm">
-                                                {pendingDisplay > 0 ? (
+                                                <div className="flex flex-col gap-1">
                                                     <button
                                                         type="button"
                                                         onClick={() => onNavigateToDocuments?.(member.id)}
-                                                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-info/10 text-info border border-info/40 hover:bg-info/20 hover:text-info-dark transition cursor-pointer"
+                                                        className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full border transition ${docsChipClass} ${onNavigateToDocuments ? 'hover:opacity-90' : ''}`}
                                                     >
-                                                        {pendingDisplay}
+                                                        Docs: {helperOutputs?.documents.label ?? `${pendingDisplay} pending`}
                                                     </button>
-                                                ) : (
-                                                    <span>{pendingDisplay}</span>
-                                                )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onNavigateToRequests?.(member.id)}
+                                                        className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full border ${requestsChipClass} ${onNavigateToRequests ? 'hover:opacity-90' : ''}`}
+                                                    >
+                                                        Requests: {helperOutputs?.requests.label ?? `${member.openRequests ?? 0} open`}
+                                                    </button>
+                                                </div>
                                             </td>
                                             <td className="p-4 whitespace-nowrap text-right text-sm font-medium">
                                                 <div className="flex justify-end gap-1">
@@ -499,6 +531,13 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                                         title="View documents"
                                                     >
                                                         <ClipboardIcon className="w-5 h-5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => onNavigateToRequests?.(member.id)}
+                                                        className="p-2 text-gray-dark hover:text-info rounded-full"
+                                                        title="View service requests"
+                                                    >
+                                                        <BriefcaseIcon className="w-5 h-5" />
                                                     </button>
                                                     <button onClick={() => openImpersonateModal(member)} className="p-2 text-gray-dark hover:text-info rounded-full" title="Impersonate"><UserCircleIcon className="w-5 h-5"/></button>
                                                 </div>
@@ -528,6 +567,7 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                         const renewalDisplay = member.renewalDate || '—';
                         const lastAssessmentDisplay = formatDate(member.lastAssessmentDate ?? null);
                         const pendingDisplay = member.pendingItems ?? 0;
+                        const helperOutputs = member.helperOutputs;
 
                         return (
                             <div key={member.id} className="bg-white rounded-xl shadow-lg border border-gray-border p-4">
@@ -547,20 +587,22 @@ const ClientManagement: React.FC<ClientManagementProps> = ({ showToast, onSelect
                                         <p className="text-sm text-gray-dark">MRR: <span className="font-semibold text-charcoal">{mrrDisplay}</span></p>
                                         <p className="text-sm text-gray-dark">Renews: <span className="font-semibold text-charcoal">{renewalDisplay}</span></p>
                                         <p className="text-sm text-gray-dark">Last assessment: <span className="font-semibold text-charcoal">{lastAssessmentDisplay}</span></p>
-                                        <p className="text-sm text-gray-dark">
-                                            Pending:{' '}
-                                            {pendingDisplay > 0 ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => onNavigateToDocuments?.(member.id)}
-                                                    className="ml-1 inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-info/10 text-info border border-info/40 hover:bg-info/20 hover:text-info-dark transition cursor-pointer"
-                                                >
-                                                    {pendingDisplay}
-                                                </button>
-                                            ) : (
-                                                <span className="font-semibold text-charcoal">{pendingDisplay}</span>
-                                            )}
-                                        </p>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => onNavigateToDocuments?.(member.id)}
+                                                className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full border ${helperOutputs ? (helperOutputs.documents.status === 'verified' ? 'bg-success/10 text-success' : helperOutputs.documents.status === 'pending' ? 'bg-warning/10 text-warning' : 'bg-error/10 text-error') : 'bg-gray-100 text-gray-dark'}`}
+                                            >
+                                                Docs: {helperOutputs?.documents.label ?? `${pendingDisplay} pending`}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => onNavigateToRequests?.(member.id)}
+                                                className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full border ${helperOutputs && helperOutputs.requests.openCount > 0 ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'}`}
+                                            >
+                                                Requests: {helperOutputs?.requests.label ?? `${member.openRequests ?? 0} open`}
+                                            </button>
+                                        </div>
                                     </div>
                                     <button onClick={() => handleSelectMember(member)} className="py-2 px-4 bg-info/10 text-info font-bold rounded-lg">View</button>
                                 </div>

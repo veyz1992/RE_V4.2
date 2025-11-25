@@ -12,6 +12,7 @@ import { ClipboardIcon, ChevronDownIcon } from '../icons';
 
 interface AdminServiceRequestsProps {
     showToast: (message: string, type: 'success' | 'error') => void;
+    profileIdFilter?: string | null;
 }
 
 interface SupabaseProfileRow {
@@ -182,7 +183,7 @@ const STATUS_BADGE_CLASSES: Record<ServiceRequestStatus, string> = {
     canceled: 'bg-gray-200 text-gray-500',
 };
 
-const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }) => {
+const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast, profileIdFilter }) => {
     const { session } = useAuth();
     const [requests, setRequests] = useState<MemberServiceRequest[]>([]);
     const [activitiesByRequest, setActivitiesByRequest] = useState<Record<string, ServiceRequestActivityLog[]>>({});
@@ -225,14 +226,16 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
         setIsLoading(true);
 
         try {
+            const baseRequestQuery = supabase
+                .from('service_requests')
+                // Request explicit columns that exist in service_requests; request_type/priority power the admin UI labels
+                .select(
+                    'id, profile_id, request_type, title, description, status, priority, admin_notes, assigned_admin_id, consumes_blog_post_quota, consumes_spotlight_quota, source, created_at, updated_at, due_date',
+                )
+                .order('created_at', { ascending: false });
+
             const [requestResult, adminResult] = await Promise.all([
-                supabase
-                    .from('service_requests')
-                    // Request explicit columns that exist in service_requests; request_type/priority power the admin UI labels
-                    .select(
-                        'id, profile_id, request_type, title, description, status, priority, admin_notes, assigned_admin_id, consumes_blog_post_quota, consumes_spotlight_quota, source, created_at, updated_at, due_date',
-                    )
-                    .order('created_at', { ascending: false }),
+                profileIdFilter ? baseRequestQuery.eq('profile_id', profileIdFilter) : baseRequestQuery,
                 fetchAdminProfiles(),
             ]);
 
@@ -341,7 +344,7 @@ const AdminServiceRequests: React.FC<AdminServiceRequestsProps> = ({ showToast }
         } finally {
             setIsLoading(false);
         }
-    }, [fetchAdminProfiles]);
+    }, [fetchAdminProfiles, profileIdFilter]);
 
     useEffect(() => {
         void fetchRequests();

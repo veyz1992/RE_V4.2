@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import { getSupabaseClient } from '../lib/supabaseServer';
+import { deriveMemberHelperOutputs } from '../../lib/memberHelperOutputs';
 
 const headers = {
   'Content-Type': 'application/json',
@@ -173,5 +174,6 @@ export const handler: Handler = async event => {
     serviceRequests: serviceRequests ?? [],
     openRecheckRequest,
     openRecheckCount: recheckRequests?.length ?? 0,
+    helperOutputs: deriveMemberHelperOutputs(documents ?? [], serviceRequests ?? []),
   });
 };

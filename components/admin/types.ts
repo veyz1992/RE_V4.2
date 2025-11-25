@@ -20,4 +20,5 @@ export interface AdminMember {
     lastAssessmentDate?: string | null;
     hasNewAssessment?: boolean;
     pendingItems?: number;
+    helperOutputs?: import('../../lib/memberHelperOutputs').MemberHelperOutputs;
 }
