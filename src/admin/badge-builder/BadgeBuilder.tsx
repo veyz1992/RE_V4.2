@@ -42,8 +42,8 @@ const BadgeBuilder: React.FC<BadgeBuilderProps> = ({ actionSlot, metadataSlot })
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[420px_1fr] items-start">
-        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 space-y-4 shadow-sm">
+      <div className="grid gap-6 xl:grid-cols-12 items-start">
+        <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 space-y-4 shadow-sm xl:col-span-7">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Badge Builder</p>
@@ -75,7 +75,7 @@ const BadgeBuilder: React.FC<BadgeBuilderProps> = ({ actionSlot, metadataSlot })
               <span className="truncate text-xs text-[var(--text-muted)]">
                 {state.backgroundImage ? 'Background image active' : 'No background selected'}
               </span>
-              <label htmlFor="bg-upload" className="cursor-pointer rounded-md bg-[var(--bg-card)] px-3 py-1 text-xs font-medium text-info border border-[var(--border-subtle)]">
+              <label htmlFor="bg-upload" className="cursor-pointer rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-1 text-xs font-medium text-info shadow-sm">
                 Change Image
               </label>
               <input
@@ -108,7 +108,7 @@ const BadgeBuilder: React.FC<BadgeBuilderProps> = ({ actionSlot, metadataSlot })
         </div>
       </div>
 
-        <div className="flex h-full flex-col gap-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm">
+        <div className="flex h-full min-h-[420px] max-h-[75vh] flex-col gap-4 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm xl:col-span-5">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Preview</p>
@@ -116,8 +116,10 @@ const BadgeBuilder: React.FC<BadgeBuilderProps> = ({ actionSlot, metadataSlot })
             </div>
             {actionSlot}
           </div>
-          <div className="flex-1 min-h-[320px] rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-2">
-            <PreviewArea />
+          <div className="flex-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-2">
+            <div className="h-full overflow-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)]/40 p-2">
+              <PreviewArea />
+            </div>
           </div>
         </div>
       </div>
