@@ -7,6 +7,7 @@ import BadgePreview from '@src/shared/badges/BadgePreview';
 import BadgeRenderer from '@src/shared/badges/BadgeRenderer';
 import { buildBadgeEmbedSnippet } from '@src/shared/badges/buildBadgeEmbedSnippet';
 import { getTierStyle } from '@/shared/badges/tierStyles';
+import { getTierStyle } from '@src/shared/badges/tierStyles';
 import {
     Benefit,
     MemberServiceRequest,
