@@ -169,24 +169,26 @@ const TemplatesSidebar: React.FC<{
   );
 
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm">
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 shadow-sm">
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Templates</p>
-          <h2 className="text-lg font-semibold text-[var(--text-main)]">Supabase badge templates</h2>
+        <div className="space-y-0.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Templates</p>
+          <h2 className="text-base font-semibold text-[var(--text-main)]">Supabase badge templates</h2>
         </div>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-[var(--text-muted)]" />}
       </div>
 
-      <div className="mt-4 space-y-2">
-        <input
-          className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-sm text-[var(--text-main)]"
-          placeholder="Search templates"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="col-span-2">
+          <input
+            className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-xs text-[var(--text-main)]"
+            placeholder="Search templates"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         <select
-          className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-sm text-[var(--text-main)]"
+          className="col-span-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-xs text-[var(--text-main)]"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
         >
@@ -210,7 +212,7 @@ const TemplatesSidebar: React.FC<{
         </div>
       )}
 
-      <div className="mt-4 space-y-2">
+      <div className="mt-3 space-y-2">
         {loading && templates.length === 0 && (
           <div className="space-y-2">
             {[...Array(3)].map((_, idx) => (
@@ -232,78 +234,80 @@ const TemplatesSidebar: React.FC<{
           </div>
         )}
 
-        {filtered.map((template) => {
-          const isSelected = selectedId === template.id;
-          return (
-            <div
-              key={template.id}
-              className={`relative flex items-start justify-between rounded-lg border px-3 py-2 transition hover:border-[var(--border-subtle)] ${
-                isSelected
-                  ? 'border-info ring-2 ring-info/20 bg-[var(--bg-subtle)]'
-                  : 'border-[var(--border-subtle)] bg-[var(--bg-card)]'
-              }`}
-            >
-              <button
-                onClick={() => onSelect(template)}
-                className="flex flex-1 flex-col items-start text-left"
-                disabled={loading}
+        <div className="max-h-[calc(100vh-300px)] space-y-2 overflow-auto pr-1">
+          {filtered.map((template) => {
+            const isSelected = selectedId === template.id;
+            return (
+              <div
+                key={template.id}
+                className={`relative flex items-start justify-between rounded-xl border px-3 py-2 transition hover:border-[var(--border-subtle)] ${
+                  isSelected
+                    ? 'border-info/70 bg-[var(--bg-subtle)] ring-2 ring-info/15'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-card)]'
+                }`}
               >
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-[var(--text-main)]">{template.name}</span>
-                  <span className="rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                    {template.badge_code || '—'}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-muted)]">
-                  <span className="rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 font-semibold">{template.status || 'draft'}</span>
-                  <span>
-                    Updated {template.updated_at ? new Date(template.updated_at).toLocaleDateString() : 'not saved'}
-                  </span>
-                </div>
-              </button>
-
-              <div className="relative">
                 <button
-                  onClick={() => setOpenMenuId((prev) => (prev === template.id ? null : template.id))}
-                  className="rounded-md p-1 text-[var(--text-muted)] hover:bg-[var(--bg-subtle)]"
+                  onClick={() => onSelect(template)}
+                  className="flex flex-1 flex-col items-start text-left"
+                  disabled={loading}
                 >
-                  <MoreVertical className="h-4 w-4" />
-                </button>
-                {openMenuId === template.id && (
-                  <div className="absolute right-0 z-10 mt-1 w-36 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] shadow-lg">
-                    <button
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--bg-subtle)]"
-                      onClick={() => {
-                        onDuplicate(template);
-                        setOpenMenuId(null);
-                      }}
-                    >
-                      <Copy className="h-4 w-4" /> Duplicate
-                    </button>
-                    <button
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--bg-subtle)]"
-                      onClick={() => {
-                        onArchive(template);
-                        setOpenMenuId(null);
-                      }}
-                    >
-                      <ChevronDown className="h-4 w-4" /> Archive
-                    </button>
-                    <button
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-error hover:bg-red-50"
-                      onClick={() => {
-                        onDelete(template);
-                        setOpenMenuId(null);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" /> Delete
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-[var(--text-main)]">{template.name}</span>
+                    <span className="rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--text-muted)]">
+                      {template.badge_code || '—'}
+                    </span>
                   </div>
-                )}
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                    <span className="rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 font-semibold">{template.status || 'draft'}</span>
+                    <span>
+                      Updated {template.updated_at ? new Date(template.updated_at).toLocaleDateString() : 'not saved'}
+                    </span>
+                  </div>
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenMenuId((prev) => (prev === template.id ? null : template.id))}
+                    className="rounded-md p-1 text-[var(--text-muted)] hover:bg-[var(--bg-subtle)]"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                  {openMenuId === template.id && (
+                    <div className="absolute right-0 z-10 mt-1 w-36 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] shadow-lg">
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--bg-subtle)]"
+                        onClick={() => {
+                          onDuplicate(template);
+                          setOpenMenuId(null);
+                        }}
+                      >
+                        <Copy className="h-4 w-4" /> Duplicate
+                      </button>
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--bg-subtle)]"
+                        onClick={() => {
+                          onArchive(template);
+                          setOpenMenuId(null);
+                        }}
+                      >
+                        <ChevronDown className="h-4 w-4" /> Archive
+                      </button>
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-error hover:bg-red-50"
+                        onClick={() => {
+                          onDelete(template);
+                          setOpenMenuId(null);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" /> Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -328,32 +332,43 @@ const TemplateEditor: React.FC<{
   };
 
   return (
-    <div className="space-y-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Basics</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Main logic & editing</p>
           <h2 className="text-xl font-semibold text-[var(--text-main)]">Badge template details</h2>
           <p className="text-xs text-[var(--text-muted)]">{dirty ? 'Unsaved changes' : `Saved ${savedAtLabel}`}</p>
         </div>
-        <button
-          onClick={() => onSave(state)}
-          disabled={saving || loading}
-          aria-busy={saving || loading}
-          className="inline-flex items-center gap-2 rounded-md bg-info px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {saving ? 'Saving…' : 'Save template'}
-        </button>
+        <div className="flex items-center gap-2">
+          {dirty && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Unsaved changes
+            </span>
+          )}
+          <button
+            onClick={() => onSave(state)}
+            disabled={saving || loading || !dirty}
+            aria-busy={saving || loading}
+            className="inline-flex items-center gap-2 rounded-md bg-info px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {saving ? 'Saving…' : dirty ? 'Save changes' : 'Up to date'}
+          </button>
+        </div>
       </div>
 
-      <div className="space-y-6">
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-[var(--text-main)]">Basics</h3>
+      <div className="space-y-5">
+        <section className="space-y-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)]/60 p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-[var(--text-main)]">Basics</h3>
+            <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Name, codes, tiers</span>
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
               Template name
               <input
-                className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
                 value={formState.name}
                 onChange={(e) => onFormChange({ name: e.target.value })}
                 placeholder="e.g. Founding Member"
@@ -362,7 +377,7 @@ const TemplateEditor: React.FC<{
             <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
               Badge code
               <input
-                className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
                 value={formState.badgeCode}
                 onChange={(e) => onFormChange({ badgeCode: e.target.value })}
                 placeholder="Short code"
@@ -370,11 +385,11 @@ const TemplateEditor: React.FC<{
               {badgeCodeError && <span className="text-xs text-error">{badgeCodeError}</span>}
             </label>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-3">
             <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
               Status
               <select
-                className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
                 value={formState.status}
                 onChange={(e) => onFormChange({ status: e.target.value })}
               >
@@ -385,38 +400,38 @@ const TemplateEditor: React.FC<{
               </select>
             </label>
             <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
+              Member tier
+              <select
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
+                value={tierStyle.key}
+                onChange={(e) => {
+                  const nextTier = e.target.value;
+                  actions.setTier(nextTier);
+                  const nextStyle = getTierStyle(nextTier);
+                  onFormChange({ accentColor: nextStyle.accentGradient });
+                }}
+              >
+                {TIER_STYLE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
               Accent gradient
               <input
-                className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
                 value={formState.accentColor}
-              onChange={(e) => onFormChange({ accentColor: e.target.value })}
-              placeholder="from-blue-500 to-indigo-600"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
-            Member tier
-            <select
-              className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
-              value={tierStyle.key}
-              onChange={(e) => {
-                const nextTier = e.target.value;
-                actions.setTier(nextTier);
-                const nextStyle = getTierStyle(nextTier);
-                onFormChange({ accentColor: nextStyle.accentGradient });
-              }}
-            >
-              {TIER_STYLE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+                onChange={(e) => onFormChange({ accentColor: e.target.value })}
+                placeholder="from-blue-500 to-indigo-600"
+              />
+            </label>
+          </div>
           <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
             Description
             <textarea
-              className="min-h-[80px] rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+              className="min-h-[80px] rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
               value={formState.description}
               onChange={(e) => onFormChange({ description: e.target.value })}
               placeholder="What makes this badge special?"
@@ -424,22 +439,25 @@ const TemplateEditor: React.FC<{
           </label>
         </section>
 
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-[var(--text-main)]">Design</h3>
-            <span className="rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-              Preview updates live
-            </span>
+        <section className="space-y-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)]/60 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-[var(--text-main)]">Design</h3>
+              <span className="rounded-full bg-[var(--bg-card)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--text-muted)]">
+                Preview updates live
+              </span>
+            </div>
+            <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Visual configuration</span>
           </div>
           <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
             Background image
-            <div className="flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2">
+            <div className="flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2">
               <span className="truncate text-xs text-[var(--text-muted)]">
                 {state.backgroundImage ? 'Background image active' : 'No background selected'}
               </span>
               <label
                 htmlFor="bg-upload"
-                className="cursor-pointer rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-1 text-xs font-medium text-info shadow-sm"
+                className="cursor-pointer rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-1 text-xs font-medium text-info shadow-sm"
               >
                 Change Image
               </label>
@@ -449,7 +467,7 @@ const TemplateEditor: React.FC<{
           <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
             SVG template
             <textarea
-              className="min-h-[120px] rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 font-mono text-xs text-[var(--text-main)]"
+              className="min-h-[120px] rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 font-mono text-xs text-[var(--text-main)]"
               value={formState.svgTemplate}
               onChange={(e) => onFormChange({ svgTemplate: e.target.value })}
               placeholder="Optional raw SVG markup"
@@ -506,6 +524,7 @@ const AdminBadgeBuilderPage: React.FC = () => {
   const [dirty, setDirty] = useState(false);
   const [badgeCodeError, setBadgeCodeError] = useState<string | null>(null);
   const [embedCopied, setEmbedCopied] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const templateOptions = useMemo<Template[]>(() => [...DEFAULT_TEMPLATES, ...templates.map(mapRowToTemplate)], [templates]);
 
@@ -663,13 +682,28 @@ const AdminBadgeBuilderPage: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 lg:py-10">
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 lg:py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-main)]">Badge Builder</h1>
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-[var(--text-main)]">Badge Builder</h1>
+            {dirty && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Unsaved changes
+              </span>
+            )}
+          </div>
           <p className="text-[var(--text-muted)]">Manage Supabase-backed badge templates and update their designs.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm lg:hidden"
+            onClick={() => setShowTemplates((prev) => !prev)}
+          >
+            <ChevronDown className={`h-4 w-4 transition ${showTemplates ? 'rotate-180' : ''}`} />
+            {showTemplates ? 'Hide templates' : 'Show templates'}
+          </button>
           <button
             onClick={startNewTemplate}
             className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm disabled:opacity-60"
@@ -707,8 +741,8 @@ const AdminBadgeBuilderPage: React.FC = () => {
         templates={templateOptions}
         onStateChange={() => setDirty(true)}
       >
-        <div className="grid gap-6 lg:grid-cols-12">
-          <div className="lg:col-span-3">
+        <div className="grid gap-5 xl:grid-cols-12">
+          <div className={`${showTemplates ? 'block' : 'hidden'} lg:block xl:col-span-3`}>
             <TemplatesSidebar
               templates={templates}
               selectedId={selectedTemplate?.id ?? null}
@@ -723,7 +757,7 @@ const AdminBadgeBuilderPage: React.FC = () => {
             />
           </div>
 
-          <div className="lg:col-span-6">
+          <div className="xl:col-span-5">
             <TemplateEditor
               formState={formState}
               onFormChange={(changes) => {
@@ -739,20 +773,22 @@ const AdminBadgeBuilderPage: React.FC = () => {
             />
           </div>
 
-          <div className="lg:col-span-3">
-            <PreviewColumn
-              formState={formState}
-              loading={loading}
-              embedCopied={embedCopied}
-              embedSnippet={selectedTemplate?.svg_template ?? formState.svgTemplate ?? null}
-              onCopy={() => {
-                const snippet = selectedTemplate?.svg_template ?? formState.svgTemplate;
-                if (!snippet) return;
-                void navigator.clipboard.writeText(snippet);
-                setEmbedCopied(true);
-                setTimeout(() => setEmbedCopied(false), 1500);
-              }}
-            />
+          <div className="xl:col-span-4">
+            <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm">
+              <PreviewColumn
+                formState={formState}
+                loading={loading}
+                embedCopied={embedCopied}
+                embedSnippet={selectedTemplate?.svg_template ?? formState.svgTemplate ?? null}
+                onCopy={() => {
+                  const snippet = selectedTemplate?.svg_template ?? formState.svgTemplate;
+                  if (!snippet) return;
+                  void navigator.clipboard.writeText(snippet);
+                  setEmbedCopied(true);
+                  setTimeout(() => setEmbedCopied(false), 1500);
+                }}
+              />
+            </div>
           </div>
         </div>
         <CodeModal />
