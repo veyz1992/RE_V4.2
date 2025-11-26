@@ -1,15 +1,24 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ZoomIn, ZoomOut, Crosshair } from 'lucide-react';
 import BadgeRenderer from '@src/shared/badges/BadgeRenderer';
 import { useDesign } from '../context/DesignContext';
 import type { TextLayer } from '../types';
 import { getTierStyle } from '@/shared/badges/tierStyles';
 
-const PreviewArea: React.FC = () => {
+interface PreviewAreaProps {
+  baseScale?: number;
+  containerRef?: React.RefObject<HTMLDivElement>;
+}
+
+const PreviewArea: React.FC<PreviewAreaProps> = ({ baseScale = 1, containerRef }) => {
   const { state, availableTemplates } = useDesign();
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(baseScale);
   const [showGuides, setShowGuides] = useState(true);
   const tierStyle = useMemo(() => getTierStyle(state.tier), [state.tier]);
+
+  useEffect(() => {
+    setZoom(baseScale);
+  }, [baseScale]);
 
   const memberName = useMemo(() => {
     const layer = state.layers.find(l => l.type === 'text' && l.id === 'member-name') as TextLayer | undefined;
@@ -82,6 +91,7 @@ const PreviewArea: React.FC = () => {
         className="flex-1 overflow-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-4 md:p-6"
       >
         <div
+            ref={containerRef}
             className="relative mx-auto"
             style={{
                 width: state.imageWidth,
