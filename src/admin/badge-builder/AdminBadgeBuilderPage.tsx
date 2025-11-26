@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle, ChevronDown, Loader2, Plus, RefreshCw } from 'lucide-react';
+import { CheckCircle, Loader2, Plus, RefreshCw } from 'lucide-react';
 import {
   fetchBadgeTemplates,
   upsertBadgeTemplate,
@@ -11,9 +11,9 @@ import { INITIAL_LAYERS, DEFAULT_TEMPLATES } from './constants';
 import type { DesignState, Template } from './types';
 import CodeModal from './components/CodeModal';
 import PreviewPanel from './components/PreviewPanel';
-import TemplateListPanel from './components/TemplateListPanel';
 import EditorPanel from './components/EditorPanel';
 import { getTierStyle } from '@/shared/badges/tierStyles';
+import TemplateListPanel from './components/TemplateListPanel';
 
 interface TemplateFormState {
   name: string;
@@ -124,7 +124,7 @@ const AdminBadgeBuilderPage: React.FC = () => {
   const [formState, setFormState] = useState<TemplateFormState>(DEFAULT_FORM_STATE);
   const [dirty, setDirty] = useState(false);
   const [badgeCodeError, setBadgeCodeError] = useState<string | null>(null);
-  const [showTemplates, setShowTemplates] = useState(false);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
 
   const templateOptions = useMemo<Template[]>(() => [...DEFAULT_TEMPLATES, ...templates.map(mapRowToTemplate)], [templates]);
 
@@ -280,6 +280,9 @@ const AdminBadgeBuilderPage: React.FC = () => {
     setSaving(false);
   };
 
+  const currentTemplateName = selectedTemplate?.name || formState.name || 'No template selected';
+  const currentStatus = selectedTemplate?.status ?? formState.status ?? 'draft';
+
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 lg:py-10">
       <div className="flex flex-col gap-2">
@@ -294,13 +297,6 @@ const AdminBadgeBuilderPage: React.FC = () => {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm lg:hidden"
-              onClick={() => setShowTemplates((prev) => !prev)}
-            >
-              <ChevronDown className={`h-4 w-4 transition ${showTemplates ? 'rotate-180' : ''}`} />
-              {showTemplates ? 'Hide templates' : 'Show templates'}
-            </button>
             <button
               onClick={startNewTemplate}
               className="inline-flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-4 py-2 text-sm font-semibold text-[var(--text-main)] shadow-sm disabled:opacity-60"
@@ -340,59 +336,49 @@ const AdminBadgeBuilderPage: React.FC = () => {
         templates={templateOptions}
         onStateChange={() => setDirty(true)}
       >
-        <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)_340px] lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside
-            className={`${showTemplates ? 'block' : 'hidden'} max-h-[calc(100vh-180px)] overflow-y-auto lg:block`}
-          >
-            <TemplateListPanel
-              templates={templates}
-              selectedId={selectedTemplate?.id ?? null}
-              onSelect={handleSelectTemplate}
-              onCreate={startNewTemplate}
-              onDuplicate={duplicateTemplate}
-              onArchive={archiveTemplate}
-              onDelete={removeTemplate}
-              loading={loading}
-              error={error}
-              onRetry={() => void refreshTemplates()}
-            />
-          </aside>
+        {/* PreviewSection: hero-style live preview with controls */}
+        <PreviewPanel
+          formState={formState}
+          loading={loading}
+          embedSnippet={selectedTemplate?.svg_template ?? formState.svgTemplate ?? null}
+          templateName={currentTemplateName}
+          templateStatus={currentStatus}
+          onChangeTemplate={() => setTemplatePickerOpen(true)}
+        />
 
-          <div className="max-h-[calc(100vh-200px)] overflow-y-auto rounded-2xl bg-transparent">
-            <EditorPanel
-              formState={formState}
-              onFormChange={(changes) => {
-                setFormState((prev) => ({ ...prev, ...changes }));
-                setDirty(true);
-              }}
-              onSave={handleSave}
-              saving={saving}
-              loading={loading}
-              dirty={dirty}
-              savedAtLabel={updatedLabel}
-              badgeCodeError={badgeCodeError}
-            />
-          </div>
-
-          <div className="relative hidden xl:block xl:sticky xl:top-24">
-            <PreviewPanel
-              formState={formState}
-              loading={loading}
-              embedSnippet={selectedTemplate?.svg_template ?? formState.svgTemplate ?? null}
-            />
-          </div>
-        </div>
-
-        <div className="xl:hidden">
-          <PreviewPanel
-            formState={formState}
-            loading={loading}
-            embedSnippet={selectedTemplate?.svg_template ?? formState.svgTemplate ?? null}
-          />
-        </div>
+        {/* EditorColumns: left side handles template + basics, right side handles design + advanced */}
+        <EditorPanel
+          formState={formState}
+          onFormChange={(changes) => {
+            setFormState((prev) => ({ ...prev, ...changes }));
+            setDirty(true);
+          }}
+          onSave={handleSave}
+          saving={saving}
+          loading={loading}
+          dirty={dirty}
+          savedAtLabel={updatedLabel}
+          badgeCodeError={badgeCodeError}
+          onOpenTemplatePicker={() => setTemplatePickerOpen(true)}
+        />
 
         <CodeModal />
       </DesignProvider>
+
+      <TemplateListPanel
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        templates={templates}
+        selectedId={selectedTemplate?.id ?? null}
+        onSelect={handleSelectTemplate}
+        onCreate={startNewTemplate}
+        onDuplicate={duplicateTemplate}
+        onArchive={archiveTemplate}
+        onDelete={removeTemplate}
+        loading={loading}
+        error={error}
+        onRetry={() => void refreshTemplates()}
+      />
     </div>
   );
 };
