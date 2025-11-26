@@ -20,10 +20,8 @@ import { DesignProvider, useDesign } from './context/DesignContext';
 import { INITIAL_LAYERS, DEFAULT_TEMPLATES } from './constants';
 import type { DesignState, Template } from './types';
 import LayerControls from './components/LayerControls';
-import PreviewArea from './components/PreviewArea';
 import CodeModal from './components/CodeModal';
-import BadgePreview from '@src/shared/badges/BadgePreview';
-import type { MemberBadgeSummary } from '@/lib/badges/model';
+import PreviewPanel from './components/PreviewPanel';
 import { getTierStyle, TIER_STYLE_OPTIONS } from '@/shared/badges/tierStyles';
 
 interface TemplateFormState {
@@ -169,16 +167,26 @@ const TemplatesSidebar: React.FC<{
   );
 
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 shadow-sm">
-      <div className="flex items-center justify-between">
+    <div className="flex h-full flex-col gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
         <div className="space-y-0.5">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Templates</p>
           <h2 className="text-base font-semibold text-[var(--text-main)]">Supabase badge templates</h2>
         </div>
-        {loading && <Loader2 className="h-4 w-4 animate-spin text-[var(--text-muted)]" />}
+        <div className="flex items-center gap-2">
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-[var(--text-muted)]" />}
+          <button
+            className="inline-flex items-center gap-1 rounded-md bg-info px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+            onClick={onCreate}
+            disabled={loading}
+          >
+            <Plus className="h-4 w-4" />
+            Create
+          </button>
+        </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <div className="col-span-2">
           <input
             className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-xs text-[var(--text-main)]"
@@ -212,7 +220,7 @@ const TemplatesSidebar: React.FC<{
         </div>
       )}
 
-      <div className="mt-3 space-y-2">
+      <div className="flex-1 space-y-2 overflow-hidden">
         {loading && templates.length === 0 && (
           <div className="space-y-2">
             {[...Array(3)].map((_, idx) => (
@@ -234,7 +242,7 @@ const TemplatesSidebar: React.FC<{
           </div>
         )}
 
-        <div className="max-h-[calc(100vh-300px)] space-y-2 overflow-auto pr-1">
+        <div className="h-full space-y-2 overflow-auto pr-1">
           {filtered.map((template) => {
             const isSelected = selectedId === template.id;
             return (
@@ -332,11 +340,11 @@ const TemplateEditor: React.FC<{
   };
 
   return (
-    <div className="space-y-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] px-5 py-4 shadow-sm">
         <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Main logic & editing</p>
-          <h2 className="text-xl font-semibold text-[var(--text-main)]">Badge template details</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Badge Editor</p>
+          <h2 className="text-xl font-semibold text-[var(--text-main)]">Template settings</h2>
           <p className="text-xs text-[var(--text-muted)]">{dirty ? 'Unsaved changes' : `Saved ${savedAtLabel}`}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -358,106 +366,100 @@ const TemplateEditor: React.FC<{
         </div>
       </div>
 
-      <div className="space-y-5">
-        <section className="space-y-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)]/60 p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-[var(--text-main)]">Basics</h3>
-            <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Name, codes, tiers</span>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
-              Template name
-              <input
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
-                value={formState.name}
-                onChange={(e) => onFormChange({ name: e.target.value })}
-                placeholder="e.g. Founding Member"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
-              Badge code
-              <input
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
-                value={formState.badgeCode}
-                onChange={(e) => onFormChange({ badgeCode: e.target.value })}
-                placeholder="Short code"
-              />
-              {badgeCodeError && <span className="text-xs text-error">{badgeCodeError}</span>}
-            </label>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
-              Status
-              <select
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
-                value={formState.status}
-                onChange={(e) => onFormChange({ status: e.target.value })}
-              >
-                <option value="draft">Draft</option>
-                <option value="active">Active</option>
-                <option value="coming-soon">Coming soon</option>
-                <option value="archived">Archived</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
-              Member tier
-              <select
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
-                value={tierStyle.key}
-                onChange={(e) => {
-                  const nextTier = e.target.value;
-                  actions.setTier(nextTier);
-                  const nextStyle = getTierStyle(nextTier);
-                  onFormChange({ accentColor: nextStyle.accentGradient });
-                }}
-              >
-                {TIER_STYLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
-              Accent gradient
-              <input
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
-                value={formState.accentColor}
-                onChange={(e) => onFormChange({ accentColor: e.target.value })}
-                placeholder="from-blue-500 to-indigo-600"
-              />
-            </label>
-          </div>
+      <section className="space-y-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[var(--text-main)]">Basics</h3>
+          <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Names, codes & tiers</span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
-            Description
-            <textarea
-              className="min-h-[80px] rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[var(--text-main)]"
-              value={formState.description}
-              onChange={(e) => onFormChange({ description: e.target.value })}
-              placeholder="What makes this badge special?"
+            Template name
+            <input
+              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+              value={formState.name}
+              onChange={(e) => onFormChange({ name: e.target.value })}
+              placeholder="e.g. Founding Member"
             />
           </label>
-        </section>
+          <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
+            Badge code
+            <input
+              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+              value={formState.badgeCode}
+              onChange={(e) => onFormChange({ badgeCode: e.target.value })}
+              placeholder="Short code"
+            />
+            {badgeCodeError && <span className="text-xs text-error">{badgeCodeError}</span>}
+          </label>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
+            Status
+            <select
+              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+              value={formState.status}
+              onChange={(e) => onFormChange({ status: e.target.value })}
+            >
+              <option value="draft">Draft</option>
+              <option value="active">Active</option>
+              <option value="coming-soon">Coming soon</option>
+              <option value="archived">Archived</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
+            Member tier
+            <select
+              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+              value={tierStyle.key}
+              onChange={(e) => {
+                const nextTier = e.target.value;
+                actions.setTier(nextTier);
+                const nextStyle = getTierStyle(nextTier);
+                onFormChange({ accentColor: nextStyle.accentGradient });
+              }}
+            >
+              {TIER_STYLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
+            Tier badge code
+            <input
+              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+              value={tierStyle.templateId ?? 'standard-member'}
+              readOnly
+            />
+          </label>
+        </div>
+        <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
+          Description
+          <textarea
+            className="min-h-[80px] rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+            value={formState.description}
+            onChange={(e) => onFormChange({ description: e.target.value })}
+            placeholder="What makes this badge special?"
+          />
+        </label>
+      </section>
 
-        <section className="space-y-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)]/60 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-[var(--text-main)]">Design</h3>
-              <span className="rounded-full bg-[var(--bg-card)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                Preview updates live
-              </span>
-            </div>
-            <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Visual configuration</span>
-          </div>
+      <section className="space-y-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[var(--text-main)]">Design</h3>
+          <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Backgrounds & layers</span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
             Background image
-            <div className="flex items-center justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2">
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2">
               <span className="truncate text-xs text-[var(--text-muted)]">
                 {state.backgroundImage ? 'Background image active' : 'No background selected'}
               </span>
               <label
                 htmlFor="bg-upload"
-                className="cursor-pointer rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-1 text-xs font-medium text-info shadow-sm"
+                className="cursor-pointer rounded-md border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-1 text-xs font-semibold text-info shadow-sm"
               >
                 Change Image
               </label>
@@ -465,49 +467,46 @@ const TemplateEditor: React.FC<{
             </div>
           </label>
           <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
-            SVG template
-            <textarea
-              className="min-h-[120px] rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 font-mono text-xs text-[var(--text-main)]"
-              value={formState.svgTemplate}
-              onChange={(e) => onFormChange({ svgTemplate: e.target.value })}
-              placeholder="Optional raw SVG markup"
+            Accent/gradient selector
+            <input
+              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+              value={formState.accentColor}
+              onChange={(e) => onFormChange({ accentColor: e.target.value })}
+              placeholder="Accent gradient classes"
             />
           </label>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Text layers</p>
-            <LayerControls />
+        </div>
+        <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
+          SVG template
+          <textarea
+            className="min-h-[140px] rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 font-mono text-xs text-[var(--text-main)]"
+            value={formState.svgTemplate}
+            onChange={(e) => onFormChange({ svgTemplate: e.target.value })}
+            placeholder="Optional raw SVG markup"
+          />
+        </label>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Text & position controls</p>
+            <span className="rounded-full bg-[var(--bg-subtle)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--text-muted)]">Live updates</span>
           </div>
-        </section>
-      </div>
+          <LayerControls />
+        </div>
+      </section>
+
+      <section className="space-y-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[var(--text-main)]">Advanced</h3>
+          <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">JSON config viewer</span>
+        </div>
+        <p className="text-xs text-[var(--text-muted)]">Review the current design payload for debugging or export.</p>
+        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-3">
+          <pre className="max-h-48 overflow-auto text-xs text-[var(--text-main)]">
+{JSON.stringify({ ...state, backgroundImage: state.backgroundImage ? '[image-data]' : null }, null, 2)}
+          </pre>
+        </div>
+      </section>
     </div>
-  );
-};
-
-const PreviewColumn: React.FC<{
-  formState: TemplateFormState;
-  loading: boolean;
-  embedCopied: boolean;
-  onCopy: () => void;
-  embedSnippet?: string | null;
-}> = ({ formState, loading, embedCopied, onCopy, embedSnippet }) => {
-  const { state } = useDesign();
-
-  return (
-    <BadgePreview
-      summary={{
-        label: formState.name || 'Badge preview',
-        code: formState.badgeCode,
-        status: (formState.status as MemberBadgeSummary['status'] | string) ?? 'draft',
-        imageLightUrl: state.backgroundImage ?? null,
-        imageDarkUrl: state.backgroundImage ?? null,
-        embedHtml: null,
-        previewContent: <PreviewArea />,
-      }}
-      isLoading={loading}
-      embedSnippet={embedSnippet || undefined}
-      onCopyEmbed={onCopy}
-      copied={embedCopied}
-    />
   );
 };
 
@@ -523,7 +522,6 @@ const AdminBadgeBuilderPage: React.FC = () => {
   const [formState, setFormState] = useState<TemplateFormState>(DEFAULT_FORM_STATE);
   const [dirty, setDirty] = useState(false);
   const [badgeCodeError, setBadgeCodeError] = useState<string | null>(null);
-  const [embedCopied, setEmbedCopied] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
 
   const templateOptions = useMemo<Template[]>(() => [...DEFAULT_TEMPLATES, ...templates.map(mapRowToTemplate)], [templates]);
@@ -741,54 +739,48 @@ const AdminBadgeBuilderPage: React.FC = () => {
         templates={templateOptions}
         onStateChange={() => setDirty(true)}
       >
-        <div className="grid gap-5 xl:grid-cols-12">
-          <div className={`${showTemplates ? 'block' : 'hidden'} lg:block xl:col-span-3`}>
-            <TemplatesSidebar
-              templates={templates}
-              selectedId={selectedTemplate?.id ?? null}
-              onSelect={handleSelectTemplate}
-              onCreate={startNewTemplate}
-              onDuplicate={duplicateTemplate}
-              onArchive={archiveTemplate}
-              onDelete={removeTemplate}
-              loading={loading}
-              error={error}
-              onRetry={() => void refreshTemplates()}
-            />
-          </div>
+        <div className="flex h-[calc(100vh-200px)] min-h-[760px] flex-col overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] shadow-sm">
+          <div className="flex h-full min-h-0 flex-1 overflow-hidden">
+            <aside
+              className={`${showTemplates ? 'flex' : 'hidden'} w-[280px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 lg:flex`}
+            >
+              <TemplatesSidebar
+                templates={templates}
+                selectedId={selectedTemplate?.id ?? null}
+                onSelect={handleSelectTemplate}
+                onCreate={startNewTemplate}
+                onDuplicate={duplicateTemplate}
+                onArchive={archiveTemplate}
+                onDelete={removeTemplate}
+                loading={loading}
+                error={error}
+                onRetry={() => void refreshTemplates()}
+              />
+            </aside>
 
-          <div className="xl:col-span-5">
-            <TemplateEditor
-              formState={formState}
-              onFormChange={(changes) => {
-                setFormState((prev) => ({ ...prev, ...changes }));
-                setDirty(true);
-              }}
-              onSave={handleSave}
-              saving={saving}
-              loading={loading}
-              dirty={dirty}
-              savedAtLabel={updatedLabel}
-              badgeCodeError={badgeCodeError}
-            />
-          </div>
+            <main className="flex-1 overflow-y-auto bg-white p-6">
+              <TemplateEditor
+                formState={formState}
+                onFormChange={(changes) => {
+                  setFormState((prev) => ({ ...prev, ...changes }));
+                  setDirty(true);
+                }}
+                onSave={handleSave}
+                saving={saving}
+                loading={loading}
+                dirty={dirty}
+                savedAtLabel={updatedLabel}
+                badgeCodeError={badgeCodeError}
+              />
+            </main>
 
-          <div className="xl:col-span-4">
-            <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-sm">
-              <PreviewColumn
+            <section className="w-[420px] shrink-0 overflow-y-auto border-l border-[var(--border-subtle)] bg-gray-50 p-4">
+              <PreviewPanel
                 formState={formState}
                 loading={loading}
-                embedCopied={embedCopied}
                 embedSnippet={selectedTemplate?.svg_template ?? formState.svgTemplate ?? null}
-                onCopy={() => {
-                  const snippet = selectedTemplate?.svg_template ?? formState.svgTemplate;
-                  if (!snippet) return;
-                  void navigator.clipboard.writeText(snippet);
-                  setEmbedCopied(true);
-                  setTimeout(() => setEmbedCopied(false), 1500);
-                }}
               />
-            </div>
+            </section>
           </div>
         </div>
         <CodeModal />
