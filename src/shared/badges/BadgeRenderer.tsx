@@ -1,6 +1,6 @@
 import React from 'react';
 
-type BadgeStylePreset = 'standard' | 'gold' | 'silver' | 'founding' | 'dark';
+type BadgeStylePreset = 'standard' | 'gold' | 'silver' | 'bronze' | 'founding' | 'platinum' | 'dark';
 
 interface BadgeRendererProps {
   companyName: string;
@@ -22,6 +22,12 @@ const STYLE_PRESETS: Record<string, { gradient: string; border: string; text: st
     pill: 'bg-amber-100 text-amber-800 border-amber-200',
     overlay: 'bg-gradient-to-r from-amber-50/70 via-white/70 to-amber-100/60',
   },
+  bronze: {
+    gradient: 'from-amber-100 via-white to-orange-100',
+    border: 'border-amber-300',
+    text: 'text-amber-900',
+    pill: 'bg-amber-100 text-amber-900 border-amber-200',
+  },
   gold: {
     gradient: 'from-amber-50 via-white to-amber-100',
     border: 'border-amber-300',
@@ -40,6 +46,13 @@ const STYLE_PRESETS: Record<string, { gradient: string; border: string; text: st
     text: 'text-slate-900',
     pill: 'bg-slate-200 text-slate-900 border-slate-300',
   },
+  platinum: {
+    gradient: 'from-slate-900 via-slate-800 to-slate-900',
+    border: 'border-slate-700',
+    text: 'text-white',
+    pill: 'bg-white/10 text-white border-white/20',
+    overlay: 'bg-gradient-to-br from-white/5 via-transparent to-white/10',
+  },
   dark: {
     gradient: 'from-slate-900 via-slate-800 to-slate-900',
     border: 'border-slate-700',
@@ -53,8 +66,10 @@ const getPresetKey = (stylePreset?: BadgeRendererProps['stylePreset']): string =
   if (!stylePreset) return 'standard';
   const normalized = stylePreset.toString().toLowerCase();
   if (normalized.includes('gold')) return 'gold';
+  if (normalized.includes('bronze')) return 'bronze';
   if (normalized.includes('silver')) return 'silver';
   if (normalized.includes('founding')) return 'founding';
+  if (normalized.includes('plat')) return 'platinum';
   if (normalized.includes('dark')) return 'dark';
   return STYLE_PRESETS[normalized] ? normalized : 'standard';
 };

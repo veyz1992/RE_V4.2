@@ -24,6 +24,7 @@ import PreviewArea from './components/PreviewArea';
 import CodeModal from './components/CodeModal';
 import BadgePreview from '@src/shared/badges/BadgePreview';
 import type { MemberBadgeSummary } from '@/lib/badges/model';
+import { getTierStyle, TIER_STYLE_OPTIONS } from '@/shared/badges/tierStyles';
 
 interface TemplateFormState {
   name: string;
@@ -34,11 +35,14 @@ interface TemplateFormState {
   svgTemplate: string;
 }
 
+const DEFAULT_TIER_STYLE = getTierStyle();
+
 const BASE_DESIGN_STATE: DesignState = {
-  templateId: 'standard-member',
+  templateId: DEFAULT_TIER_STYLE.templateId ?? 'standard-member',
+  tier: DEFAULT_TIER_STYLE.key,
   companyName: '',
   location: '',
-  rating: 'A',
+  rating: DEFAULT_TIER_STYLE.ratingPreset,
   backgroundImage: null,
   imageWidth: 1200,
   imageHeight: 600,
@@ -50,7 +54,7 @@ const DEFAULT_FORM_STATE: TemplateFormState = {
   name: '',
   badgeCode: '',
   status: 'draft',
-  accentColor: 'from-blue-500 to-indigo-600',
+  accentColor: DEFAULT_TIER_STYLE.accentGradient,
   description: '',
   svgTemplate: '',
 };
@@ -65,9 +69,16 @@ const normalizeDesignState = (config?: unknown): DesignState => {
     ? (parsed as { layers: DesignState['layers'] }).layers
     : BASE_DESIGN_STATE.layers;
 
+  const tierStyle = getTierStyle(parsed.tier ?? BASE_DESIGN_STATE.tier);
+  const templateId = parsed.templateId ?? tierStyle.templateId ?? BASE_DESIGN_STATE.templateId;
+  const rating = parsed.rating ?? tierStyle.ratingPreset;
+
   return {
     ...BASE_DESIGN_STATE,
     ...parsed,
+    tier: tierStyle.key,
+    templateId,
+    rating,
     layers,
     backgroundImage: parsed.backgroundImage ?? null,
     customTemplates: [],
@@ -76,26 +87,30 @@ const normalizeDesignState = (config?: unknown): DesignState => {
 
 const mapRowToTemplate = (row: BadgeTemplateRow): Template => {
   const design = normalizeDesignState(row.config);
+  const tierStyle = getTierStyle(design.tier);
   return {
     id: row.id,
     name: row.name || 'Untitled Template',
     description: row.description || 'Badge template',
     badge: row.badge_code || 'TMP',
-    accentColor: row.accent_color || 'from-blue-500 to-indigo-600',
+    accentColor: row.accent_color || tierStyle.accentGradient,
     imageUrl: design.backgroundImage || undefined,
     status: (row.status as Template['status']) ?? undefined,
     layers: design.layers,
   };
 };
 
-const buildFormStateFromRow = (row?: BadgeTemplateRow | null): TemplateFormState => ({
+const buildFormStateFromRow = (row?: BadgeTemplateRow | null, design?: DesignState): TemplateFormState => {
+  const tierStyle = getTierStyle(design?.tier);
+  return {
   name: row?.name ?? '',
   badgeCode: row?.badge_code ?? '',
   status: row?.status ?? 'draft',
-  accentColor: row?.accent_color ?? 'from-blue-500 to-indigo-600',
+  accentColor: row?.accent_color ?? tierStyle.accentGradient,
   description: row?.description ?? '',
   svgTemplate: row?.svg_template ?? '',
-});
+  };
+};
 
 const buildDesignSeedFromRow = (row?: BadgeTemplateRow | null): DesignState => {
   if (!row) {
@@ -103,7 +118,9 @@ const buildDesignSeedFromRow = (row?: BadgeTemplateRow | null): DesignState => {
   }
 
   const normalized = normalizeDesignState(row.config);
-  return { ...normalized, layers: [...normalized.layers] };
+  const tierStyle = getTierStyle(normalized.tier);
+
+  return { ...normalized, layers: [...normalized.layers], rating: normalized.rating || tierStyle.ratingPreset };
 };
 
 const statusOptions: Array<{ value: string; label: string }> = [
@@ -303,6 +320,7 @@ const TemplateEditor: React.FC<{
   badgeCodeError?: string | null;
 }> = ({ formState, onFormChange, onSave, saving, loading, dirty, savedAtLabel, badgeCodeError }) => {
   const { state, actions } = useDesign();
+  const tierStyle = useMemo(() => getTierStyle(state.tier), [state.tier]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -371,11 +389,30 @@ const TemplateEditor: React.FC<{
               <input
                 className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
                 value={formState.accentColor}
-                onChange={(e) => onFormChange({ accentColor: e.target.value })}
-                placeholder="from-blue-500 to-indigo-600"
-              />
-            </label>
-          </div>
+              onChange={(e) => onFormChange({ accentColor: e.target.value })}
+              placeholder="from-blue-500 to-indigo-600"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
+            Member tier
+            <select
+              className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-[var(--text-main)]"
+              value={tierStyle.key}
+              onChange={(e) => {
+                const nextTier = e.target.value;
+                actions.setTier(nextTier);
+                const nextStyle = getTierStyle(nextTier);
+                onFormChange({ accentColor: nextStyle.accentGradient });
+              }}
+            >
+              {TIER_STYLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
           <label className="flex flex-col gap-1 text-sm text-[var(--text-muted)]">
             Description
             <textarea
@@ -477,8 +514,9 @@ const AdminBadgeBuilderPage: React.FC = () => {
     : 'Not saved yet';
 
   const applyTemplateRow = useCallback((row: BadgeTemplateRow | null) => {
-    setDesignSeed(buildDesignSeedFromRow(row));
-    setFormState(buildFormStateFromRow(row));
+    const design = buildDesignSeedFromRow(row);
+    setDesignSeed(design);
+    setFormState(buildFormStateFromRow(row, design));
     setDesignSessionKey((key) => key + 1);
     setDirty(false);
     setBadgeCodeError(null);

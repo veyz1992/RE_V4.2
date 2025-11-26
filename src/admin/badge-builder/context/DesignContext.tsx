@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, type Re
 import { DesignState, Layer, Template } from '../types';
 import { INITIAL_LAYERS, DEFAULT_TEMPLATES } from '../constants';
 import { generateTemplateBackground } from '../utils/templateHelpers';
+import { getTierStyle } from '@/shared/badges/tierStyles';
 
 interface UIState {
   isStartupOpen: boolean;
@@ -19,6 +20,7 @@ interface DesignContextType {
     updateLayer: (updatedLayer: Layer) => void;
     updateBackground: (file: File) => void;
     importDesign: (file: File) => void;
+    setTier: (tier: string) => void;
     setStartupOpen: (isOpen: boolean) => void;
     setCodeModalOpen: (isOpen: boolean) => void;
     resetDesign: () => void;
@@ -36,11 +38,14 @@ interface DesignProviderProps {
 
 const DesignContext = createContext<DesignContextType | undefined>(undefined);
 
+const defaultTierStyle = getTierStyle();
+
 const DEFAULT_STATE: DesignState = {
-  templateId: 'standard-member',
+  templateId: defaultTierStyle.templateId ?? 'standard-member',
+  tier: defaultTierStyle.key,
   companyName: '',
   location: '',
-  rating: 'A',
+  rating: defaultTierStyle.ratingPreset,
   backgroundImage: null,
   imageWidth: 1200,
   imageHeight: 600,
@@ -48,12 +53,19 @@ const DEFAULT_STATE: DesignState = {
   customTemplates: []
 };
 
-const buildInitialState = (initialState?: Partial<DesignState>): DesignState => ({
-  ...DEFAULT_STATE,
-  ...initialState,
-  layers: initialState?.layers ? [...initialState.layers] : [...DEFAULT_STATE.layers],
-  backgroundImage: initialState?.backgroundImage ?? DEFAULT_STATE.backgroundImage,
-});
+const buildInitialState = (initialState?: Partial<DesignState>): DesignState => {
+  const tierStyle = getTierStyle(initialState?.tier);
+
+  return {
+    ...DEFAULT_STATE,
+    ...initialState,
+    tier: tierStyle.key,
+    templateId: initialState?.templateId ?? tierStyle.templateId ?? DEFAULT_STATE.templateId,
+    rating: initialState?.rating ?? tierStyle.ratingPreset,
+    layers: initialState?.layers ? [...initialState.layers] : [...DEFAULT_STATE.layers],
+    backgroundImage: initialState?.backgroundImage ?? DEFAULT_STATE.backgroundImage,
+  };
+};
 
 export const DesignProvider: React.FC<DesignProviderProps> = ({ children, initialState, templates, onStateChange }) => {
   const [state, setState] = useState<DesignState>(() => buildInitialState(initialState));
@@ -109,10 +121,27 @@ export const DesignProvider: React.FC<DesignProviderProps> = ({ children, initia
     reader.readAsDataURL(file);
   };
 
+  const setTier = (tier: string) => {
+    setState((prev) => {
+      const nextStyle = getTierStyle(tier);
+      const previousStyle = getTierStyle(prev.tier);
+      const shouldResetRating = !prev.rating || prev.rating === previousStyle.ratingPreset;
+
+      return {
+        ...prev,
+        tier: nextStyle.key,
+        templateId: nextStyle.templateId ?? prev.templateId ?? DEFAULT_STATE.templateId,
+        rating: shouldResetRating ? nextStyle.ratingPreset : prev.rating,
+      };
+    });
+  };
+
   const applyTemplate = (templateId: string, company: string, location: string, rating: string) => {
     setUi(prev => ({ ...prev, isLoading: true }));
 
-    const isHighRating = rating === 'A' || rating === 'A+';
+    const tierStyle = getTierStyle(state.tier);
+    const normalizedRating = rating || tierStyle.ratingPreset;
+    const isHighRating = normalizedRating === 'A' || normalizedRating === 'A+';
     const headerText = isHighRating ? "Restoration Expert" : "Restoration Professional";
 
     const template = availableTemplates.find(t => t.id === templateId) || availableTemplates[0] || DEFAULT_TEMPLATES[0];
@@ -134,7 +163,7 @@ export const DesignProvider: React.FC<DesignProviderProps> = ({ children, initia
         let text = config.text || layer.text;
         if (layer.id === 'member-name') text = company;
         if (layer.id === 'location') text = location;
-        if (layer.id === 'rating') text = rating;
+        if (layer.id === 'rating') text = normalizedRating;
         if (layer.id === 'header') text = headerText;
 
         let fontSize = config.fontSize;
@@ -167,9 +196,10 @@ export const DesignProvider: React.FC<DesignProviderProps> = ({ children, initia
       setState(prev => ({
         ...prev,
         templateId: template.id,
+        tier: tierStyle.key,
         companyName: company,
         location: location,
-        rating: rating,
+        rating: normalizedRating,
         backgroundImage: bgImage,
         imageWidth: width,
         imageHeight: height,
@@ -241,6 +271,7 @@ export const DesignProvider: React.FC<DesignProviderProps> = ({ children, initia
     updateLayer,
     updateBackground,
     importDesign,
+    setTier,
     setStartupOpen: (isOpen: boolean) => setUi(prev => ({ ...prev, isStartupOpen: isOpen })),
     setCodeModalOpen: (isOpen: boolean) => setUi(prev => ({ ...prev, isCodeModalOpen: isOpen })),
     resetDesign,
