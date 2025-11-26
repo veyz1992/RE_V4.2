@@ -4,6 +4,7 @@ import { useAuth } from '@src/context/AuthContext';
 import { useBlueprintAccess } from '@src/hooks';
 import { useMemberBadge } from '@src/hooks/useMemberBadge';
 import BadgePreview from '@src/shared/badges/BadgePreview';
+import BadgeRenderer from '@src/shared/badges/BadgeRenderer';
 import {
     Benefit,
     MemberServiceRequest,
@@ -3525,6 +3526,21 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
     }
 
     const embedSnippet = buildEmbedSnippet();
+    const membershipTier = currentMember?.tier ?? 'Member';
+    const companyName = currentMember?.businessName ?? badge.label ?? 'Verified Member';
+    const badgeTagline = currentMember?.city ?? 'Trusted Restoration Professional';
+    const stylePreset = membershipTier.toLowerCase();
+
+    const sharedPreview = (
+        <BadgeRenderer
+            companyName={companyName}
+            membershipTier={membershipTier}
+            tagline={badgeTagline}
+            stylePreset={stylePreset}
+            ratingLabel={badge.rating}
+            backgroundImageUrl={badge.imageLightUrl ?? badge.imageDarkUrl}
+        />
+    );
 
     return (
         <div className="space-y-6">
@@ -3540,8 +3556,7 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
                             summary={{
                                 label: badge.label,
                                 status: badge.status,
-                                imageLightUrl: badge.imageLightUrl,
-                                imageDarkUrl: badge.imageDarkUrl,
+                                previewContent: sharedPreview,
                                 embedHtml: badge.embedHtml,
                             }}
                             embedSnippet={embedSnippet}
