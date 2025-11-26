@@ -669,3 +669,5 @@ LIMIT 5;
 - ✅ Enhanced RLS policies for admin access
 
 The application now provides a seamless, error-free experience from assessment through payment completion, with robust duplicate prevention and proper data handling throughout the entire flow.
+### Badge Builder layout refactor
+- Restructured the admin Badge Builder page into a responsive three-column grid with a dedicated header, scrollable template sidebar, stacked editor sections, and sticky preview panel for better alignment and usability.
