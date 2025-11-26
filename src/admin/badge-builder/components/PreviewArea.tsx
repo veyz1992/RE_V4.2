@@ -3,11 +3,13 @@ import { ZoomIn, ZoomOut, Crosshair } from 'lucide-react';
 import BadgeRenderer from '@src/shared/badges/BadgeRenderer';
 import { useDesign } from '../context/DesignContext';
 import type { TextLayer } from '../types';
+import { getTierStyle } from '@/shared/badges/tierStyles';
 
 const PreviewArea: React.FC = () => {
   const { state, availableTemplates } = useDesign();
   const [zoom, setZoom] = useState(1);
   const [showGuides, setShowGuides] = useState(true);
+  const tierStyle = useMemo(() => getTierStyle(state.tier), [state.tier]);
 
   const memberName = useMemo(() => {
     const layer = state.layers.find(l => l.type === 'text' && l.id === 'member-name') as TextLayer | undefined;
@@ -21,18 +23,18 @@ const PreviewArea: React.FC = () => {
 
   const rating = useMemo(() => {
     const ratingLayer = state.layers.find(l => l.type === 'text' && l.id === 'rating') as TextLayer | undefined;
-    return ratingLayer?.text || state.rating;
-  }, [state.layers, state.rating]);
+    return ratingLayer?.text || state.rating || tierStyle.ratingPreset;
+  }, [state.layers, state.rating, tierStyle.ratingPreset]);
 
   const templatePreset = useMemo(() => {
     const template = availableTemplates.find(t => t.id === state.templateId);
-    return template?.id || 'standard-member';
-  }, [availableTemplates, state.templateId]);
+    return tierStyle.stylePreset || template?.id || 'standard-member';
+  }, [availableTemplates, state.templateId, tierStyle.stylePreset]);
 
   const templateName = useMemo(() => {
     const template = availableTemplates.find(t => t.id === state.templateId);
-    return template?.name || 'Verified Member';
-  }, [availableTemplates, state.templateId]);
+    return tierStyle.label || template?.name || 'Verified Member';
+  }, [availableTemplates, state.templateId, tierStyle.label]);
 
   const backgroundImage = state.backgroundImage;
 

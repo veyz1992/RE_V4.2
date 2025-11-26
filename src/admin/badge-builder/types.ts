@@ -88,6 +88,7 @@ export interface Template {
 
 export interface DesignState {
   templateId: string;
+  tier?: string | null;
   companyName: string;
   location: string;
   rating: string;
