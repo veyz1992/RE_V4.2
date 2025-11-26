@@ -22,7 +22,7 @@ import type { DesignState, Template } from './types';
 import LayerControls from './components/LayerControls';
 import PreviewArea from './components/PreviewArea';
 import CodeModal from './components/CodeModal';
-import BadgePreview from '@/shared/badges/BadgePreview';
+import BadgePreview from '@src/shared/badges/BadgePreview';
 import type { MemberBadgeSummary } from '@/lib/badges/model';
 
 interface TemplateFormState {

@@ -5,6 +5,8 @@ This document contains critical information about the current state of the Resto
 ## 🏅 Badge builder updates
 - Admin badge builder now uses a three-column layout (templates, editor, preview) with searchable/filterable template sidebar, duplicate/archive actions, and clearer empty/error states.
 - A shared `BadgePreview` component aligns admin and member badge visuals with loading/error/embed states.
+- `BadgePreview` lives at `src/shared/badges/BadgePreview.tsx` and is imported by `components/Dashboard.tsx` and `src/admin/badge-builder/AdminBadgeBuilderPage.tsx`.
+- Netlify build error for missing `BadgePreview` import path is resolved by pointing both admin and member badge views to the shared component location.
 - Badge services expose typed helpers for fetching/upserting templates and loading member badge summaries with 42P01-safe errors; the member badge hook consumes these helpers.
 
 ## 🚨 CRITICAL ENVIRONMENT VARIABLES

@@ -3,7 +3,7 @@ import { HomeIcon, ListBulletIcon, UserCircleIcon, ArrowRightOnRectangleIcon, Pe
 import { useAuth } from '@src/context/AuthContext';
 import { useBlueprintAccess } from '@src/hooks';
 import { useMemberBadge } from '@src/hooks/useMemberBadge';
-import BadgePreview from '@/shared/badges/BadgePreview';
+import BadgePreview from '@src/shared/badges/BadgePreview';
 import {
     Benefit,
     MemberServiceRequest,
