@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Download, FileCode2, MonitorSmartphone, Smartphone, Tv } from 'lucide-react';
 import PreviewArea from './PreviewArea';
 import type { MemberBadgeSummary } from '@/lib/badges/model';
-import BadgePreview from '@/shared/badges/BadgePreview';
+import BadgePreview from '@src/shared/badges/BadgePreview';
 import { useDesign } from '../context/DesignContext';
 
 interface PreviewPanelProps {
