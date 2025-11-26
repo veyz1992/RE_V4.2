@@ -41,6 +41,7 @@ export const BadgePreview: React.FC<BadgePreviewProps> = ({
   const imageUrl = getImageUrl(summary);
   const statusLabel = summary && 'status' in summary ? summary.status : 'draft';
   const previewContent = summary && 'previewContent' in summary ? summary.previewContent : null;
+  const embedHtml = summary && 'embedHtml' in summary ? summary.embedHtml : null;
 
   return (
     <div className="flex h-full flex-col gap-3">
@@ -80,6 +81,11 @@ export const BadgePreview: React.FC<BadgePreviewProps> = ({
                 <div className="w-full overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-2">
                   {previewContent}
                 </div>
+              ) : embedHtml ? (
+                <div
+                  className="w-full overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-2"
+                  dangerouslySetInnerHTML={{ __html: embedHtml }}
+                />
               ) : imageUrl ? (
                 <img
                   src={imageUrl}
@@ -99,7 +105,7 @@ export const BadgePreview: React.FC<BadgePreviewProps> = ({
         </div>
       </div>
 
-      {embedSnippet && (
+      {(embedSnippet || embedHtml) && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm text-[var(--text-muted)]">
             <span>Embed code</span>
@@ -113,7 +119,7 @@ export const BadgePreview: React.FC<BadgePreviewProps> = ({
             <textarea
               className="h-28 w-full resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 font-mono text-xs text-[var(--text-main)]"
               readOnly
-              value={embedSnippet}
+              value={embedSnippet || embedHtml || ''}
             />
             {onCopyEmbed && (
               <button
