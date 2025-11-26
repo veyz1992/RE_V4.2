@@ -79,11 +79,11 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ formState, loading, embedSn
   };
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Live Preview</p>
-          <h3 className="text-lg font-semibold text-[var(--text-main)]">Badge Preview</h3>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Live preview</p>
+          <h3 className="text-lg font-semibold text-[var(--text-main)]">Badge preview</h3>
         </div>
         <div className="flex items-center gap-2 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[var(--text-muted)] shadow-sm">
           {Object.entries(sizePresets).map(([key, config]) => (
@@ -103,14 +103,16 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({ formState, loading, embedSn
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] shadow-sm">
-        <BadgePreview
-          summary={previewSummary}
-          isLoading={loading}
-          embedSnippet={embedSnippet || undefined}
-          onCopyEmbed={handleCopyEmbed}
-          copied={embedCopied}
-        />
+      <div className="mx-auto w-full max-w-[420px]">
+        <div className="overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] shadow-sm">
+          <BadgePreview
+            summary={previewSummary}
+            isLoading={loading}
+            embedSnippet={embedSnippet || undefined}
+            onCopyEmbed={handleCopyEmbed}
+            copied={embedCopied}
+          />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3 py-2 text-xs">
