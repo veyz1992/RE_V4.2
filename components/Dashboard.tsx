@@ -5,6 +5,7 @@ import { useBlueprintAccess } from '@src/hooks';
 import { useMemberBadge } from '@src/hooks/useMemberBadge';
 import BadgePreview from '@src/shared/badges/BadgePreview';
 import BadgeRenderer from '@src/shared/badges/BadgeRenderer';
+import { buildBadgeEmbedSnippet } from '@src/shared/badges/buildBadgeEmbedSnippet';
 import {
     Benefit,
     MemberServiceRequest,
@@ -3447,28 +3448,32 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
     );
 
     const [copied, setCopied] = useState(false);
+    const membershipTier = currentMember?.tier ?? 'Member';
 
-    const buildEmbedSnippet = () => {
-        const fallback = badge?.imageLightUrl
-            ? `<a href="${badge.profileUrl ?? '#'}" target="_blank" rel="noopener noreferrer">\n  <img src="${badge.imageLightUrl}"\n       alt="Restoration Expertise Verified Member – ${badge.label}"\n       style="max-width:180px;height:auto;" />\n</a>`
-            : '';
+    const { snippet: embedSnippet, error: embedError } = useMemo(
+        () =>
+            buildBadgeEmbedSnippet(badge, {
+                profileId: currentUser?.id ?? null,
+                membershipTier,
+            }),
+        [badge, currentUser?.id, membershipTier]
+    );
 
-        const embedFromTemplate =
-            badge?.embedHtml ??
-            (badge?.embedScriptUrl && badge.code
-                ? `<div data-re-badge data-template="${badge.code}" data-profile="${currentUser?.id ?? ''}"></div>\n<script async src="${badge.embedScriptUrl}" data-template="${badge.code}" data-profile="${currentUser?.id ?? ''}"></script>`
-                : null);
+    const handleCopy = async () => {
+        if (!embedSnippet) {
+            showToast(embedError ?? 'Badge embed code is not available yet.', 'error');
+            return;
+        }
 
-        return `${badge?.embedStyle ? `<style>${badge.embedStyle}</style>\n` : ''}${embedFromTemplate ?? fallback}`.trim();
-    };
-
-    const handleCopy = () => {
-        const snippet = buildEmbedSnippet();
-        if (!snippet) return;
-        navigator.clipboard.writeText(snippet);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-        showToast('Code copied to clipboard!', 'success');
+        try {
+            await navigator.clipboard.writeText(embedSnippet);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+            showToast('Code copied to clipboard!', 'success');
+        } catch (err) {
+            console.error('Failed to copy badge embed', err);
+            showToast('Could not copy the badge code. Please try again.', 'error');
+        }
     };
 
     if (loading) {
@@ -3525,8 +3530,6 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
         );
     }
 
-    const embedSnippet = buildEmbedSnippet();
-    const membershipTier = currentMember?.tier ?? 'Member';
     const companyName = currentMember?.businessName ?? badge.label ?? 'Verified Member';
     const badgeTagline = currentMember?.city ?? 'Trusted Restoration Professional';
     const stylePreset = membershipTier.toLowerCase();
@@ -3563,6 +3566,11 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
                             onCopyEmbed={embedSnippet ? handleCopy : undefined}
                             copied={copied}
                         />
+                        {embedError && (
+                            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                                {embedError}
+                            </div>
+                        )}
                     </div>
                     <div className="lg:col-span-1 space-y-4">
                         <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 text-sm text-[var(--text-main)]">
