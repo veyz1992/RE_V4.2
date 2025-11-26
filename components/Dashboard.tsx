@@ -6,6 +6,7 @@ import { useMemberBadge } from '@src/hooks/useMemberBadge';
 import BadgePreview from '@src/shared/badges/BadgePreview';
 import BadgeRenderer from '@src/shared/badges/BadgeRenderer';
 import { buildBadgeEmbedSnippet } from '@src/shared/badges/buildBadgeEmbedSnippet';
+import { getTierStyle } from '@src/shared/badges/tierStyles';
 import {
     Benefit,
     MemberServiceRequest,
@@ -3449,14 +3450,16 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
 
     const [copied, setCopied] = useState(false);
     const membershipTier = currentMember?.tier ?? 'Member';
+    const tierStyle = useMemo(() => getTierStyle(membershipTier), [membershipTier]);
+    const membershipLabel = tierStyle.label || membershipTier;
 
     const { snippet: embedSnippet, error: embedError } = useMemo(
         () =>
             buildBadgeEmbedSnippet(badge, {
                 profileId: currentUser?.id ?? null,
-                membershipTier,
+                membershipTier: membershipLabel,
             }),
-        [badge, currentUser?.id, membershipTier]
+        [badge, currentUser?.id, membershipLabel]
     );
 
     const handleCopy = async () => {
@@ -3532,15 +3535,16 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
 
     const companyName = currentMember?.businessName ?? badge.label ?? 'Verified Member';
     const badgeTagline = currentMember?.city ?? 'Trusted Restoration Professional';
-    const stylePreset = membershipTier.toLowerCase();
+    const stylePreset = tierStyle.stylePreset;
+    const ratingLabel = badge.rating ?? tierStyle.ratingPreset;
 
     const sharedPreview = (
         <BadgeRenderer
             companyName={companyName}
-            membershipTier={membershipTier}
+            membershipTier={membershipLabel}
             tagline={badgeTagline}
             stylePreset={stylePreset}
-            ratingLabel={badge.rating}
+            ratingLabel={ratingLabel}
             backgroundImageUrl={badge.imageLightUrl ?? badge.imageDarkUrl}
         />
     );
@@ -3578,8 +3582,8 @@ const MemberBadge: React.FC<{ onNavigate: (view: MemberView) => void; showToast:
                                 <ShieldCheckIcon className="h-4 w-4 text-info" />
                                 <span className="text-xs font-semibold uppercase">Verified Member</span>
                             </div>
-                            <p className="mt-2 font-semibold">Plan: {currentMember?.tier ?? 'Member'}</p>
-                            <p className="text-[var(--text-muted)]">Rating: {badge.rating ?? '—'}</p>
+                            <p className="mt-2 font-semibold">Plan: {membershipLabel}</p>
+                            <p className="text-[var(--text-muted)]">Rating: {ratingLabel ?? '—'}</p>
                             <button
                                 onClick={() => onNavigate('billing')}
                                 className="mt-3 inline-flex items-center gap-2 rounded-md bg-info px-3 py-2 text-xs font-semibold text-white"
